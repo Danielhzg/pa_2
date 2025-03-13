@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
-use App\Models\Product;
+use App\Models\Product;  // Fix: Changed Models.Product to Models\Product
 use App\Models\User;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\FacadesDB;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class AdminController extends Controller
 {
@@ -93,5 +95,30 @@ class AdminController extends Controller
     public function showLoginForm()
     {
         return view('auth.login');
+    }
+
+    public function login(Request $request)
+    {
+        $credentials = $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required'],
+        ]);
+
+        if (Auth::attempt($credentials)) {
+            $request->session()->regenerate();
+            return redirect()->route('admin.dashboard');
+        }
+
+        return back()->withErrors([
+            'email' => 'Invalid credentials.',
+        ]);
+    }
+
+    public function logout(Request $request)
+    {
+        Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+        return redirect()->route('admin.login');
     }
 }

@@ -7,7 +7,12 @@
             <div class="card shadow-sm">
                 <div class="card-body p-5">
                     <h1 class="text-center mb-4">Bloom Bouquet Admin</h1>
-                    <form method="POST" action="{{ route('login') }}">
+                    @if ($errors->any())
+                    <div class="alert alert-danger">
+                        {{ $errors->first() }}
+                    </div>
+                    @endif
+                    <form method="POST" action="{{ route('admin.login.submit') }}">
                         @csrf
                         <div class="mb-3">
                             <label class="form-label">Email</label>

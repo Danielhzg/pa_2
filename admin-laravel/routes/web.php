@@ -5,16 +5,16 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\Auth\LoginController;
 
-// Authentication Routes
-Route::get('/', [AdminController::class, 'showLoginForm'])->name('login');
-Route::get('login', [AdminController::class, 'showLoginForm'])->name('login');
-Route::post('login', [AdminController::class, 'login']);
-Route::post('logout', [AdminController::class, 'logout'])->name('logout');
+// Admin Authentication Routes
+Route::get('/', [AdminController::class, 'showLoginForm'])->name('admin.login');
+Route::post('/login', [AdminController::class, 'login'])->name('admin.login.submit');
+Route::post('/logout', [AdminController::class, 'logout'])->name('admin.logout');
 
-// Protected Routes
+// Protected Admin Routes
 Route::middleware(['auth'])->group(function () {
-    Route::get('/', [AdminController::class, 'dashboard'])->name('dashboard');
+    Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('admin.dashboard');
     
     // Products
     Route::resource('products', ProductController::class);
