@@ -1,105 +1,84 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
+
+	"pa_2/backend/handlers"
+	"pa_2/backend/middleware"
+	"pa_2/backend/models"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-// Struktur data User
-type User struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
-}
-
-// Variabel database global
-var db *sql.DB
+var db *gorm.DB
 
 func main() {
-	// Load konfigurasi dari .env
+	// Load .env file
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
 
-	// Konfigurasi koneksi PostgreSQL
-	connStr := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+	// Connect to database
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
 		os.Getenv("DB_HOST"),
-		os.Getenv("DB_PORT"),
 		os.Getenv("DB_USER"),
 		os.Getenv("DB_PASSWORD"),
 		os.Getenv("DB_NAME"),
+		os.Getenv("DB_PORT"),
 		os.Getenv("DB_SSLMODE"),
 	)
-
-	// Membuka koneksi database
-	db, err = sql.Open("postgres", connStr)
+	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Failed to connect to database")
 	}
-	defer db.Close()
 
-	// Cek koneksi
-	err = db.Ping()
-	if err != nil {
-		log.Fatal("Tidak dapat terhubung ke database:", err)
-	}
-	fmt.Println("Berhasil terhubung ke database!")
+	// Auto migrate all models
+	db.AutoMigrate(&models.User{}, &models.Product{}, &models.CartItem{}, &models.Order{}, &models.OrderItem{})
 
-	// Membuat router dengan Gin
-	router := gin.Default()
+	// Setup router
+	r := gin.Default()
 
-	// Endpoint API
-	router.GET("/users", getUsers)
-	router.POST("/users", addUser)
-
-	// Menjalankan server
-	router.Run(":5000")
-}
-
-// Handler untuk mengambil semua user
-func getUsers(c *gin.Context) {
-	rows, err := db.Query("SELECT id, name, email FROM users")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data"})
-		return
-	}
-	defer rows.Close()
-
-	var users []User
-	for rows.Next() {
-		var user User
-		if err := rows.Scan(&user.ID, &user.Name, &user.Email); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membaca data"})
+	// CORS middleware
+	r.Use(func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
 			return
 		}
-		users = append(users, user)
+		c.Next()
+	})
+
+	// Initialize handlers
+	authHandler := handlers.NewAuthHandler(db)
+
+	// Public routes
+	auth := r.Group("/api/auth")
+	{
+		auth.POST("/register", authHandler.Register)
+		auth.POST("/login", authHandler.Login)
 	}
 
-	c.JSON(http.StatusOK, users)
-}
-
-// Handler untuk menambahkan user baru
-func addUser(c *gin.Context) {
-	var user User
-	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Data tidak valid"})
-		return
+	// Protected routes
+	api := r.Group("/api")
+	api.Use(middleware.AuthMiddleware())
+	{
+		 // User routes
+        api.GET("/user/profile", getUserProfile)
+        
+		// Products
+		api.GET("/products", getProducts)
+		api.GET("/products/featured", getFeaturedProducts)
+		api.GET("/products/search", searchProducts)
+		api.GET("/products/:id", getProduct)
 	}
 
-	err := db.QueryRow("INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id", user.Name, user.Email).Scan(&user.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menambahkan pengguna"})
-		return
-	}
-
-	c.JSON(http.StatusCreated, user)
+	r.Run(":5000")
 }

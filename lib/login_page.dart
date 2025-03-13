@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'utils/database_helper.dart';
+import 'services/auth_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -20,21 +22,22 @@ class _LoginPageState extends State<LoginPage> {
       setState(() => _isLoading = true);
 
       try {
-        final result = await DatabaseHelper.instance.validateUser(
+        final authService = Provider.of<AuthService>(context, listen: false);
+        final success = await authService.login(
           _usernameController.text.trim(),
           _passwordController.text,
         );
 
         if (!mounted) return;
 
-        if (result['success']) {
+        if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Login successful!')),
           );
           Navigator.pushReplacementNamed(context, '/home');
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(result['message'] ?? 'Login failed')),
+            const SnackBar(content: Text('Invalid credentials')),
           );
         }
       } catch (e) {

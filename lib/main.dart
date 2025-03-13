@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'services/auth_service.dart';
 
 import 'login_page.dart';
 import 'register.dart'; // This imports the file, but class name might be different
 import 'screens/home_page.dart';
 import 'screens/product_detail_page.dart';
 import 'screens/cart_page.dart';
+import 'screens/chat_page.dart';
+import 'screens/profile_page.dart';
 
 void main() {
   // Ensure initialized
@@ -27,7 +31,12 @@ void main() {
     ),
   );
 
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => AuthService()..init(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -45,9 +54,9 @@ class MyApp extends StatelessWidget {
           brightness: Brightness.light,
         ),
         useMaterial3: true,
-        scaffoldBackgroundColor: Colors.white,
+        scaffoldBackgroundColor: Colors.white, // Restore to white
         appBarTheme: const AppBarTheme(
-          color: Colors.white,
+          color: Colors.white, // Restore to white
           elevation: 0,
           centerTitle: true,
           iconTheme: IconThemeData(color: Colors.pink),
@@ -64,13 +73,22 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
+      home: Consumer<AuthService>(
+        builder: (context, auth, _) {
+          if (auth.isAuthenticated) {
+            return const HomePage();
+          }
+          return const LoginPage();
+        },
+      ),
       initialRoute: '/login',
       routes: {
         '/login': (context) => const LoginPage(),
-        '/register': (context) =>
-            const RegisterPage(), // Fix this line based on your actual class name
+        '/register': (context) => const RegisterPage(),
         '/home': (context) => const HomePage(),
         '/cart': (context) => const CartPage(),
+        '/chat': (context) => const ChatPage(),
+        '/profile': (context) => const ProfilePage(),
       },
       // Handle dynamic routes with parameters
       onGenerateRoute: (settings) {
@@ -97,7 +115,6 @@ class MyApp extends StatelessWidget {
       // Handle errors gracefully
       builder: (context, child) {
         return MediaQuery(
-          // Prevent font scaling for consistent UI
           data: MediaQuery.of(context)
               .copyWith(textScaler: const TextScaler.linear(1.0)),
           child: child!,

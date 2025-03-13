@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../models/product.dart';
-import '../models/cart_item.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;

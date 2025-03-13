@@ -17,10 +17,10 @@ class Product {
 
   factory Product.fromMap(Map<String, dynamic> map) {
     return Product(
-      id: map['product_id'],
+      id: map['id'],
       name: map['name'],
       description: map['description'],
-      price: (map['price'] as num).toDouble(),
+      price: map['price'].toDouble(),
       imageUrl: map['image_url'],
       category: map['category'],
     );

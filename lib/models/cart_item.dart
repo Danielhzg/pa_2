@@ -12,19 +12,8 @@ class CartItem {
     required this.name,
     required this.price,
     required this.imageUrl,
-    this.quantity = 1,
+    required this.quantity,
   });
 
   double get total => price * quantity;
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'product_id': productId,
-      'name': name,
-      'price': price,
-      'image_url': imageUrl,
-      'quantity': quantity,
-    };
-  }
 }

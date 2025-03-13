@@ -1,384 +1,243 @@
-import 'package:postgres/postgres.dart';
-import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/product.dart';
 import '../models/cart_item.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
-  PostgreSQLConnection? _connection;
-  bool _isConnecting = false;
-
   DatabaseHelper._internal();
-
   static DatabaseHelper get instance => _instance;
 
-  Future<PostgreSQLConnection> getConnection() async {
-    if (_connection != null && !_connection!.isClosed) {
-      return _connection!;
-    }
+  // For Android emulator, use:
+  static const String baseUrl = 'http://10.0.2.2:5000/api';
 
-    // Prevent multiple simultaneous connection attempts
-    if (_isConnecting) {
-      while (_isConnecting) {
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
-      if (_connection != null && !_connection!.isClosed) {
-        return _connection!;
-      }
-    }
+  // For iOS simulator, use:
+  // static const String baseUrl = 'http://localhost:5000/api';
 
-    _isConnecting = true;
+  // For real device testing, use your computer's IP address:
+  // static const String baseUrl = 'http://192.168.1.xxx:5000/api';
 
-    try {
-      final host = Platform.isAndroid ? '10.0.2.2' : 'localhost';
+  String? _token;
 
-      _connection = PostgreSQLConnection(
-        host,
-        5432,
-        'pa_2',
-        username: 'postgres',
-        password: 'daniel123',
-        timeoutInSeconds: 30,
-        queryTimeoutInSeconds: 30,
-        isUnixSocket: false,
-        allowClearTextPassword: true,
-      );
-
-      await _connection!.open();
-      print('Database connected successfully');
-
-      // Test the connection
-      final result = await _connection!.query('SELECT version();');
-      print('PostgreSQL Version: ${result.first[0]}');
-
-      return _connection!;
-    } catch (e) {
-      print('Database connection error: $e');
-      _connection = null;
-      rethrow;
-    } finally {
-      _isConnecting = false;
-    }
+  void setToken(String token) {
+    _token = token;
   }
 
-  Future<void> closeConnection() async {
-    try {
-      if (_connection != null && !_connection!.isClosed) {
-        await _connection!.close();
-        _connection = null;
-        print('Database connection closed');
-      }
-    } catch (e) {
-      print('Error closing database connection: $e');
-      rethrow;
-    }
+  Map<String, String> get _headers {
+    return {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
   }
 
+  // Authentication endpoints
   Future<Map<String, dynamic>> validateUser(
       String username, String password) async {
-    PostgreSQLConnection? conn;
     try {
-      conn = await getConnection();
-      final results = await conn.mappedResultsQuery(
-        'SELECT user_id, username, email FROM users WHERE username = @username AND password = @password',
-        substitutionValues: {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
           'username': username,
           'password': password,
-        },
+        }),
       );
 
-      if (results.isEmpty) {
-        return {'success': false, 'message': 'Invalid username or password'};
+      final data = json.decode(response.body);
+
+      if (response.statusCode == 200) {
+        setToken(data['token']); // Save token for future requests
+        return {
+          'success': true,
+          'user': data['user'],
+          'token': data['token'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['error'] ?? 'Login failed',
+        };
       }
-
-      final userData = results.first['users']!;
+    } catch (e) {
+      print('Error in validateUser: $e');
       return {
-        'success': true,
-        'user': {
-          'id': userData['user_id'],
-          'username': userData['username'],
-          'email': userData['email'],
-        }
+        'success': false,
+        'message': 'Network error: Unable to connect to server',
       };
-    } catch (e) {
-      print('Error validating user: $e');
-      return {'success': false, 'message': 'Database error: ${e.toString()}'};
     }
   }
 
-  Future<Map<String, dynamic>> createUser(
-    String username,
-    String email,
-    String nomorTelepon,
-    String password,
-  ) async {
-    PostgreSQLConnection? conn;
+  Future<Map<String, dynamic>> createUser(String username, String email,
+      String nomorTelepon, String password) async {
     try {
-      conn = await getConnection();
-
-      return await conn.transaction((ctx) async {
-        // Check username
-        final usernameExists = await ctx.query(
-          'SELECT 1 FROM users WHERE username = @username',
-          substitutionValues: {'username': username},
-        );
-        if (usernameExists.isNotEmpty) {
-          return {'success': false, 'message': 'Username already exists'};
-        }
-
-        // Check email
-        final emailExists = await ctx.query(
-          'SELECT 1 FROM users WHERE email = @email',
-          substitutionValues: {'email': email},
-        );
-        if (emailExists.isNotEmpty) {
-          return {'success': false, 'message': 'Email already exists'};
-        }
-
-        // Insert user
-        await ctx.query(
-          '''
-          INSERT INTO users (username, email, nomor_telepon, password)
-          VALUES (@username, @email, @nomorTelepon, @password)
-          ''',
-          substitutionValues: {
-            'username': username,
-            'email': email,
-            'nomorTelepon': nomorTelepon,
-            'password': password,
-          },
-        );
-
-        return {'success': true, 'message': 'User created successfully'};
-      });
-    } catch (e) {
-      print('Error creating user: $e');
-      return {'success': false, 'message': 'Database error: ${e.toString()}'};
-    }
-  }
-
-  Future<List<Product>> searchProducts(String query) async {
-    PostgreSQLConnection? conn;
-    try {
-      conn = await getConnection();
-      final results = await conn.mappedResultsQuery(
-        '''
-        SELECT p.*, c.name as category_name 
-        FROM products p 
-        LEFT JOIN categories c ON p.category_id = c.category_id
-        WHERE LOWER(p.name) LIKE LOWER(@query)
-        OR LOWER(p.description) LIKE LOWER(@query)
-        ''',
-        substitutionValues: {
-          'query': '%$query%',
-        },
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'username': username,
+          'email': email,
+          'nomor_telepon': nomorTelepon,
+          'password': password,
+        }),
       );
 
-      return results.map((row) => Product.fromMap(row['p']!)).toList();
+      final data = json.decode(response.body);
+
+      if (response.statusCode == 201) {
+        return {
+          'success': true,
+          'message': data['message'],
+          'user': data['user'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['error'] ?? 'Registration failed',
+        };
+      }
     } catch (e) {
-      print('Error searching products: $e');
-      return [];
+      print('Error in createUser: $e');
+      return {
+        'success': false,
+        'message': 'Network error: Unable to connect to server',
+      };
     }
   }
 
-  Future<bool> checkConnection() async {
-    try {
-      final conn = await getConnection();
-      final result = await conn.query('SELECT 1');
-      return result.isNotEmpty;
-    } catch (e) {
-      print('Connection check failed: $e');
-      return false;
-    }
-  }
-
-  Future<void> addToCart(CartItem item, int userId) async {
-    try {
-      final conn = await getConnection();
-      await conn.transaction((ctx) async {
-        // Check if product exists and has enough stock
-        final stockResult = await ctx.query(
-          'SELECT stock_quantity FROM products WHERE product_id = @productId',
-          substitutionValues: {
-            'productId': item.productId,
-          },
-        );
-
-        if (stockResult.isEmpty) {
-          throw Exception('Product not found');
-        }
-
-        final stockQuantity = stockResult.first[0] as int;
-        if (stockQuantity < item.quantity) {
-          throw Exception('Not enough stock');
-        }
-
-        // Add to cart
-        await ctx.query(
-          '''
-          INSERT INTO cart (product_id, user_id, quantity)
-          VALUES (@productId, @userId, @quantity)
-          ON CONFLICT (product_id, user_id) 
-          DO UPDATE SET quantity = cart.quantity + @quantity
-          ''',
-          substitutionValues: {
-            'productId': item.productId,
-            'userId': userId,
-            'quantity': item.quantity,
-          },
-        );
-
-        // Update stock
-        await ctx.query(
-          '''
-          UPDATE products 
-          SET stock_quantity = stock_quantity - @quantity
-          WHERE product_id = @productId
-          ''',
-          substitutionValues: {
-            'productId': item.productId,
-            'quantity': item.quantity,
-          },
-        );
-      });
-    } catch (e) {
-      print('Error adding to cart: $e');
-      rethrow;
-    }
-  }
-
+  // Product endpoints
   Future<List<Product>> getFeaturedProducts() async {
     try {
-      final conn = await getConnection();
-      final results = await conn.mappedResultsQuery(
-        '''
-        SELECT p.*, c.name as category_name 
-        FROM products p 
-        LEFT JOIN categories c ON p.category_id = c.category_id
-        WHERE p.is_featured = true
-        LIMIT 5
-        ''',
+      final response = await http.get(
+        Uri.parse('$baseUrl/products/featured'),
+        headers: _headers,
       );
 
-      return results.map((row) => Product.fromMap(row['p']!)).toList();
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => Product.fromMap(json)).toList();
+      }
+      return [];
     } catch (e) {
       print('Error getting featured products: $e');
       return [];
     }
   }
 
-  Future<List<Product>> getNewArrivals() async {
-    try {
-      final conn = await getConnection();
-      final results = await conn.mappedResultsQuery(
-        '''
-        SELECT p.*, c.name as category_name 
-        FROM products p 
-        LEFT JOIN categories c ON p.category_id = c.category_id
-        ORDER BY p.created_at DESC
-        LIMIT 4
-        ''',
-      );
-
-      return results.map((row) => Product.fromMap(row['p']!)).toList();
-    } catch (e) {
-      print('Error getting new arrivals: $e');
-      return [];
-    }
-  }
-
-  Future<List<Product>> getProductsByCategory(String category) async {
-    try {
-      final conn = await getConnection();
-      final results = await conn.mappedResultsQuery(
-        '''
-        SELECT p.*, c.name as category_name 
-        FROM products p 
-        LEFT JOIN categories c ON p.category_id = c.category_id
-        WHERE c.name = @category OR @category = 'All'
-        ''',
-        substitutionValues: {
-          'category': category,
-        },
-      );
-
-      return results.map((row) => Product.fromMap(row['p']!)).toList();
-    } catch (e) {
-      print('Error getting products by category: $e');
-      return [];
-    }
-  }
-
-  Future<void> updateCartItemQuantity(int productId, int quantity) async {
-    try {
-      final conn = await getConnection();
-      await conn.query(
-        '''
-        UPDATE cart 
-        SET quantity = @quantity
-        WHERE product_id = @productId AND user_id = @userId
-        ''',
-        substitutionValues: {
-          'productId': productId,
-          'userId': 1, // Replace with actual user ID from session
-          'quantity': quantity,
-        },
-      );
-    } catch (e) {
-      print('Error updating cart item: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> removeFromCart(int productId) async {
-    try {
-      final conn = await getConnection();
-      await conn.query(
-        '''
-        DELETE FROM cart 
-        WHERE product_id = @productId AND user_id = @userId
-        ''',
-        substitutionValues: {
-          'productId': productId,
-          'userId': 1, // Replace with actual user ID from session
-        },
-      );
-    } catch (e) {
-      print('Error removing from cart: $e');
-      rethrow;
-    }
-  }
-
+  // Cart endpoints
   Future<List<CartItem>> getCartItems() async {
     try {
-      final conn = await getConnection();
-      final results = await conn.mappedResultsQuery(
-        '''
-        SELECT c.*, p.name, p.price, p.image_url
-        FROM cart c
-        JOIN products p ON c.product_id = p.product_id
-        WHERE c.user_id = @userId
-        ''',
-        substitutionValues: {
-          'userId': 1, // Replace with actual user ID from session
-        },
+      final response = await http.get(
+        Uri.parse('$baseUrl/cart'),
+        headers: _headers,
       );
 
-      return results.map((row) {
-        final cart = row['cart']!;
-        final product = row['products']!;
-        return CartItem(
-          id: cart['id'],
-          productId: cart['product_id'],
-          name: product['name'],
-          price: product['price'],
-          imageUrl: product['image_url'],
-          quantity: cart['quantity'],
-        );
-      }).toList();
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data
+            .map((json) => CartItem(
+                  id: json['id'],
+                  productId: json['product_id'],
+                  name: json['product']['name'],
+                  price: json['product']['price'],
+                  imageUrl: json['product']['image_url'],
+                  quantity: json['quantity'],
+                ))
+            .toList();
+      }
+      return [];
     } catch (e) {
       print('Error getting cart items: $e');
       return [];
+    }
+  }
+
+  // Search endpoints
+  Future<List<Product>> searchProducts(String query) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/products/search?query=$query'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => Product.fromMap(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('Error searching products: $e');
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> getUserProfile() async {
+    try {
+      if (_token == null) {
+        print('getUserProfile: No token available');
+        return {
+          'success': false,
+          'message': 'No authentication token',
+        };
+      }
+
+      print('getUserProfile: Fetching with token: $_token');
+      final response = await http.get(
+        Uri.parse('$baseUrl/user/profile'),
+        headers: _headers,
+      );
+
+      final data = json.decode(response.body);
+      print('getUserProfile: Response status: ${response.statusCode}');
+      print('getUserProfile: Response data: $data');
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'user': data['user'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['error'] ?? 'Failed to get user profile',
+        };
+      }
+    } catch (e) {
+      print('Error in getUserProfile: $e');
+      return {
+        'success': false,
+        'message': 'Network error: Unable to connect to server',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> updateUserProfile(
+      Map<String, dynamic> data) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/user/profile'),
+        headers: _headers,
+        body: json.encode(data),
+      );
+
+      final responseData = json.decode(response.body);
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'user': responseData['user'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': responseData['error'] ?? 'Failed to update profile',
+        };
+      }
+    } catch (e) {
+      print('Error in updateUserProfile: $e');
+      return {
+        'success': false,
+        'message': 'Network error: Unable to connect to server',
+      };
     }
   }
 }
