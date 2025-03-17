@@ -69,11 +69,15 @@ class _HomePageState extends State<HomePage>
               type == 'featured' ? 299000 + (i * 50000) : 199000 + (i * 50000),
           imageUrl:
               'https://images.unsplash.com/photo-1596438459194-f275f413d6ff?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=717&q=80',
-          category: i % 4 == 0
-              ? 'Wedding'
-              : (i % 3 == 0
-                  ? 'Birthday'
-                  : (i % 2 == 0 ? 'Anniversary' : 'Graduation')),
+          category: i % 5 == 0
+              ? 'Box Custom'
+              : i % 4 == 0
+                  ? 'Hampers'
+                  : i % 3 == 0
+                      ? 'Money'
+                      : i % 2 == 0
+                          ? 'Makanan'
+                          : 'Wisuda',
         ),
       );
     }
@@ -399,10 +403,11 @@ class _HomePageState extends State<HomePage>
   Widget _buildCategories() {
     final categories = [
       'All',
-      'Wedding',
-      'Birthday',
-      'Anniversary',
-      'Graduation'
+      'Wisuda',
+      'Makanan',
+      'Money',
+      'Hampers',
+      'Box Custom'
     ];
 
     return SizedBox(
@@ -436,12 +441,20 @@ class _HomePageState extends State<HomePage>
   Widget _buildFeaturedSection() {
     return Column(
       children: [
-        _buildSectionHeader('Best Seller', onSeeAll: () {
-          // TODO: Implement featured products page
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Best Seller page coming soon')),
-          );
-        }),
+        const Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Text(
+                'Best Seller',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
         SizedBox(
           height: 250, // Reduced height to match product card
           child: _featuredProducts.isEmpty

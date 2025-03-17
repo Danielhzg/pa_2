@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'services/auth_service.dart';
-
+import 'screens/splash_screen.dart';
 import 'login_page.dart';
-import 'register.dart'; // This imports the file, but class name might be different
+import 'register.dart';
 import 'screens/home_page.dart';
 import 'screens/product_detail_page.dart';
 import 'screens/cart_page.dart';
@@ -12,18 +12,15 @@ import 'screens/chat_page.dart';
 import 'screens/profile_page.dart';
 
 void main() {
-  // Ensure initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set preferred orientations
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(
-    SystemUiOverlayStyle.light.copyWith(
+    const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
       systemNavigationBarColor: Colors.white,
@@ -50,38 +47,34 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.pink,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.pink,
+          seedColor: const Color(0xFFFF87B2),
           brightness: Brightness.light,
         ),
         useMaterial3: true,
-        scaffoldBackgroundColor: Colors.white, // Restore to white
+        scaffoldBackgroundColor: Colors.white,
         appBarTheme: const AppBarTheme(
-          color: Colors.white, // Restore to white
+          backgroundColor: Colors.white,
           elevation: 0,
           centerTitle: true,
-          iconTheme: IconThemeData(color: Colors.pink),
+          iconTheme: IconThemeData(color: Color(0xFFFF87B2)),
           titleTextStyle: TextStyle(
-            color: Colors.pink,
+            color: Color(0xFFFF87B2),
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.pink,
+            backgroundColor: const Color(0xFFFF87B2),
             foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 16),
           ),
         ),
       ),
-      home: Consumer<AuthService>(
-        builder: (context, auth, _) {
-          if (auth.isAuthenticated) {
-            return const HomePage();
-          }
-          return const LoginPage();
-        },
-      ),
-      initialRoute: '/login',
+      home: const SplashScreen(),
       routes: {
         '/login': (context) => const LoginPage(),
         '/register': (context) => const RegisterPage(),
@@ -90,78 +83,46 @@ class MyApp extends StatelessWidget {
         '/chat': (context) => const ChatPage(),
         '/profile': (context) => const ProfilePage(),
       },
-      // Handle dynamic routes with parameters
       onGenerateRoute: (settings) {
         if (settings.name == '/product-detail') {
           final args = settings.arguments as Map<String, dynamic>?;
-          final product = args?['product'];
-          if (product != null) {
-            return MaterialPageRoute(
-              builder: (context) => ProductDetailPage(product: product),
-            );
-          }
           return MaterialPageRoute(
-            builder: (context) => const ErrorPage(message: 'Product not found'),
+            builder: (context) => ProductDetailPage(
+              product: args?['product'],
+            ),
           );
         }
-
-        // Handle unknown routes
+        return null;
+      },
+      onUnknownRoute: (settings) {
         return MaterialPageRoute(
-          builder: (context) => ErrorPage(
-            message: 'Route ${settings.name} not found',
+          builder: (context) => Scaffold(
+            appBar: AppBar(
+              title: const Text('Error'),
+            ),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline,
+                      color: Color(0xFFFF87B2), size: 64),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Page not found: ${settings.name}',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context)
+                        .pushNamedAndRemoveUntil('/home', (route) => false),
+                    child: const Text('Return Home'),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },
-      // Handle errors gracefully
-      builder: (context, child) {
-        return MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(textScaler: const TextScaler.linear(1.0)),
-          child: child!,
-        );
-      },
-    );
-  }
-}
-
-// Simple error page for route errors
-class ErrorPage extends StatelessWidget {
-  final String message;
-
-  const ErrorPage({super.key, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Error'),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 64),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 18),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () => Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  '/home',
-                  (route) => false,
-                ),
-                child: const Text('Return to Home'),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

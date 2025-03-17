@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"time"
@@ -88,8 +89,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
     }
 
     var user models.User
-    if err := h.db.Where("username = ?", input.Username).First(&user).Error; err != nil {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+    result := h.db.Where("username = ?", input.Username).First(&user)
+    if result.Error != nil {
+        if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+            c.JSON(http.StatusUnauthorized, gin.H{
+                "error": "Invalid username or password",
+            })
+            return
+        }
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
         return
     }
 
