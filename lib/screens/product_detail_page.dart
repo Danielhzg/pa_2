@@ -62,6 +62,13 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Calculate discounted price
+    final double originalPrice = widget.product.price.toDouble();
+    final double discountedPrice = widget.product.isOnSale
+        ? originalPrice * (100 - widget.product.discount) / 100
+        : originalPrice;
+    final double savedAmount = originalPrice - discountedPrice;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.product.name),
@@ -110,27 +117,67 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    'Rp ${widget.product.price.toInt().toString()}',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      color: Colors.pink,
-                      fontWeight: FontWeight.bold,
+
+                  // Pricing section with discount details
+                  if (widget.product.isOnSale) ...[
+                    Row(
+                      children: [
+                        Text(
+                          'Rp ${originalPrice.toInt().toString()}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade700,
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '-${widget.product.discount}%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.pink.shade100,
-                      borderRadius: BorderRadius.circular(8),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Rp ${discountedPrice.toInt().toString()}',
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFFF87B2),
+                      ),
                     ),
-                    child: Text(
-                      widget.product.category,
-                      style: TextStyle(color: Colors.pink.shade800),
+                    const SizedBox(height: 4),
+                    Text(
+                      'You save: Rp ${savedAmount.toInt().toString()}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.green.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
+                  ] else ...[
+                    Text(
+                      'Rp ${originalPrice.toInt().toString()}',
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFFF87B2),
+                      ),
+                    ),
+                  ],
+
                   const SizedBox(height: 16),
                   const Text(
                     'Description',

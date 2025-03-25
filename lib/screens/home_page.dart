@@ -25,6 +25,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   final List<Product> _featuredProducts = [];
   final List<Product> _newProducts = [];
   final List<Product> _trendingProducts = [];
+  final List<Product> _filteredProducts = [];
   late TabController _tabController;
   final PageController _pageController = PageController(viewportFraction: 0.85);
   int _currentBannerIndex = 0;
@@ -42,32 +43,30 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       'subtitle': 'Fresh seasonal flowers',
       'discount': '20% OFF',
       'image': 'assets/images/contoh.jpg',
-      'color': Color(0xFFF8BBD0),
+      'color': const Color(0xFFF8BBD0),
     },
     {
       'title': 'Wedding Special',
       'subtitle': 'Make your day perfect',
       'discount': '15% OFF',
       'image': 'assets/images/contoh.jpg',
-      'color': Color(0xFFFFCCBC),
+      'color': const Color(0xFFFFCCBC),
     },
     {
       'title': 'Gift Bouquets',
       'subtitle': 'Express your feelings',
       'discount': '10% OFF',
       'image': 'assets/images/contoh.jpg',
-      'color': Color(0xFFD1C4E9),
+      'color': const Color(0xFFD1C4E9),
     },
   ];
 
   final List<Map<String, dynamic>> _categories = [
-    {'name': 'All', 'icon': LineIcons.borderAll},
-    {'name': 'Wisuda', 'icon': LineIcons.graduationCap},
-    {'name': 'Birthday', 'icon': LineIcons.birthdayCake},
-    {'name': 'Wedding', 'icon': LineIcons.ring},
-    {'name': 'Box Custom', 'icon': LineIcons.gift},
-    {'name': 'Money', 'icon': LineIcons.moneyBill},
-    {'name': 'Hampers', 'icon': LineIcons.shoppingBasket},
+    {'name': 'All'},
+    {'name': 'Wisuda'},
+    {'name': 'Makanan'},
+    {'name': 'Money'},
+    {'name': 'Hampers'},
   ];
 
   Timer? _bannerTimer;
@@ -89,7 +88,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
     _loadProducts();
 
     // Auto-scroll banner - start after a short delay
@@ -102,7 +100,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _tabController.dispose();
     _pageController.dispose();
     _bannerTimer?.cancel();
     super.dispose();
@@ -191,14 +188,33 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     try {
       await Future.delayed(const Duration(milliseconds: 500));
 
-      final products = _createDummyProducts('new', 6)
-          .where((p) => category == 'All' || p.category == category)
-          .toList();
+      List<Product> products = [];
+      // Create different products based on categories
+      if (category == 'All') {
+        products = _createDummyProducts('new', 10);
+      } else if (category == 'Wisuda') {
+        products = _createDummyProducts('new', 6)
+            .where((p) => p.category == 'Wisuda')
+            .toList();
+      } else if (category == 'Makanan') {
+        products = _createDummyProducts('new', 8)
+            .where(
+                (p) => p.category == 'Birthday') // Using Birthday for Makanan
+            .toList();
+      } else if (category == 'Money') {
+        products = _createDummyProducts('new', 4)
+            .where((p) => p.category == 'Money')
+            .toList();
+      } else if (category == 'Hampers') {
+        products = _createDummyProducts('new', 5)
+            .where((p) => p.category == 'Hampers')
+            .toList();
+      }
 
       if (mounted) {
         setState(() {
-          _newProducts.clear();
-          _newProducts.addAll(products);
+          _filteredProducts.clear();
+          _filteredProducts.addAll(products);
           _isLoading = false;
         });
       }
@@ -292,20 +308,50 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           child: _buildBannerCarousel(),
         ),
         SliverToBoxAdapter(
-          child: _buildTabBar(),
+          child: _buildCategorySelector(),
         ),
         SliverToBoxAdapter(
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.8,
-            child: TabBarView(
-              controller: _tabController,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+                20, 12, 20, 8), // Reduced padding (was 20, 24, 20, 16)
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildFeaturedProducts(),
-                _buildNewArrivals(),
-                _buildTrendingProducts(),
+                Text(
+                  _selectedCategory == 'All'
+                      ? 'All Products'
+                      : '$_selectedCategory Collection',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: darkTextColor,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    // Handle view all
+                  },
+                  child: const Text(
+                    'View All',
+                    style: TextStyle(
+                      color: primaryColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
+        ),
+        SliverToBoxAdapter(
+          child: _isLoading
+              ? const Center(
+                  child: Padding(
+                  padding: EdgeInsets.all(40),
+                  child: CircularProgressIndicator(),
+                ))
+              : _buildProductGrid(
+                  _filteredProducts.isEmpty ? _newProducts : _filteredProducts),
         ),
       ],
     );
@@ -313,14 +359,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Widget _buildAppBar(String userName) {
     return SliverAppBar(
-      expandedHeight: 120,
+      expandedHeight: 150, // Increased height to accommodate new elements
       floating: false,
       pinned: true,
       backgroundColor: Colors.white,
-      elevation: 0,
+      elevation: 3,
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
-          padding: const EdgeInsets.fromLTRB(20, 60, 20, 0),
+          padding: const EdgeInsets.fromLTRB(20, 45, 20, 10),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -338,111 +384,157 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Logo and Store Name Section
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // Logo image (now circular)
+                  Container(
+                    height: 40,
+                    width: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle, // Changed to circle shape
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(5),
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Store name and tagline
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Welcome back,',
+                      const Text(
+                        'Bloom Bouquet',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        userName,
-                        style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 22,
+                          fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                      Text(
+                        'Hello $userName, send happiness in a bloom',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 13,
+                        ),
+                      ),
                     ],
                   ),
-                  Row(
+                  const Spacer(),
+                  // Notification button (removed favorites - will add near search)
+                  Stack(
                     children: [
                       IconButton(
                         icon: const Icon(
-                          LineIcons.heart,
+                          LineIcons.bell,
                           color: Colors.white,
+                          size: 22,
                         ),
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/favorites');
-                        },
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () {},
                       ),
-                      Stack(
-                        children: [
-                          IconButton(
-                            icon: const Icon(
-                              LineIcons.bell,
-                              color: Colors.white,
-                            ),
-                            onPressed: () {},
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
                           ),
-                          Positioned(
-                            right: 12,
-                            top: 10,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: Colors.red,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
-      ),
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
-        child: Container(
-          height: 60,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          child: GestureDetector(
-            onTap: _handleSearch,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 15),
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(25),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Row(
+
+              const SizedBox(height: 15),
+              // Search bar with favorites button next to it
+              Row(
                 children: [
-                  const Icon(
-                    LineIcons.search,
-                    color: primaryColor,
+                  // Search bar
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _handleSearch,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 15),
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              LineIcons.search,
+                              color: primaryColor,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Search for bouquets...',
+                              style: TextStyle(
+                                color: Colors.grey.shade400,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
+                  // Favorites button next to search bar
                   const SizedBox(width: 10),
-                  Text(
-                    'Search for bouquets...',
-                    style: TextStyle(
-                      color: Colors.grey.shade400,
-                      fontSize: 16,
+                  Container(
+                    height: 36,
+                    width: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      icon: const Icon(
+                        LineIcons.heart,
+                        color: primaryColor,
+                        size: 16,
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () {
+                        Navigator.pushNamed(context, '/favorites');
+                      },
                     ),
                   ),
                 ],
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -452,7 +544,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Widget _buildBannerCarousel() {
     return Container(
       height: 200,
-      margin: const EdgeInsets.only(top: 20),
+      margin: const EdgeInsets.only(top: 15), // Reduced top margin (was 20)
       child: PageView.builder(
         controller: _pageController,
         itemCount: _banners.length,
@@ -615,65 +707,69 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildTabBar() {
+  Widget _buildCategorySelector() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      margin: const EdgeInsets.only(top: 15),
-      child: TabBar(
-        controller: _tabController,
-        labelColor: primaryColor,
-        unselectedLabelColor: lightTextColor,
-        indicatorColor: primaryColor,
-        indicatorSize: TabBarIndicatorSize.label,
-        labelStyle: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-        ),
-        unselectedLabelStyle: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.normal,
-        ),
-        tabs: const [
-          Tab(
-            text: 'Featured',
-          ),
-          Tab(
-            text: 'New',
-          ),
-          Tab(
-            text: 'Trending',
-          ),
-        ],
+      height: 45, // Reduced height (was 50)
+      margin: const EdgeInsets.only(top: 10), // Reduced top margin (was 24)
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: _categories.length,
+        itemBuilder: (context, index) {
+          final category = _categories[index];
+          final isSelected = _selectedCategory == category['name'];
+
+          return GestureDetector(
+            onTap: () => _handleCategorySelect(category['name']),
+            child: Container(
+              margin: const EdgeInsets.only(right: 12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected ? primaryColor : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: isSelected
+                          ? primaryColor.withOpacity(0.3)
+                          : Colors.grey.withOpacity(0.15),
+                      spreadRadius: 1,
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                  border: Border.all(
+                    color: isSelected ? primaryColor : Colors.grey.shade200,
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  category['name'],
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : Colors.grey.shade800,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildFeaturedProducts() {
-    return _isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : _buildProductGrid(_featuredProducts);
-  }
-
-  Widget _buildNewArrivals() {
-    return _isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : _buildProductGrid(_newProducts);
-  }
-
-  Widget _buildTrendingProducts() {
-    return _isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : _buildProductGrid(_trendingProducts);
-  }
-
   Widget _buildProductGrid(List<Product> products) {
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 250),
+      padding: const EdgeInsets.fromLTRB(
+          16, 8, 16, 250), // Reduced top padding (was 16)
       physics: const NeverScrollableScrollPhysics(),
       shrinkWrap: true,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 0.75,
+        childAspectRatio: 0.8, // Adjusted for more square-like appearance
         crossAxisSpacing: 15,
         mainAxisSpacing: 22,
       ),
@@ -686,6 +782,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildProductCard(Product product) {
+    // Calculate the final price after discount
+    final double finalPrice = product.isOnSale
+        ? (product.price * (100 - product.discount) / 100).toDouble()
+        : product.price.toDouble();
+
     return GestureDetector(
       onTap: () => _handleProductTap(product),
       child: Container(
@@ -708,9 +809,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Product image
-                  Expanded(
-                    flex: 3,
+                  // Product image - reduced height
+                  SizedBox(
+                    height: 120, // Fixed height for product image
+                    width: double.infinity,
                     child: Hero(
                       tag: 'product-${product.id}',
                       child: Stack(
@@ -731,17 +833,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                               left: 10,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
+                                  horizontal: 8,
+                                  vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  gradient: LinearGradient(
+                                  gradient: const LinearGradient(
                                     colors: [
                                       Colors.red,
                                       Colors.redAccent,
                                     ],
                                   ),
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(10),
                                   boxShadow: [
                                     BoxShadow(
                                       color: Colors.red.withOpacity(0.3),
@@ -750,11 +852,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                     ),
                                   ],
                                 ),
-                                child: Text(
-                                  '${product.discount}% OFF',
-                                  style: const TextStyle(
+                                child: const Text(
+                                  'SALE',
+                                  style: TextStyle(
                                     color: Colors.white,
-                                    fontSize: 10,
+                                    fontSize: 9,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -829,83 +931,71 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     ),
                   ),
                   // Product details
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            product.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: darkTextColor,
+                  Container(
+                    padding: const EdgeInsets.all(8), // Further reduced padding
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min, // Use minimum space
+                      children: [
+                        Text(
+                          product.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12, // Smaller font
+                            color: darkTextColor,
+                          ),
+                        ),
+                        const SizedBox(height: 2), // Smaller spacing
+                        // Only show final price
+                        Text(
+                          'Rp${(finalPrice / 1000).toStringAsFixed(0)}K',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13, // Smaller font
+                            color: primaryColor,
+                          ),
+                        ),
+                        const SizedBox(height: 4), // Smaller spacing
+                        // Add to Cart button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 26, // Smaller height
+                          child: ElevatedButton(
+                            onPressed: () {
+                              // Add to cart functionality
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content:
+                                      Text('Added ${product.name} to cart'),
+                                  backgroundColor: primaryColor,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              backgroundColor: primaryColor,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: EdgeInsets.zero,
+                            ),
+                            child: const Text(
+                              'Add to Cart',
+                              style: TextStyle(
+                                fontSize: 10, // Smaller font
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                          const Spacer(),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Flexible(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (product.isOnSale)
-                                      Text(
-                                        'Rp${(product.price / 1000).toStringAsFixed(0)}K',
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          color: lightTextColor,
-                                          decoration:
-                                              TextDecoration.lineThrough,
-                                        ),
-                                      ),
-                                    Text(
-                                      'Rp${(product.isOnSale ? (product.price * (100 - product.discount) / 100) : product.price) / 1000}K',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15,
-                                        color: primaryColor,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      primaryColor,
-                                      primaryColor.withOpacity(0.7),
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: primaryColor.withOpacity(0.3),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  LineIcons.plus,
-                                  color: Colors.white,
-                                  size: 18,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -927,7 +1017,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       ),
                     ],
                   ),
-                  child: Center(
+                  child: const Center(
                     child: Icon(
                       LineIcons.heartAlt,
                       size: 20,
