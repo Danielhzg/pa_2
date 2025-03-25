@@ -51,27 +51,43 @@ class _LoginPageState extends State<LoginPage>
       setState(() => _isLoading = true);
 
       try {
+        final username = _usernameController.text.trim();
+        final password = _passwordController.text;
+
+        print('Attempting login with username: $username');
+
+        // Access the auth service in a way that won't trigger setState during build
         final authService = Provider.of<AuthService>(context, listen: false);
-        final success = await authService.login(
-          _usernameController.text.trim(),
-          _passwordController.text,
-        );
+
+        // Only after initialization is complete, perform the login
+        await authService.initializationFuture;
+        final success = await authService.login(username, password);
 
         if (!mounted) return;
 
         if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Login successful!')),
+            const SnackBar(
+              content: Text('Login successful!'),
+              backgroundColor: Colors.green,
+            ),
           );
           Navigator.pushReplacementNamed(context, '/home');
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Invalid credentials')),
+            const SnackBar(
+              content: Text('Invalid username or password. Please try again.'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       } catch (e) {
+        print('Login error: $e');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       } finally {
         if (mounted) {
@@ -143,7 +159,7 @@ class _LoginPageState extends State<LoginPage>
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Please enter username';
+                            return 'Please enter your username';
                           }
                           return null;
                         },
@@ -179,7 +195,7 @@ class _LoginPageState extends State<LoginPage>
                         obscureText: _obscurePassword,
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Please enter password';
+                            return 'Please enter your password';
                           }
                           return null;
                         },

@@ -64,15 +64,25 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
+    // Start the delayed navigation
+    _startNavigationTimer();
+  }
+
+  void _startNavigationTimer() {
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         _controller.reverse().then((_) {
-          final authService = Provider.of<AuthService>(context, listen: false);
-          if (authService.isAuthenticated) {
-            Navigator.pushReplacementNamed(context, '/home');
-          } else {
-            Navigator.pushReplacementNamed(context, '/login');
-          }
+          // Get the auth service after the splash animation, not during build
+          // Use Future.microtask to ensure this doesn't happen during build
+          Future.microtask(() {
+            final authService =
+                Provider.of<AuthService>(context, listen: false);
+            if (authService.isLoggedIn) {
+              Navigator.pushReplacementNamed(context, '/home');
+            } else {
+              Navigator.pushReplacementNamed(context, '/login');
+            }
+          });
         });
       }
     });

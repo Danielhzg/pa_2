@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../utils/database_helper.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -29,17 +31,17 @@ class _ProfilePageState extends State<ProfilePage> {
 
       final authService = Provider.of<AuthService>(context, listen: false);
       print(
-          'Profile: Current user data before refresh: ${authService.userData}');
+          'Profile: Current user data before refresh: ${authService.currentUser}');
 
-      await authService.refreshUserData();
+      await authService.getUser();
 
-      final userData = authService.userData;
+      final userData = authService.currentUser;
       print('Profile: Updated user data: $userData');
 
       if (userData != null) {
         setState(() {
-          _emailController.text = userData['email'] ?? '';
-          _phoneController.text = userData['nomor_telepon'] ?? '';
+          _emailController.text = userData.email ?? '';
+          _phoneController.text = userData.phone ?? '';
         });
       } else {
         print('Profile: No user data available');
@@ -69,27 +71,64 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       setState(() => _isLoading = true);
 
-      final result = await DatabaseHelper.instance.updateUserProfile({
-        'email': _emailController.text.trim(),
-        'nomor_telepon': _phoneController.text.trim(),
-      });
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final token = authService.token;
 
-      if (!mounted) return;
+      if (token == null) {
+        throw Exception('Not authenticated');
+      }
 
-      if (result['success']) {
-        final authService = Provider.of<AuthService>(context, listen: false);
-        await authService.refreshUserData();
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated successfully')),
+      try {
+        final response = await http.post(
+          Uri.parse('http://10.0.2.2:8000/api/v1/update-profile'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: json.encode({
+            'email': _emailController.text.trim(),
+            'phone': _phoneController.text.trim(),
+          }),
         );
-        setState(() => _isEditing = false);
-      } else {
+
+        print(
+            'Update profile response: ${response.statusCode} - ${response.body}');
+
+        if (!mounted) return;
+
+        // Try to parse the response as JSON
+        Map<String, dynamic> result;
+        try {
+          result = json.decode(response.body);
+        } catch (e) {
+          // Handle HTML responses or other non-JSON responses
+          print('Failed to parse response: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Server error. Please try again later.')),
+          );
+          return;
+        }
+
+        if (response.statusCode == 200) {
+          await authService.getUser();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile updated successfully')),
+          );
+          setState(() => _isEditing = false);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(result['message'] ?? 'Update failed')),
+          );
+        }
+      } catch (e) {
+        print('Network error: $e');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'])),
+          SnackBar(content: Text('Network error: $e')),
         );
       }
     } catch (e) {
+      print('Error updating profile: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error updating profile: $e')),
       );
@@ -122,7 +161,7 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       body: Consumer<AuthService>(
         builder: (context, auth, _) {
-          final userData = auth.userData;
+          final userData = auth.currentUser;
           print('Building profile with userData: $userData'); // Debug print
 
           if (_isLoading) {
@@ -148,7 +187,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    userData['username'] ?? 'N/A',
+                    userData.name ?? 'N/A',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 24,
@@ -188,12 +227,12 @@ class _ProfilePageState extends State<ProfilePage> {
                     _buildInfoCard(
                       icon: Icons.email,
                       title: 'Email',
-                      value: userData['email'] ?? 'N/A',
+                      value: userData.email ?? 'N/A',
                     ),
                     _buildInfoCard(
                       icon: Icons.phone,
                       title: 'Phone',
-                      value: userData['nomor_telepon'] ?? 'N/A',
+                      value: userData.phone ?? 'N/A',
                     ),
                   ],
                   const SizedBox(height: 32),
@@ -282,9 +321,10 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _resetForm() {
-    final userData = Provider.of<AuthService>(context, listen: false).userData;
-    _emailController.text = userData?['email'] ?? '';
-    _phoneController.text = userData?['nomor_telepon'] ?? '';
+    final userData =
+        Provider.of<AuthService>(context, listen: false).currentUser;
+    _emailController.text = userData?.email ?? '';
+    _phoneController.text = userData?.phone ?? '';
   }
 
   @override
