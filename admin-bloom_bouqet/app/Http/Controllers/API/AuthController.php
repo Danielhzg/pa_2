@@ -20,12 +20,8 @@ class AuthController extends Controller
      */
     public function register(Request $request)
     {
-        // Log the registration request for debugging
-        \Log::info('Registration request received', ['data' => $request->all()]);
-        
-        // Validate only required fields
+        // Validate input data
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
             'username' => 'required|string|max:255|unique:users',
             'email' => 'required|string|email|max:255|unique:users',
             'phone' => 'required|string|min:10|max:15',
@@ -33,8 +29,6 @@ class AuthController extends Controller
         ]);
 
         if ($validator->fails()) {
-            \Log::warning('Registration validation failed', ['errors' => $validator->errors()]);
-            
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
@@ -44,25 +38,17 @@ class AuthController extends Controller
         }
 
         try {
-            // Create user with only the required fields from the form
-            $userData = [
-                'name' => $request->name,
+            // Create user
+            $user = User::create([
                 'username' => $request->username,
                 'email' => $request->email,
                 'phone' => $request->phone,
                 'password' => Hash::make($request->password),
-            ];
-            
-            \Log::info('Creating user with data', ['userData' => array_merge($userData, ['password' => '[REDACTED]'])]);
-            
-            // Create user with required fields
-            $user = User::create($userData);
+            ]);
 
             // Generate token
             $token = $user->createToken('auth_token')->plainTextToken;
 
-            \Log::info('User registered successfully', ['user_id' => $user->id]);
-            
             return response()->json([
                 'success' => true,
                 'message' => 'User registered successfully',
@@ -72,12 +58,6 @@ class AuthController extends Controller
                 ]
             ], 201);
         } catch (\Exception $e) {
-            \Log::error('Registration failed', [
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ]);
-            
             // Return detailed error for debugging
             return response()->json([
                 'success' => false,
@@ -188,10 +168,13 @@ class AuthController extends Controller
      */
     public function updateProfile(Request $request)
     {
-        // Validate input data for the fields we're allowing to be updated
+        // Validate input data
         $validator = Validator::make($request->all(), [
+            'name' => 'nullable|string|max:255',
             'email' => 'nullable|string|email|max:255|unique:users,email,' . $request->user()->id,
             'phone' => 'nullable|string|min:10|max:15',
+            'address' => 'nullable|string',
+            'birth_date' => 'nullable|date',
         ]);
 
         if ($validator->fails()) {
@@ -202,8 +185,12 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // Update user - only allow email and phone to be updated
+        // Update user
         $user = $request->user();
+        
+        if ($request->has('name')) {
+            $user->name = $request->name;
+        }
         
         if ($request->has('email')) {
             $user->email = $request->email;
@@ -211,6 +198,14 @@ class AuthController extends Controller
         
         if ($request->has('phone')) {
             $user->phone = $request->phone;
+        }
+        
+        if ($request->has('address')) {
+            $user->address = $request->address;
+        }
+        
+        if ($request->has('birth_date')) {
+            $user->birth_date = $request->birth_date;
         }
         
         $user->save();
@@ -223,4 +218,4 @@ class AuthController extends Controller
             ]
         ]);
     }
-}
+} 

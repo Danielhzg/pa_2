@@ -58,6 +58,9 @@ class MyApp extends StatelessWidget {
               fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
+            toolbarHeight: 60, // Make header slightly taller
+            shadowColor: Colors.black12, // Add subtle shadow
+            surfaceTintColor: Colors.transparent,
           ),
           elevatedButtonTheme: ElevatedButtonThemeData(
             style: ElevatedButton.styleFrom(
@@ -67,6 +70,7 @@ class MyApp extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               padding: const EdgeInsets.symmetric(vertical: 16),
+              elevation: 2, // Add slight elevation to buttons
             ),
           ),
         ),

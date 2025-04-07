@@ -6,44 +6,44 @@ import ResponsiveNavLink from "@/Components/ResponsiveNavLink";
 import Dropdown from "@/Components/Dropdown";
 import { useState } from "react";
 
-export default function Header({ user, title, description, backUrl }) {
-  const [showingNavigationDropdown, setShowingNavigationDropdown] =
-    useState(false);
+export default function Header({ user, title, description, backUrl, onSearch }) {
+  const [showingNavigationDropdown, setShowingNavigationDropdown] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (onSearch && typeof onSearch === 'function') {
+      onSearch(searchQuery);
+    }
+  };
 
   return (
     <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50">
-      <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-        <div className="flex items-center">
-          {backUrl && (
-            <Link
-              href={backUrl}
-              className="mr-4 hover:text-blue-600 transition-colors"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-6 h-6"
+      <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+        {/* Top section with title and user profile */}
+        <div className="flex justify-between items-center mb-3">
+          <div className="flex items-center">
+            {backUrl && (
+              <Link
+                href={backUrl}
+                className="mr-4 hover:text-blue-600 transition-colors"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
-                />
-              </svg>
-            </Link>
-          )}
-          <div>
-            <h2 className="font-semibold text-xl text-gray-800 leading-tight">
-              {title || "Dashboard"}
-            </h2>
-            {description && (
-              <p className="text-gray-600 text-sm mt-1">{description}</p>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-6 h-6"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
+                  />
+                </svg>
+              </Link>
             )}
-          </div>
-        </div>
 
         {user && (
           <div className="hidden sm:flex sm:items-center sm:ml-6">

@@ -250,264 +250,165 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final userName = authService.currentUser?.name?.split(' ').first ?? 'Guest';
-
-    return Scaffold(
-      extendBody: true, // Make body extend behind the navigation bar
-      backgroundColor: const Color(0xFFF5F5F5), // Light grey background
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: [
-          _buildMainHome(userName),
-          const CartPage(),
-          const ChatPage(),
-          const ProfilePage(),
-        ],
-      ),
-      bottomNavigationBar: SnakeNavigationBar.color(
-        behaviour: SnakeBarBehaviour.floating,
-        snakeShape: SnakeShape.circle,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(25),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
-        height: 70,
-        backgroundColor: Colors.white,
-        snakeViewColor: primaryColor,
-        selectedItemColor: Colors.white,
-        unselectedItemColor: lightTextColor,
-        showUnselectedLabels: false,
-        showSelectedLabels: true,
-        elevation: 8,
-        shadowColor: Colors.black.withOpacity(0.2),
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() => _selectedIndex = index);
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(LineIcons.home), label: 'Home'),
-          BottomNavigationBarItem(
-              icon: Icon(LineIcons.shoppingBag), label: 'Cart'),
-          BottomNavigationBarItem(
-              icon: Icon(LineIcons.commentDots), label: 'Chat'),
-          BottomNavigationBarItem(icon: Icon(LineIcons.user), label: 'Profile'),
-        ],
-      ),
-    );
-  }
-
   Widget _buildMainHome(String userName) {
-    return CustomScrollView(
+    return ListView(
       physics: const BouncingScrollPhysics(),
-      slivers: [
-        _buildAppBar(userName),
-        SliverToBoxAdapter(
-          child: _buildBannerCarousel(),
-        ),
-        SliverToBoxAdapter(
-          child: _buildCategorySelector(),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-                20, 12, 20, 8), // Reduced padding (was 20, 24, 20, 16)
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _selectedCategory == 'All'
-                      ? 'All Products'
-                      : '$_selectedCategory Collection',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: darkTextColor,
+      padding: EdgeInsets.zero,
+      children: [
+        _buildHomeHeader(userName), // Custom header that's not part of AppBar
+        _buildBannerCarousel(),
+        _buildCategorySelector(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _selectedCategory == 'All'
+                    ? 'All Products'
+                    : '$_selectedCategory Collection',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: darkTextColor,
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  // Handle view all
+                },
+                child: const Text(
+                  'View All',
+                  style: TextStyle(
+                    color: primaryColor,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                TextButton(
-                  onPressed: () {
-                    // Handle view all
-                  },
-                  child: const Text(
-                    'View All',
-                    style: TextStyle(
-                      color: primaryColor,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-        SliverToBoxAdapter(
-          child: _isLoading
-              ? const Center(
-                  child: Padding(
-                  padding: EdgeInsets.all(40),
-                  child: CircularProgressIndicator(),
-                ))
-              : _buildProductGrid(
-                  _filteredProducts.isEmpty ? _newProducts : _filteredProducts),
-        ),
+        _isLoading
+            ? const Center(
+                child: Padding(
+                padding: EdgeInsets.all(40),
+                child: CircularProgressIndicator(),
+              ))
+            : _buildProductGrid(
+                _filteredProducts.isEmpty ? _newProducts : _filteredProducts),
       ],
     );
   }
 
-  Widget _buildAppBar(String userName) {
-    return SliverAppBar(
-      expandedHeight: 150, // Increased height to accommodate new elements
-      floating: false,
-      pinned: true,
-      backgroundColor: Colors.white,
-      elevation: 3,
-      flexibleSpace: FlexibleSpaceBar(
-        background: Container(
-          padding: const EdgeInsets.fromLTRB(20, 45, 20, 10),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                primaryColor.withOpacity(0.9),
-                primaryColor.withOpacity(0.6),
-              ],
-            ),
-            borderRadius: const BorderRadius.only(
-              bottomLeft: Radius.circular(30),
-              bottomRight: Radius.circular(30),
-            ),
+  // New method for the custom header
+  Widget _buildHomeHeader(String userName) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 45, 20, 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            primaryColor.withOpacity(0.9),
+            primaryColor.withOpacity(0.6),
+          ],
+        ),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(30),
+          bottomRight: Radius.circular(30),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              // Logo and Store Name Section
-              Row(
+              Container(
+                height: 40,
+                width: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(5),
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  fit: BoxFit.contain,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Logo image (now circular)
-                  Container(
-                    height: 40,
-                    width: 40,
-                    decoration: BoxDecoration(
+                  const Text(
+                    'Bloom Bouquet',
+                    style: TextStyle(
                       color: Colors.white,
-                      shape: BoxShape.circle, // Changed to circle shape
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(5),
-                    child: Image.asset(
-                      'assets/images/logo.png',
-                      fit: BoxFit.contain,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  // Store name and tagline
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Bloom Bouquet',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        'Hello $userName, send happiness in a bloom',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  // Notification button (removed favorites - will add near search)
-                  Stack(
-                    children: [
-                      IconButton(
-                        icon: const Icon(
-                          LineIcons.bell,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        onPressed: () {},
-                      ),
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                    ],
+                  Text(
+                    'Hello $userName, send happiness in a bloom',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 13,
+                    ),
                   ),
                 ],
               ),
-
-              const SizedBox(height: 15),
-              // Search bar with favorites button next to it
-              Row(
+              const Spacer(),
+              Stack(
                 children: [
-                  // Search bar
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: _handleSearch,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 15),
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.9),
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 8,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              LineIcons.search,
-                              color: primaryColor,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Search for bouquets...',
-                              style: TextStyle(
-                                color: Colors.grey.shade400,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
+                  IconButton(
+                    icon: const Icon(
+                      LineIcons.bell,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {},
+                  ),
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
                       ),
                     ),
                   ),
-                  // Favorites button next to search bar
-                  const SizedBox(width: 10),
-                  Container(
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: _handleSearch,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 15),
                     height: 36,
-                    width: 36,
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.9),
                       borderRadius: BorderRadius.circular(18),
@@ -519,24 +420,57 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                         ),
                       ],
                     ),
-                    child: IconButton(
-                      icon: const Icon(
-                        LineIcons.heart,
-                        color: primaryColor,
-                        size: 16,
-                      ),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onPressed: () {
-                        Navigator.pushNamed(context, '/favorites');
-                      },
+                    child: Row(
+                      children: [
+                        const Icon(
+                          LineIcons.search,
+                          color: primaryColor,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Search for bouquets...',
+                          style: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                height: 36,
+                width: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: IconButton(
+                  icon: const Icon(
+                    LineIcons.heart,
+                    color: primaryColor,
+                    size: 16,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/favorites');
+                  },
+                ),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -1029,6 +963,56 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final userName = authService.currentUser?.name?.split(' ').first ?? 'Guest';
+
+    return Scaffold(
+      extendBody: true, // Make body extend behind the navigation bar
+      backgroundColor: const Color(0xFFF5F5F5), // Light grey background
+      // No appBar property - we're using a custom header within the body
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          _buildMainHome(userName),
+          const CartPage(),
+          const ChatPage(),
+          const ProfilePage(),
+        ],
+      ),
+      bottomNavigationBar: SnakeNavigationBar.color(
+        behaviour: SnakeBarBehaviour.floating,
+        snakeShape: SnakeShape.circle,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(25),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+        height: 70,
+        backgroundColor: Colors.white,
+        snakeViewColor: primaryColor,
+        selectedItemColor: Colors.white,
+        unselectedItemColor: lightTextColor,
+        showUnselectedLabels: false,
+        showSelectedLabels: true,
+        elevation: 8,
+        shadowColor: Colors.black.withOpacity(0.2),
+        currentIndex: _selectedIndex,
+        onTap: (index) {
+          setState(() => _selectedIndex = index);
+        },
+        items: const [
+          BottomNavigationBarItem(icon: Icon(LineIcons.home), label: 'Home'),
+          BottomNavigationBarItem(
+              icon: Icon(LineIcons.shoppingBag), label: 'Cart'),
+          BottomNavigationBarItem(
+              icon: Icon(LineIcons.commentDots), label: 'Chat'),
+          BottomNavigationBarItem(icon: Icon(LineIcons.user), label: 'Profile'),
+        ],
       ),
     );
   }
