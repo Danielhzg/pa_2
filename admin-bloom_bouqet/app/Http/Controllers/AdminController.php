@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Http\Controllers\Controller;
+
 class AdminController extends Controller
 {
     /**
@@ -13,6 +13,11 @@ class AdminController extends Controller
     {
         return view('admin.home');
     }
+
+
+
+
+ 
     // public function tampilanProduk()
     // {
     //     return view('admin.tampilanproduk');

@@ -34,6 +34,7 @@ class DatabaseHelper {
   Future<Map<String, dynamic>> validateUser(
       String username, String password) async {
     try {
+      print('Attempting login with username: $username');
       final response = await http.post(
         Uri.parse('$baseUrl/auth/login'),
         headers: {'Content-Type': 'application/json'},
@@ -43,19 +44,25 @@ class DatabaseHelper {
         }),
       );
 
+      print('Login response status: ${response.statusCode}');
+      print('Login response body: ${response.body}');
+
       final data = json.decode(response.body);
 
       if (response.statusCode == 200) {
-        setToken(data['token']); // Save token for future requests
+        // Mengambil token dari response yang benar
+        final token = data['data']['token'];
+        setToken(token);
         return {
           'success': true,
-          'user': data['user'],
-          'token': data['token'],
+          'user': data['data']['user'],
+          'token': token,
         };
       } else {
+        print('Login failed with message: ${data['message']}');
         return {
           'success': false,
-          'message': data['error'] ?? 'Login failed',
+          'message': data['message'] ?? 'Login failed',
         };
       }
     } catch (e) {
@@ -70,29 +77,41 @@ class DatabaseHelper {
   Future<Map<String, dynamic>> createUser(String username, String email,
       String nomorTelepon, String password) async {
     try {
+      print(
+          'Attempting register with data: username=$username, email=$email, phone=$nomorTelepon');
       final response = await http.post(
         Uri.parse('$baseUrl/auth/register'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'username': username,
           'email': email,
-          'nomor_telepon': nomorTelepon,
+          'phone': nomorTelepon,
           'password': password,
         }),
       );
 
+      print('Register response status: ${response.statusCode}');
+      print('Register response body: ${response.body}');
+
       final data = json.decode(response.body);
 
       if (response.statusCode == 201) {
+        // Jika registrasi berhasil, langsung set token
+        final token = data['data']['token'];
+        setToken(token);
+
         return {
           'success': true,
-          'message': data['message'],
-          'user': data['user'],
+          'message': 'Registration successful',
+          'user': data['data']['user'],
+          'token': token,
         };
       } else {
+        print('Registration failed with message: ${data['message']}');
         return {
           'success': false,
-          'message': data['error'] ?? 'Registration failed',
+          'message': data['message'] ?? 'Registration failed',
+          'errors': data['errors'] ?? {},
         };
       }
     } catch (e) {

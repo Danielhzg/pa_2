@@ -29,6 +29,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   late TabController _tabController;
   final PageController _pageController = PageController(viewportFraction: 0.85);
   int _currentBannerIndex = 0;
+  late String _username;
 
   // Colors
   static const Color primaryColor = Color(0xFFFF87B2);
@@ -89,12 +90,20 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _loadProducts();
+    _loadUsername();
 
     // Auto-scroll banner - start after a short delay
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
         _startBannerAutoScroll();
       }
+    });
+  }
+
+  void _loadUsername() {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    setState(() {
+      _username = authService.currentUser?.username ?? 'Guest';
     });
   }
 
@@ -969,9 +978,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final userName = authService.currentUser?.name?.split(' ').first ?? 'Guest';
-
+    final userName = _username; // Use the loaded username
     return Scaffold(
       extendBody: true, // Make body extend behind the navigation bar
       backgroundColor: const Color(0xFFF5F5F5), // Light grey background
@@ -979,7 +986,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          _buildMainHome(userName),
+          _buildMainHome(userName), // Pass the username to the header
           const CartPage(),
           const ChatPage(),
           const ProfilePage(),

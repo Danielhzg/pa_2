@@ -12,9 +12,17 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->string('username')->unique()->after('name');
-            $table->text('address')->nullable()->after('phone');
-            $table->date('birth_date')->nullable()->after('address');
+            if (!Schema::hasColumn('users', 'username')) {
+                $table->string('username')->after('email');
+            }
+
+            if (!Schema::hasColumn('users', 'address')) {
+                $table->text('address')->nullable()->after('phone');
+            }
+
+            if (!Schema::hasColumn('users', 'birth_date')) {
+                $table->date('birth_date')->nullable()->after('address');
+            }
         });
     }
 
@@ -24,7 +32,18 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['username', 'address', 'birth_date']);
+            // drop only if columns exist
+            if (Schema::hasColumn('users', 'username')) {
+                $table->dropColumn('username');
+            }
+
+            if (Schema::hasColumn('users', 'address')) {
+                $table->dropColumn('address');
+            }
+
+            if (Schema::hasColumn('users', 'birth_date')) {
+                $table->dropColumn('birth_date');
+            }
         });
     }
-}; 
+};

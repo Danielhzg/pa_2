@@ -11,9 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->string('phone')->nullable()->after('email');
-        });
+        // Cek apakah kolom 'phone' belum ada
+        if (!Schema::hasColumn('users', 'phone')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->string('phone')->nullable()->default(null)->after('email');
+            });
+        }
     }
 
     /**
@@ -21,8 +24,11 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('phone');
-        });
+        // Cek apakah kolom 'phone' ada sebelum mencoba menghapusnya
+        if (Schema::hasColumn('users', 'phone')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->dropColumn('phone');
+            });
+        }
     }
 };

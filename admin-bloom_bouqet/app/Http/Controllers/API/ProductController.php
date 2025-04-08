@@ -10,17 +10,28 @@ class ProductController extends Controller
 {
     public function index()
     {
-        $products = Product::all();
+        $products = Product::with('category')->latest()->get();
         return response()->json([
             'success' => true,
+            'message' => 'Products retrieved successfully',
             'data' => $products
         ]);
     }
 
-    public function show(Product $product)
+    public function show($id)
     {
+        $product = Product::with('category')->find($id);
+        
+        if (!$product) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Product not found'
+            ], 404);
+        }
+        
         return response()->json([
             'success' => true,
+            'message' => 'Product details',
             'data' => $product
         ]);
     }
@@ -28,12 +39,15 @@ class ProductController extends Controller
     public function search(Request $request)
     {
         $query = $request->get('query');
-        $products = Product::where('name', 'like', "%{$query}%")
+        $products = Product::with('category')
+            ->where('name', 'like', "%{$query}%")
             ->orWhere('description', 'like', "%{$query}%")
+            ->latest()
             ->get();
 
         return response()->json([
             'success' => true,
+            'message' => 'Search results',
             'data' => $products
         ]);
     }

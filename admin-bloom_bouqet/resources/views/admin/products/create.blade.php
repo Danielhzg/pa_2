@@ -17,15 +17,18 @@
                     @enderror
                 </div>
 
+                <!-- Removed duplicate category field and keep only the dynamic category_id dropdown -->
                 <div class="mb-3">
-                    <label class="form-label">Category</label>
-                    <select name="category" class="form-control @error('category') is-invalid @enderror" required>
-                        <option value="">Select Category</option>
-                        <option value="Bucket Mawar">Bucket Mawar</option>
-                        <option value="Bucket Lily">Bucket Lily</option>
-                        <option value="Bucket Mix">Bucket Mix</option>
+                    <label for="category_id" class="form-label">Category</label>
+                    <select name="category_id" id="category_id" class="form-control @error('category_id') is-invalid @enderror">
+                        <option value="">-- Select Category --</option>
+                        @foreach($categories as $category)
+                            <option value="{{ $category->id }}" {{ old('category_id') == $category->id ? 'selected' : '' }}>
+                                {{ $category->name }}
+                            </option>
+                        @endforeach
                     </select>
-                    @error('category')
+                    @error('category_id')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
                 </div>

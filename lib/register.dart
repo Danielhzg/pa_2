@@ -39,7 +39,6 @@ class _RegisterPageState extends State<RegisterPage> {
         print('Phone: ${_phoneController.text.trim()}');
 
         final result = await authService.register(
-          name: _usernameController.text.trim(),
           username: _usernameController.text.trim(),
           email: _emailController.text.trim(),
           phone: _phoneController.text.trim(),
@@ -50,13 +49,21 @@ class _RegisterPageState extends State<RegisterPage> {
         if (!mounted) return;
 
         if (result['success']) {
+          // Show success notification
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Registration successful!'),
               backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              margin: EdgeInsets.all(16),
+              duration: Duration(seconds: 3),
             ),
           );
-          Navigator.pop(context);
+
+          // Navigate to login page after short delay
+          Future.delayed(const Duration(seconds: 2), () {
+            Navigator.pushReplacementNamed(context, '/login');
+          });
         } else {
           // Enhanced error handling
           String errorMessage = 'Registration failed';

@@ -7,7 +7,8 @@ import '../models/user.dart';
 
 class AuthService extends ChangeNotifier {
   // Base API URL - Change this to your Laravel API URL
-  static const String _baseUrl = 'http://10.0.2.2:8000/api/v1';
+  static const String _baseUrl =
+      'http://10.0.2.2:8000/api'; // Sesuaikan dengan port 8000
 
   User? _currentUser;
   String? _token;
@@ -77,7 +78,6 @@ class AuthService extends ChangeNotifier {
 
   // Register a new user
   Future<Map<String, dynamic>> register({
-    String? name,
     required String username,
     required String email,
     required String phone,
@@ -87,59 +87,27 @@ class AuthService extends ChangeNotifier {
     // Ensure initialization has completed
     await initializationFuture;
 
-    // Now we can safely call notifyListeners
     _isLoading = true;
     notifyListeners();
 
-    print('Attempting to register user: $username');
-    print('API URL: $_baseUrl/register');
-
     try {
-      // Prepare the request body with exactly the fields expected by the server
-      final Map<String, dynamic> requestBody = {
-        'name': name ?? username,
-        'username': username,
-        'email': email,
-        'phone': phone,
-        'password': password,
-        'password_confirmation': passwordConfirmation,
-      };
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/register'), // Endpoint register
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'username': username,
+          'email': email,
+          'phone': phone,
+          'password': password,
+          'password_confirmation': passwordConfirmation,
+        }),
+      );
 
-      print('Registration request payload: ${json.encode(requestBody)}');
-
-      final response = await http
-          .post(
-            Uri.parse('$_baseUrl/register'),
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode(requestBody),
-          )
-          .timeout(const Duration(seconds: 15));
-
-      print('Registration response status: ${response.statusCode}');
-      print('Registration response body: ${response.body}');
-
-      // Try to decode the response
-      Map<String, dynamic> responseData;
-      try {
-        responseData = json.decode(response.body);
-        print('Decoded response data: $responseData');
-      } catch (e) {
-        print('Error decoding response: $e');
-        print('Raw response: ${response.body}');
-        _isLoading = false;
-        notifyListeners();
-        return {
-          'success': false,
-          'message': 'Server error. Please try again later.',
-          'error': 'Failed to decode server response',
-        };
-      }
+      final responseData = json.decode(response.body);
 
       if (response.statusCode == 201) {
-        // Successfully created user
         final userData = responseData['data']['user'];
         final authToken = responseData['data']['token'];
-        print('User data received: $userData');
 
         _currentUser = User.fromJson(userData);
         _token = authToken;
@@ -149,24 +117,19 @@ class AuthService extends ChangeNotifier {
         notifyListeners();
         return {'success': true};
       } else {
-        // Registration failed - provide detailed error information
         _isLoading = false;
         notifyListeners();
         return {
           'success': false,
           'message': responseData['message'] ?? 'Registration failed',
-          'details': responseData,
-          'status_code': response.statusCode,
         };
       }
     } catch (e) {
-      print('Register network error: $e');
       _isLoading = false;
       notifyListeners();
       return {
         'success': false,
-        'message':
-            'Connection error. Please check your internet connection and try again.',
+        'message': 'Connection error. Please try again.',
         'error': e.toString(),
       };
     }
@@ -174,49 +137,26 @@ class AuthService extends ChangeNotifier {
 
   // Login user with username and password
   Future<bool> login(String username, String password) async {
-    // Ensure initialization has completed
     await initializationFuture;
 
-    // Now we can safely call notifyListeners
     _isLoading = true;
     notifyListeners();
 
-    print('Attempting to login user: $username');
-    print('API URL: $_baseUrl/login');
-
     try {
-      print('Sending login request...');
-      final response = await http
-          .post(
-            Uri.parse('$_baseUrl/login'),
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode({
-              'username': username,
-              'password': password,
-            }),
-          )
-          .timeout(const Duration(seconds: 15));
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/login'), // Endpoint login
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'username': username,
+          'password': password,
+        }),
+      );
 
-      print('Login response status: ${response.statusCode}');
-      print('Login response body: ${response.body}');
-
-      // Try to decode the response
-      Map<String, dynamic> responseData;
-      try {
-        responseData = json.decode(response.body);
-        print('Decoded login response: $responseData');
-      } catch (e) {
-        print('Error decoding login response: $e');
-        print('Raw response: ${response.body}');
-        _isLoading = false;
-        notifyListeners();
-        return false;
-      }
+      final responseData = json.decode(response.body);
 
       if (response.statusCode == 200) {
         final userData = responseData['data']['user'];
         final authToken = responseData['data']['token'];
-        print('User data received: $userData');
 
         _currentUser = User.fromJson(userData);
         _token = authToken;
@@ -226,13 +166,11 @@ class AuthService extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        print('Login failed: ${responseData['message']}');
         _isLoading = false;
         notifyListeners();
         return false;
       }
     } catch (e) {
-      print('Login connection error: $e');
       _isLoading = false;
       notifyListeners();
       return false;
