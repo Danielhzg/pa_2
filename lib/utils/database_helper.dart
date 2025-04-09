@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:sqflite/sqflite.dart';
 import '../models/product.dart';
 import '../models/cart_item.dart';
 
@@ -124,6 +125,24 @@ class DatabaseHelper {
   }
 
   // Product endpoints
+  Future<List<Product>> fetchProductsFromApi() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/products'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map<Product>((json) => Product.fromMap(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('Error getting products: $e');
+      return [];
+    }
+  }
+
   Future<List<Product>> getFeaturedProducts() async {
     try {
       final response = await http.get(
@@ -133,7 +152,7 @@ class DatabaseHelper {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => Product.fromMap(json)).toList();
+        return data.map<Product>((json) => Product.fromMap(json)).toList();
       }
       return [];
     } catch (e) {
@@ -258,5 +277,45 @@ class DatabaseHelper {
         'message': 'Network error: Unable to connect to server',
       };
     }
+  }
+
+  Future<void> createTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE products (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        price REAL NOT NULL,
+        image_url TEXT,
+        category_id INTEGER NOT NULL,
+        category_name TEXT NOT NULL, // Add category_name for display
+        is_on_sale INTEGER DEFAULT 0,
+        discount REAL DEFAULT 0.0,
+        rating REAL DEFAULT 0.0,
+        is_featured INTEGER DEFAULT 0
+      )
+    ''');
+  }
+
+  Future<Database> get database async {
+    final dbPath = await getDatabasesPath();
+    return openDatabase(
+      '$dbPath/app_database.db',
+      version: 1,
+      onCreate: (db, version) async {
+        await createTables(db);
+      },
+    );
+  }
+
+  Future<int> insertProduct(Product product) async {
+    final db = await database;
+    return await db.insert('products', product.toJson());
+  }
+
+  Future<List<Product>> getProducts() async {
+    final db = await database;
+    final data = await db.query('products');
+    return data.map<Product>((json) => Product.fromMap(json)).toList();
   }
 }

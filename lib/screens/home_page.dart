@@ -10,6 +10,7 @@ import 'cart_page.dart';
 import 'chat_page.dart';
 import 'profile_page.dart';
 import 'dart:async';
+import '../services/api_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -89,7 +90,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _loadProducts();
+    _fetchProducts();
     _loadUsername();
 
     // Auto-scroll banner - start after a short delay
@@ -98,6 +99,24 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         _startBannerAutoScroll();
       }
     });
+  }
+
+  Future<void> _fetchProducts() async {
+    setState(() => _isLoading = true);
+    try {
+      final List<dynamic> rawProducts = await ApiService().fetchProducts();
+      final List<Product> products = rawProducts
+          .map((productJson) => Product.fromJson(productJson))
+          .toList(); // Convert JSON to Product objects
+      setState(() {
+        _filteredProducts.clear();
+        _filteredProducts.addAll(products); // Ensure type compatibility
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error fetching products: $e');
+      setState(() => _isLoading = false);
+    }
   }
 
   void _loadUsername() {
@@ -137,7 +156,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   ? 349000 + (i * 30000)
                   : 199000 + (i * 40000)),
           imageUrl: imageUrl,
-          category: i % 7 == 0
+          categoryName: i % 7 == 0
               ? 'Box Custom'
               : i % 6 == 0
                   ? 'Hampers'
@@ -150,6 +169,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                               : i % 2 == 0
                                   ? 'Wisuda'
                                   : 'All',
+          categoryId: i % 7, // Provide a valid categoryId
           rating: 4.0 + (i % 10) / 10,
           isFeatured: type == 'featured',
           isOnSale: i % 3 == 0,
@@ -203,20 +223,20 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         products = _createDummyProducts('new', 10);
       } else if (category == 'Wisuda') {
         products = _createDummyProducts('new', 6)
-            .where((p) => p.category == 'Wisuda')
+            .where((p) => p.categoryName == 'Wisuda')
             .toList();
       } else if (category == 'Makanan') {
         products = _createDummyProducts('new', 8)
-            .where(
-                (p) => p.category == 'Birthday') // Using Birthday for Makanan
+            .where((p) =>
+                p.categoryName == 'Birthday') // Using Birthday for Makanan
             .toList();
       } else if (category == 'Money') {
         products = _createDummyProducts('new', 4)
-            .where((p) => p.category == 'Money')
+            .where((p) => p.categoryName == 'Money')
             .toList();
       } else if (category == 'Hampers') {
         products = _createDummyProducts('new', 5)
-            .where((p) => p.category == 'Hampers')
+            .where((p) => p.categoryName == 'Hampers')
             .toList();
       }
 
@@ -837,7 +857,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                               BorderRadius.circular(10),
                                         ),
                                         child: Text(
-                                          product.category,
+                                          product.categoryName,
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 10,

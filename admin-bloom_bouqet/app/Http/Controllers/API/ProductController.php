@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\API;
+namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
@@ -8,13 +8,16 @@ use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
+    /**
+     * Return a list of products in JSON format.
+     */
     public function index()
     {
-        $products = Product::with('category')->latest()->get();
+        $products = Product::with('category')->get();
+
         return response()->json([
             'success' => true,
-            'message' => 'Products retrieved successfully',
-            'data' => $products
+            'data' => $products,
         ]);
     }
 

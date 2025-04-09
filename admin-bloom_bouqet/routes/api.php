@@ -27,6 +27,7 @@ Route::prefix('v1')->group(function () {
     Route::get('products', [ProductController::class, 'index']); // Get all products
     Route::get('products/{id}', [ProductController::class, 'show']); // Get single product
     Route::get('products/search', [ProductController::class, 'search']); // Search products
+    Route::post('products', [ProductController::class, 'store']); // Add product
 });
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
@@ -41,3 +42,5 @@ Route::prefix('auth')->group(function () {
         Route::get('/user', [AuthController::class, 'user']);
     });
 });
+
+Route::get('/products', [ProductController::class, 'index']);

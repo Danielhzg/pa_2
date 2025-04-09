@@ -3,15 +3,18 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\Category; // Import the Category model
+use App\Models\Product;
+use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $products = Product::latest()->paginate(10);
+        $products = Product::with('category')->get();
         
         if ($request->wantsJson()) {
             return response()->json([
@@ -29,7 +32,8 @@ class ProductController extends Controller
      */
     public function create()
     {
-        //
+        $categories = Category::all(); // Fetch all categories
+        return view('admin.products.create', compact('categories'));
     }
 
     /**
@@ -43,7 +47,7 @@ class ProductController extends Controller
             'description' => 'required',
             'price' => 'required|numeric',
             'stock' => 'required|integer',
-            'category' => 'required',
+            'category_id' => 'required|exists:categories,id', // Changed from category to category_id
             'image' => 'required|image|mimes:jpeg,png,jpg|max:2048'
         ]);
 
@@ -71,7 +75,7 @@ class ProductController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
         $product = Product::findOrFail($id);
 
@@ -90,7 +94,9 @@ class ProductController extends Controller
      */
     public function edit(string $id)
     {
-        //
+        $product = Product::findOrFail($id);
+        $categories = Category::all(); // Fetch all categories
+        return view('admin.products.edit', compact('product', 'categories'));
     }
 
     /**
@@ -105,7 +111,7 @@ class ProductController extends Controller
             'description' => 'required',
             'price' => 'required|numeric',
             'stock' => 'required|integer',
-            'category' => 'required',
+            'category_id' => 'required|exists:categories,id', // Changed from category to category_id
             'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
         ]);
 
@@ -136,7 +142,7 @@ class ProductController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
+    public function destroy(Request $request, string $id)
     {
         $product = Product::findOrFail($id);
         

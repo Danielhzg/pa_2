@@ -210,8 +210,11 @@
             <a class="nav-link {{ Request::is('admin') ? 'active' : '' }}" href="{{ route('admin.home') }}">
                 <i class="fas fa-home"></i> Dashboard
             </a>
+            <a class="nav-link" href="{{ route('admin.categories.index') }}">
+                <i class="fas fa-tags"></i> Kategori
+            </a>
             <a class="nav-link " href="{{ route('admin.products.index') }}">
-                <i class="fas fa-flower"></i> Produk
+                <i class="fas fa-seedling"></i> Produk
             </a>
             <a class="nav-link" href="#">
                 <i class="fas fa-shopping-bag"></i> Pesanan

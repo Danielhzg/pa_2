@@ -20,17 +20,16 @@
                     @enderror
                 </div>
 
-                <div class="mb-3">
-                    <label class="form-label">Category</label>
-                    <select name="category" class="form-control @error('category') is-invalid @enderror" required>
-                        <option value="">Select Category</option>
-                        <option value="Bucket Mawar" {{ $product->category == 'Bucket Mawar' ? 'selected' : '' }}>Bucket Mawar</option>
-                        <option value="Bucket Lily" {{ $product->category == 'Bucket Lily' ? 'selected' : '' }}>Bucket Lily</option>
-                        <option value="Bucket Mix" {{ $product->category == 'Bucket Mix' ? 'selected' : '' }}>Bucket Mix</option>
+                <div class="form-group">
+                    <label for="category">Category</label>
+                    <select name="category" id="category" class="form-control" required>
+                        <option value="" disabled>Select a category</option>
+                        @foreach ($categories as $category)
+                            <option value="{{ $category->id }}" {{ $product->category_id == $category->id ? 'selected' : '' }}>
+                                {{ $category->name }}
+                            </option>
+                        @endforeach
                     </select>
-                    @error('category')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
                 </div>
 
                 <div class="mb-3">
