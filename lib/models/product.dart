@@ -4,12 +4,13 @@ class Product {
   final String description;
   final double price;
   final String imageUrl;
-  final String categoryName; // Add categoryName field
-  final int categoryId; // Add categoryId field
+  final String categoryName;
+  final int categoryId;
   final double rating;
   final bool isFeatured;
   final bool isOnSale;
   final int discount;
+  final int stock; // Tambahkan properti stock
 
   Product({
     required this.id,
@@ -17,28 +18,37 @@ class Product {
     required this.description,
     required this.price,
     required this.imageUrl,
-    required this.categoryName, // Ensure categoryName is required
-    required this.categoryId, // Ensure categoryId is required
+    required this.categoryName,
+    required this.categoryId,
     required this.rating,
     required this.isFeatured,
     required this.isOnSale,
     required this.discount,
+    this.stock = 0, // Default nilai stock adalah 0
   });
 
-  // Add a factory constructor for JSON deserialization
   factory Product.fromJson(Map<String, dynamic> json) {
+    String imageUrl = 'assets/images/contoh.jpg'; // Default fallback
+
+    if (json.containsKey('image') && json['image'] != null) {
+      imageUrl = json['image'].toString();
+    }
+
     return Product(
       id: json['id'],
       name: json['name'],
-      description: json['description'],
-      price: json['price'].toDouble(),
-      imageUrl: json['imageUrl'],
-      categoryName: json['categoryName'],
-      categoryId: json['categoryId'],
-      rating: json['rating'].toDouble(),
-      isFeatured: json['isFeatured'],
-      isOnSale: json['isOnSale'],
-      discount: json['discount'],
+      description: json['description'] ?? '',
+      price: double.parse(json['price'].toString()),
+      imageUrl: imageUrl,
+      categoryName: json['category'] != null
+          ? json['category']['name']
+          : (json['category_name'] ?? 'Uncategorized'),
+      categoryId: json['category_id'] ?? 0,
+      rating: json['rating']?.toDouble() ?? 0.0,
+      isFeatured: json['is_featured'] == 1 || json['is_featured'] == true,
+      isOnSale: json['is_on_sale'] == 1 || json['is_on_sale'] == true,
+      discount: json['discount'] ?? 0,
+      stock: json['stock'] ?? 0, // Parse stock dari JSON
     );
   }
 }

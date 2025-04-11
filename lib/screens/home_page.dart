@@ -11,6 +11,7 @@ import 'chat_page.dart';
 import 'profile_page.dart';
 import 'dart:async';
 import '../services/api_service.dart';
+import '../utils/database_helper.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -23,14 +24,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   int _selectedIndex = 0;
   String _selectedCategory = 'All';
   bool _isLoading = false;
-  final List<Product> _featuredProducts = [];
-  final List<Product> _newProducts = [];
-  final List<Product> _trendingProducts = [];
   final List<Product> _filteredProducts = [];
-  late TabController _tabController;
-  final PageController _pageController = PageController(viewportFraction: 0.85);
+  late PageController _pageController;
   int _currentBannerIndex = 0;
   late String _username;
+  List<Map<String, dynamic>> _categories = [
+    {'name': 'All'}
+  ]; // Mulai dengan kategori 'All'
+  bool _loadingCategories = true;
 
   // Colors
   static const Color primaryColor = Color(0xFFFF87B2);
@@ -63,14 +64,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     },
   ];
 
-  final List<Map<String, dynamic>> _categories = [
-    {'name': 'All'},
-    {'name': 'Wisuda'},
-    {'name': 'Makanan'},
-    {'name': 'Money'},
-    {'name': 'Hampers'},
-  ];
-
   Timer? _bannerTimer;
 
   void _startBannerAutoScroll() {
@@ -90,6 +83,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(viewportFraction: 0.85);
+    _fetchCategories(); // Ambil kategori terlebih dahulu
     _fetchProducts();
     _loadUsername();
 
@@ -104,18 +99,25 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Future<void> _fetchProducts() async {
     setState(() => _isLoading = true);
     try {
-      final List<dynamic> rawProducts = await ApiService().fetchProducts();
-      final List<Product> products = rawProducts
-          .map((productJson) => Product.fromJson(productJson))
-          .toList(); // Convert JSON to Product objects
+      // Gunakan ApiService untuk mengambil produk dari API
+      final apiService = ApiService();
+      final products = await apiService.fetchProducts();
+
       setState(() {
         _filteredProducts.clear();
-        _filteredProducts.addAll(products); // Ensure type compatibility
+        _filteredProducts
+            .addAll(products.map((p) => Product.fromJson(p)).toList());
         _isLoading = false;
       });
     } catch (e) {
       print('Error fetching products: $e');
       setState(() => _isLoading = false);
+
+      // Tampilkan pesan error ke pengguna
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to load products: $e')));
+      }
     }
   }
 
@@ -133,111 +135,61 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  // Temporary method to create dummy products for testing
-  List<Product> _createDummyProducts(String type, int count) {
-    // Use local assets instead of network images
-    const String imageUrl = 'assets/images/contoh.jpg';
-
-    List<Product> products = [];
-    for (int i = 1; i <= count; i++) {
-      products.add(
-        Product(
-          id: type == 'featured' ? i : (type == 'trending' ? i + 200 : i + 100),
-          name: type == 'featured'
-              ? 'Elegant Bloom $i'
-              : (type == 'trending'
-                  ? 'Trendy Bouquet $i'
-                  : 'Fresh Arrangement $i'),
-          description:
-              'A stunning arrangement of premium flowers, perfect for any occasion.',
-          price: type == 'featured'
-              ? 299000 + (i * 50000)
-              : (type == 'trending'
-                  ? 349000 + (i * 30000)
-                  : 199000 + (i * 40000)),
-          imageUrl: imageUrl,
-          categoryName: i % 7 == 0
-              ? 'Box Custom'
-              : i % 6 == 0
-                  ? 'Hampers'
-                  : i % 5 == 0
-                      ? 'Money'
-                      : i % 4 == 0
-                          ? 'Wedding'
-                          : i % 3 == 0
-                              ? 'Birthday'
-                              : i % 2 == 0
-                                  ? 'Wisuda'
-                                  : 'All',
-          categoryId: i % 7, // Provide a valid categoryId
-          rating: 4.0 + (i % 10) / 10,
-          isFeatured: type == 'featured',
-          isOnSale: i % 3 == 0,
-          discount: i % 3 == 0 ? 15 : 0,
-        ),
-      );
-    }
-    return products;
-  }
-
-  Future<void> _loadProducts() async {
+  Future<void> _loadProductsByCategory(String categoryName) async {
     setState(() => _isLoading = true);
     try {
-      // In production, replace with actual API calls
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      final featured = _createDummyProducts('featured', 5);
-      final newArrivals = _createDummyProducts('new', 6);
-      final trending = _createDummyProducts('trending', 4);
-
-      if (mounted) {
-        setState(() {
-          _featuredProducts.clear();
-          _featuredProducts.addAll(featured);
-          _newProducts.clear();
-          _newProducts.addAll(newArrivals);
-          _trendingProducts.clear();
-          _trendingProducts.addAll(trending);
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      print('Error loading products: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading products: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _loadProductsByCategory(String category) async {
-    setState(() => _isLoading = true);
-    try {
-      await Future.delayed(const Duration(milliseconds: 500));
-
+      final apiService = ApiService();
       List<Product> products = [];
-      // Create different products based on categories
-      if (category == 'All') {
-        products = _createDummyProducts('new', 10);
-      } else if (category == 'Wisuda') {
-        products = _createDummyProducts('new', 6)
-            .where((p) => p.categoryName == 'Wisuda')
-            .toList();
-      } else if (category == 'Makanan') {
-        products = _createDummyProducts('new', 8)
-            .where((p) =>
-                p.categoryName == 'Birthday') // Using Birthday for Makanan
-            .toList();
-      } else if (category == 'Money') {
-        products = _createDummyProducts('new', 4)
-            .where((p) => p.categoryName == 'Money')
-            .toList();
-      } else if (category == 'Hampers') {
-        products = _createDummyProducts('new', 5)
-            .where((p) => p.categoryName == 'Hampers')
-            .toList();
+
+      if (categoryName == 'All') {
+        // For "All" category, fetch all products
+        final allProducts = await apiService.fetchProducts();
+        products = allProducts.map((p) => Product.fromJson(p)).toList();
+      } else {
+        // Find the category ID from our categories list
+        int? categoryId;
+        for (var category in _categories) {
+          if (category['name'] == categoryName) {
+            categoryId = category['id'];
+            break;
+          }
+        }
+
+        // Debug output to check if we have a valid category ID
+        print('Selected category: $categoryName, ID: $categoryId');
+
+        if (categoryId != null) {
+          try {
+            // Use the category ID to fetch products for this specific category
+            final filteredProducts =
+                await apiService.fetchProductsByCategory(categoryId.toString());
+            products =
+                filteredProducts.map((p) => Product.fromJson(p)).toList();
+            print(
+                'Loaded ${products.length} products for category $categoryName');
+          } catch (categoryError) {
+            print('Error loading specific category: $categoryError');
+            // Fallback to all products if category filtering fails
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Category filter unavailable: $categoryError'),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+
+            // Load all products as fallback
+            final allProducts = await apiService.fetchProducts();
+            products = allProducts.map((p) => Product.fromJson(p)).toList();
+
+            // Filter products by category name on the client side as backup
+            products = products
+                .where((p) =>
+                    p.categoryName.toLowerCase() == categoryName.toLowerCase())
+                .toList();
+          }
+        } else {
+          throw Exception('Invalid category ID for: $categoryName');
+        }
       }
 
       if (mounted) {
@@ -251,6 +203,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       print('Error loading products by category: $e');
       if (mounted) {
         setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to load products by category: $e')));
       }
     }
   }
@@ -279,12 +233,37 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _fetchCategories() async {
+    setState(() => _loadingCategories = true);
+    try {
+      final apiService = ApiService();
+      final categoriesData = await apiService.fetchCategories();
+
+      // Ubah format data kategori ke format yang dibutuhkan
+      final List<Map<String, dynamic>> categories = [
+        {'name': 'All'}
+      ];
+      for (var category in categoriesData) {
+        categories.add({'name': category['name'], 'id': category['id']});
+      }
+
+      setState(() {
+        _categories = categories;
+        _loadingCategories = false;
+      });
+    } catch (e) {
+      print('Error fetching categories: $e');
+      setState(() => _loadingCategories = false);
+      // Tetap gunakan kategori 'All' jika gagal mengambil dari API
+    }
+  }
+
   Widget _buildMainHome(String userName) {
     return ListView(
       physics: const BouncingScrollPhysics(),
       padding: EdgeInsets.zero,
       children: [
-        _buildHomeHeader(userName), // Custom header that's not part of AppBar
+        _buildHomeHeader(userName),
         _buildBannerCarousel(),
         _buildCategorySelector(),
         Padding(
@@ -323,13 +302,23 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 padding: EdgeInsets.all(40),
                 child: CircularProgressIndicator(),
               ))
-            : _buildProductGrid(
-                _filteredProducts.isEmpty ? _newProducts : _filteredProducts),
+            : _filteredProducts.isEmpty
+                ? const Center(
+                    child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: Text(
+                      'No products available',
+                      style: TextStyle(
+                        color: lightTextColor,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ))
+                : _buildProductGrid(_filteredProducts),
       ],
     );
   }
 
-  // New method for the custom header
   Widget _buildHomeHeader(String userName) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 45, 20, 20),
@@ -507,7 +496,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Widget _buildBannerCarousel() {
     return Container(
       height: 200,
-      margin: const EdgeInsets.only(top: 15), // Reduced top margin (was 20)
+      margin: const EdgeInsets.only(top: 15),
       child: PageView.builder(
         controller: _pageController,
         itemCount: _banners.length,
@@ -539,7 +528,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Background with gradient and image
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -552,8 +540,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       ),
                     ),
                   ),
-
-                  // Image with lighter overlay
                   Opacity(
                     opacity: 0.8,
                     child: Image.asset(
@@ -561,8 +547,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       fit: BoxFit.cover,
                     ),
                   ),
-
-                  // Content
                   Padding(
                     padding: const EdgeInsets.all(20),
                     child: Row(
@@ -671,9 +655,23 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildCategorySelector() {
+    if (_loadingCategories) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 10),
+          child: SizedBox(
+            height: 45,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
-      height: 45, // Reduced height (was 50)
-      margin: const EdgeInsets.only(top: 10), // Reduced top margin (was 24)
+      height: 45,
+      margin: const EdgeInsets.only(top: 10),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -726,13 +724,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Widget _buildProductGrid(List<Product> products) {
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(
-          16, 8, 16, 250), // Reduced top padding (was 16)
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 250),
       physics: const NeverScrollableScrollPhysics(),
       shrinkWrap: true,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 0.8, // Adjusted for more square-like appearance
+        childAspectRatio: 0.8,
         crossAxisSpacing: 15,
         mainAxisSpacing: 22,
       ),
@@ -745,7 +742,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildProductCard(Product product) {
-    // Calculate the final price after discount
     final double finalPrice = product.isOnSale
         ? (product.price * (100 - product.discount) / 100).toDouble()
         : product.price.toDouble();
@@ -772,9 +768,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Product image - reduced height
                   SizedBox(
-                    height: 120, // Fixed height for product image
+                    height: 120,
                     width: double.infinity,
                     child: Hero(
                       tag: 'product-${product.id}',
@@ -784,11 +779,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                           Container(
                             decoration: BoxDecoration(
                               color: Colors.grey[100],
-                              image: DecorationImage(
-                                image: AssetImage(product.imageUrl),
-                                fit: BoxFit.cover,
-                              ),
                             ),
+                            child: _buildProductImage(product.imageUrl),
                           ),
                           if (product.isOnSale)
                             Positioned(
@@ -825,7 +817,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                 ),
                               ),
                             ),
-                          // Glass effect at the bottom of the image
                           Positioned(
                             bottom: 0,
                             left: 0,
@@ -842,48 +833,29 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                     vertical: 6,
                                   ),
                                   color: Colors.black.withOpacity(0.3),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.2),
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                        ),
-                                        child: Text(
-                                          product.categoryName,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
+                                  alignment: Alignment.centerLeft,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.grey.withOpacity(0.6),
+                                        width: 0.5,
                                       ),
-                                      Row(
-                                        children: [
-                                          const Icon(
-                                            LineIcons.star,
-                                            color: Colors.amber,
-                                            size: 16,
-                                          ),
-                                          const SizedBox(width: 2),
-                                          Text(
-                                            product.rating.toString(),
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
+                                    ),
+                                    child: Text(
+                                      product.categoryName,
+                                      style: const TextStyle(
+                                        color: Color(0xFFFFD700),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.5,
                                       ),
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -893,41 +865,47 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       ),
                     ),
                   ),
-                  // Product details
                   Container(
-                    padding: const EdgeInsets.all(8), // Further reduced padding
+                    padding: const EdgeInsets.all(8),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min, // Use minimum space
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          product.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12, // Smaller font
-                            color: darkTextColor,
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                product.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  color: darkTextColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            // Indikator stok di sebelah nama produk
+                            _buildSimpleStockIndicator(product.stock),
+                          ],
                         ),
-                        const SizedBox(height: 2), // Smaller spacing
-                        // Only show final price
+                        const SizedBox(height: 2),
                         Text(
-                          'Rp${(finalPrice / 1000).toStringAsFixed(0)}K',
+                          'Rp.${finalPrice.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: 13, // Smaller font
+                            fontSize: 13,
                             color: primaryColor,
                           ),
                         ),
-                        const SizedBox(height: 4), // Smaller spacing
-                        // Add to Cart button
+                        const SizedBox(height: 4),
                         SizedBox(
                           width: double.infinity,
-                          height: 26, // Smaller height
+                          height: 26,
                           child: ElevatedButton(
                             onPressed: () {
-                              // Add to cart functionality
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content:
@@ -952,7 +930,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                             child: const Text(
                               'Add to Cart',
                               style: TextStyle(
-                                fontSize: 10, // Smaller font
+                                fontSize: 10,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -996,17 +974,165 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
+  Widget _buildSimpleStockIndicator(int stock) {
+    IconData iconData;
+    Color iconColor = const Color(0xFFFFD700); // Warna emas (gold)
+
+    if (stock > 10) {
+      iconData = LineIcons.boxOpen;
+    } else if (stock > 0) {
+      iconData = LineIcons.boxOpen;
+    } else {
+      iconData = LineIcons.box;
+      iconColor = Colors.grey; // Abu-abu untuk stok habis
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: stock > 0
+              ? const Color(0xFFFFD700).withOpacity(0.5)
+              : Colors.grey.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            iconData,
+            color: iconColor,
+            size: 12,
+          ),
+          const SizedBox(width: 2),
+          Text(
+            stock.toString(),
+            style: TextStyle(
+              color: stock > 0 ? const Color(0xFFFFD700) : Colors.grey,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStockIndicator(int stock) {
+    IconData iconData;
+    Color iconColor = const Color(0xFFFFD700); // Warna emas (gold)
+
+    if (stock > 10) {
+      iconData = LineIcons.boxOpen;
+    } else if (stock > 0) {
+      iconData = LineIcons.boxOpen;
+    } else {
+      iconData = LineIcons.box;
+      iconColor = Colors.grey; // Abu-abu untuk stok habis
+    }
+
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.2),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            iconData,
+            color: iconColor,
+            size: 16,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          stock.toString(),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProductImage(String imageUrl) {
+    if (imageUrl.startsWith('http')) {
+      return Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          print("Error loading image: $error");
+          return _buildPlaceholderImage();
+        },
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Center(
+            child: CircularProgressIndicator(
+              value: loadingProgress.expectedTotalBytes != null
+                  ? loadingProgress.cumulativeBytesLoaded /
+                      loadingProgress.expectedTotalBytes!
+                  : null,
+              color: primaryColor,
+            ),
+          );
+        },
+      );
+    } else if (imageUrl.startsWith('products/')) {
+      final String fullUrl = 'http://10.0.2.2:8000/storage/$imageUrl';
+      return Image.network(
+        fullUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          print("Error loading image from storage: $error");
+          return _buildPlaceholderImage();
+        },
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Center(
+            child: CircularProgressIndicator(
+              value: loadingProgress.expectedTotalBytes != null
+                  ? loadingProgress.cumulativeBytesLoaded /
+                      loadingProgress.expectedTotalBytes!
+                  : null,
+              color: primaryColor,
+            ),
+          );
+        },
+      );
+    } else {
+      return _buildPlaceholderImage();
+    }
+  }
+
+  Widget _buildPlaceholderImage() {
+    return Container(
+      color: Colors.grey[200],
+      child: const Center(
+        child: Icon(
+          LineIcons.image,
+          size: 40,
+          color: Colors.grey,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final userName = _username; // Use the loaded username
+    final userName = _username;
     return Scaffold(
-      extendBody: true, // Make body extend behind the navigation bar
-      backgroundColor: const Color(0xFFF5F5F5), // Light grey background
-      // No appBar property - we're using a custom header within the body
+      extendBody: true,
+      backgroundColor: const Color(0xFFF5F5F5),
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          _buildMainHome(userName), // Pass the username to the header
+          _buildMainHome(userName),
           const CartPage(),
           const ChatPage(),
           const ProfilePage(),

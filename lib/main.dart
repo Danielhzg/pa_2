@@ -5,7 +5,7 @@ import 'services/auth_service.dart';
 import 'screens/splash_screen.dart';
 import 'login_page.dart';
 import 'register.dart';
-import 'screens/home_page.dart';
+import 'screens/home_page.dart' as home;
 import 'screens/product_detail_page.dart';
 import 'screens/cart_page.dart';
 import 'screens/chat_page.dart';
@@ -78,7 +78,7 @@ class MyApp extends StatelessWidget {
         routes: {
           '/login': (context) => const LoginPage(),
           '/register': (context) => const RegisterPage(),
-          '/home': (context) => const HomePage(),
+          '/home': (context) => const home.HomePage(),
           '/cart': (context) => const CartPage(),
           '/chat': (context) => const ChatPage(),
           '/profile': (context) => const ProfilePage(),

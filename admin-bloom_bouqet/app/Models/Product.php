@@ -17,4 +17,12 @@ class Product extends Model
     {
         return $this->belongsTo(Category::class);
     }
+
+    /**
+     * Get the images associated with this product.
+     */
+    public function images()
+    {
+        return $this->hasMany(ProductImage::class);
+    }
 }

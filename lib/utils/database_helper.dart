@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 import '../models/product.dart';
 import '../models/cart_item.dart';
+import '../services/api_service.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -127,19 +128,24 @@ class DatabaseHelper {
   // Product endpoints
   Future<List<Product>> fetchProductsFromApi() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/products'),
-        headers: _headers,
-      );
+      // Gunakan ApiService untuk mendapatkan data produk
+      final ApiService apiService = ApiService();
+      final List<dynamic> productsJson = await apiService.fetchProducts();
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map<Product>((json) => Product.fromMap(json)).toList();
+      // Konversi JSON ke objek Product
+      final products =
+          productsJson.map((json) => Product.fromJson(json)).toList();
+
+      // Simpan produk ke database lokal untuk penggunaan offline
+      for (var product in products) {
+        await insertProduct(product);
       }
-      return [];
+
+      return products;
     } catch (e) {
-      print('Error getting products: $e');
-      return [];
+      print('Error fetching products from API: $e');
+      // Jika gagal mengambil dari API, coba ambil dari database lokal
+      return getProducts();
     }
   }
 
@@ -152,7 +158,7 @@ class DatabaseHelper {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        return data.map<Product>((json) => Product.fromMap(json)).toList();
+        return data.map<Product>((json) => Product.fromJson(json)).toList();
       }
       return [];
     } catch (e) {
@@ -193,13 +199,16 @@ class DatabaseHelper {
   Future<List<Product>> searchProducts(String query) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/products/search?query=$query'),
+        Uri.parse('${ApiService().baseUrl}/v1/products/search?query=$query'),
         headers: _headers,
       );
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => Product.fromMap(json)).toList();
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        if (responseData['success'] == true) {
+          final List<dynamic> productsData = responseData['data'];
+          return productsData.map((json) => Product.fromJson(json)).toList();
+        }
       }
       return [];
     } catch (e) {
@@ -310,12 +319,27 @@ class DatabaseHelper {
 
   Future<int> insertProduct(Product product) async {
     final db = await database;
-    return await db.insert('products', product.toJson());
+    return await db.insert(
+      'products',
+      {
+        'id': product.id,
+        'name': product.name,
+        'description': product.description,
+        'price': product.price,
+        'image_url': product.imageUrl,
+        'category_id': product.categoryId,
+        'category_name': product.categoryName,
+        'is_on_sale': product.isOnSale ? 1 : 0,
+        'discount': product.discount,
+        'rating': product.rating,
+        'is_featured': product.isFeatured ? 1 : 0,
+      },
+    );
   }
 
   Future<List<Product>> getProducts() async {
     final db = await database;
     final data = await db.query('products');
-    return data.map<Product>((json) => Product.fromMap(json)).toList();
+    return data.map<Product>((json) => Product.fromJson(json)).toList();
   }
 }

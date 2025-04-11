@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\ProductController;
+use App\Http\Controllers\API\CategoryController;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,9 +26,11 @@ Route::prefix('v1')->group(function () {
 
     // Product endpoints
     Route::get('products', [ProductController::class, 'index']); // Get all products
-    Route::get('products/{id}', [ProductController::class, 'show']); // Get single product
-    Route::get('products/search', [ProductController::class, 'search']); // Search products
+    Route::get('products/category/{category}', [ProductController::class, 'getByCategory']); // Get products by category
     Route::post('products', [ProductController::class, 'store']); // Add product
+    
+    // Category endpoints
+    Route::get('categories', [CategoryController::class, 'index']); // Get all categories
 });
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
