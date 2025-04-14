@@ -21,9 +21,9 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="category">Category</label>
-                    <select name="category" id="category" class="form-control" required>
-                        <option value="" disabled>Select a category</option>
+                    <label for="category_id">Category</label>
+                    <select name="category_id" id="category_id" class="form-control" required>
+                        <option value="">Select Category</option>
                         @foreach ($categories as $category)
                             <option value="{{ $category->id }}" {{ $product->category_id == $category->id ? 'selected' : '' }}>
                                 {{ $category->name }}

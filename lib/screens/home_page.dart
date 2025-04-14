@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:provider/provider.dart';
 import 'package:flutter_snake_navigationbar/flutter_snake_navigationbar.dart';
 import 'package:line_icons/line_icons.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/product.dart';
 import '../services/auth_service.dart';
 import '../widgets/product_search.dart';
@@ -40,33 +41,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   static const Color darkTextColor = Color(0xFF333333);
   static const Color lightTextColor = Color(0xFF717171);
 
-  final List<Map<String, dynamic>> _banners = [
-    {
-      'title': 'Spring Collection',
-      'subtitle': 'Fresh seasonal flowers',
-      'discount': '20% OFF',
-      'image': 'assets/images/contoh.jpg',
-      'color': const Color(0xFFF8BBD0),
-    },
-    {
-      'title': 'Wedding Special',
-      'subtitle': 'Make your day perfect',
-      'discount': '15% OFF',
-      'image': 'assets/images/contoh.jpg',
-      'color': const Color(0xFFFFCCBC),
-    },
-    {
-      'title': 'Gift Bouquets',
-      'subtitle': 'Express your feelings',
-      'discount': '10% OFF',
-      'image': 'assets/images/contoh.jpg',
-      'color': const Color(0xFFD1C4E9),
-    },
-  ];
-
+  List<dynamic> _banners = [];
+  bool _loadingBanners = true;
+  final ApiService _apiService = ApiService();
   Timer? _bannerTimer;
 
   void _startBannerAutoScroll() {
+    if (_banners.isEmpty) {
+      print('No banners available to auto-scroll.');
+      return;
+    }
+
     _bannerTimer?.cancel();
     _bannerTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
       if (mounted && _pageController.hasClients) {
@@ -84,8 +69,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _pageController = PageController(viewportFraction: 0.85);
-    _fetchCategories(); // Ambil kategori terlebih dahulu
-    _fetchProducts();
+    _fetchCategories(); // Fetch categories from API
+    _fetchProducts(); // Fetch products from API
+    _fetchBanners(); // Fetch banners from API
     _loadUsername();
 
     // Auto-scroll banner - start after a short delay
@@ -99,24 +85,41 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Future<void> _fetchProducts() async {
     setState(() => _isLoading = true);
     try {
-      // Gunakan ApiService untuk mengambil produk dari API
-      final apiService = ApiService();
-      final products = await apiService.fetchProducts();
-
-      setState(() {
-        _filteredProducts.clear();
-        _filteredProducts
-            .addAll(products.map((p) => Product.fromJson(p)).toList());
-        _isLoading = false;
-      });
+      final products = await _apiService.fetchProducts();
+      if (mounted) {
+        setState(() {
+          _filteredProducts.clear();
+          _filteredProducts
+              .addAll(products.map((p) => Product.fromJson(p)).toList());
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       print('Error fetching products: $e');
-      setState(() => _isLoading = false);
-
-      // Tampilkan pesan error ke pengguna
       if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to load products: $e')));
+          SnackBar(content: Text('Failed to load products: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _fetchBanners() async {
+    setState(() => _loadingBanners = true);
+    try {
+      final banners = await _apiService.fetchCarousels();
+
+      if (mounted) {
+        setState(() {
+          _banners = banners;
+          _loadingBanners = false;
+        });
+      }
+    } catch (e) {
+      print('Error fetching banners: $e');
+      if (mounted) {
+        setState(() => _loadingBanners = false);
       }
     }
   }
@@ -494,6 +497,13 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildBannerCarousel() {
+    if (_loadingBanners) {
+      return const SizedBox(
+        height: 200,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Container(
       height: 200,
       margin: const EdgeInsets.only(top: 15),
@@ -507,6 +517,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         },
         itemBuilder: (context, index) {
           final banner = _banners[index];
+          final imageUrl =
+              'http://localhost:8000/storage/${banner['image']}'; // Update API URL
+          final title = banner['title'] ?? '';
+          final description = banner['description'] ?? '';
+
           return AnimatedContainer(
             duration: const Duration(milliseconds: 500),
             margin: EdgeInsets.symmetric(
@@ -517,7 +532,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               borderRadius: BorderRadius.circular(25),
               boxShadow: [
                 BoxShadow(
-                  color: banner['color'].withOpacity(0.4),
+                  color: Colors.black.withOpacity(0.2),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 ),
@@ -528,101 +543,58 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
+                  CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) =>
+                        const Center(child: CircularProgressIndicator()),
+                    errorWidget: (context, url, error) => const Center(
+                        child: Icon(Icons.error, color: Colors.red)),
+                  ),
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
                         colors: [
-                          banner['color'].withOpacity(0.6),
-                          banner['color'].withOpacity(0.3),
+                          Colors.black.withOpacity(0.6),
+                          Colors.transparent,
                         ],
                       ),
                     ),
                   ),
-                  Opacity(
-                    opacity: 0.8,
-                    child: Image.asset(
-                      banner['image'],
-                      fit: BoxFit.cover,
-                    ),
-                  ),
                   Padding(
                     padding: const EdgeInsets.all(20),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                banner['title'],
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  shadows: [
-                                    Shadow(
-                                      color: Colors.black26,
-                                      offset: Offset(0, 2),
-                                      blurRadius: 4,
-                                    ),
-                                  ],
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                banner['subtitle'],
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.9),
-                                  fontSize: 14,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 15),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.25),
-                                  borderRadius: BorderRadius.circular(15),
-                                ),
-                                child: Text(
-                                  banner['discount'],
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black26,
+                                offset: Offset(0, 2),
+                                blurRadius: 4,
                               ),
                             ],
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.2),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.5),
-                              width: 2,
-                            ),
+                        const SizedBox(height: 5),
+                        Text(
+                          description,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
                           ),
-                          child: Center(
-                            child: Icon(
-                              LineIcons.spa,
-                              size: 40,
-                              color: Colors.white.withOpacity(0.9),
-                            ),
-                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),

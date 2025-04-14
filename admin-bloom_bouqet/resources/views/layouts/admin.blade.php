@@ -216,6 +216,9 @@
             <a class="nav-link " href="{{ route('admin.products.index') }}">
                 <i class="fas fa-seedling"></i> Produk
             </a>
+            <a class="nav-link" href="{{ route('admin.carousels.index') }}">
+                <i class="fas fa-images"></i> Carousel
+            </a>
             <a class="nav-link" href="#">
                 <i class="fas fa-shopping-bag"></i> Pesanan
             </a>

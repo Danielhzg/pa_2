@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\ProductController;
 use App\Http\Controllers\API\CategoryController;
+use App\Http\Controllers\CarouselController;
 
 /*
 |--------------------------------------------------------------------------
@@ -31,6 +32,9 @@ Route::prefix('v1')->group(function () {
     
     // Category endpoints
     Route::get('categories', [CategoryController::class, 'index']); // Get all categories
+
+    // Carousel endpoint
+    Route::get('carousels', [CarouselController::class, 'index']);
 });
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {

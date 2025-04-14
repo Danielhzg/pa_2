@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\CarouselController;
 use Illuminate\Support\Facades\Route;
 
 // Redirect root URL to admin page
@@ -19,6 +20,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::put('/products/{product}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('/products/{product}', [ProductController::class, 'destroy'])->name('products.destroy');
     Route::post('/categories/store', [AdminController::class, 'storeCategory'])->name('categories.store');
+    Route::resource('carousels', CarouselController::class);
 });
 
 Route::prefix('admin/products')->group(function () {

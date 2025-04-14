@@ -109,8 +109,42 @@ class ApiService {
 
   Future<List<Product>> searchProducts(String query) async {
     try {
+      final response = await http
+          .get(Uri.parse('http://10.0.2.2:8000/api/products?search=$query'));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => Product.fromJson(json)).toList();
+      } else {
+        throw Exception('Failed to load products');
+      }
+    } catch (e) {
+      print('Error searching products: $e');
+      throw Exception('Failed to search products: $e');
+    }
+  }
+
+  Future<List<Product>> getAllProducts() async {
+    try {
+      final response =
+          await http.get(Uri.parse('http://10.0.2.2:8000/api/products'));
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonResponse = json.decode(response.body);
+        // Access the "data" key or the appropriate key that contains the list of products
+        final List<dynamic> data = jsonResponse['data'];
+        return data.map((json) => Product.fromJson(json)).toList();
+      } else {
+        throw Exception('Failed to load products');
+      }
+    } catch (e) {
+      print('Error fetching products: $e');
+      throw Exception('Failed to fetch products: $e');
+    }
+  }
+
+  Future<List<dynamic>> fetchCarousels() async {
+    try {
       final response = await http.get(
-        Uri.parse('$baseUrl/v1/products/search?query=$query'),
+        Uri.parse('$baseUrl/v1/carousels'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -119,21 +153,18 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
-
-        if (responseData['success'] == true && responseData['data'] != null) {
-          final List<dynamic> productsJson = responseData['data'];
-          return productsJson.map((json) => Product.fromJson(json)).toList();
+        print('Carousel API Response: $responseData'); // Log the response
+        if (responseData['success'] == true) {
+          return responseData['data'];
         } else {
-          throw Exception(
-              responseData['message'] ?? 'Failed to search products');
+          throw Exception('API error: ${responseData['message']}');
         }
       } else {
-        throw Exception(
-            'Failed to search products. Status: ${response.statusCode}');
+        throw Exception('Failed to load carousels: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error searching products: $e');
-      throw Exception('Failed to search products: $e');
+      print('Error fetching carousels: $e');
+      throw Exception('Failed to connect to the server');
     }
   }
 }

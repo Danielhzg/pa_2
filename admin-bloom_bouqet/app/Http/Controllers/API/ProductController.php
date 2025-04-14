@@ -85,21 +85,19 @@ class ProductController extends Controller
     public function getByCategory($category)
     {
         try {
-            // Load products with both category and images relationships
-            $products = Product::with(['category', 'images'])
+            // Load products with category relationship only (removing images relationship for now)
+            $products = Product::with('category')
                 ->where('category_id', $category)
                 ->get();
             
             // Transform the products to ensure image URLs are complete
             $products = $products->map(function ($product) {
-                // Add full URLs to images if they exist
-                if ($product->images && $product->images->count() > 0) {
-                    $product->images->transform(function ($image) {
-                        $image->url = url('storage/' . $image->path);
-                        return $image;
-                    });
-                    // Add a main_image field for convenience
-                    $product->main_image = $product->images->first()->url ?? null;
+                // If the product has an image field directly, use it
+                if ($product->image) {
+                    $product->imageUrl = url('storage/' . $product->image);
+                } else {
+                    // Fallback to a default image
+                    $product->imageUrl = url('storage/products/default-product.png');
                 }
                 return $product;
             });

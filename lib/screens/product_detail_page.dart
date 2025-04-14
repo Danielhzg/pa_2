@@ -60,6 +60,10 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     }
   }
 
+  String formatPrice(int price) {
+    return 'Rp ${price.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]}.')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     // Calculate discounted price
@@ -86,7 +90,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             Hero(
               tag: 'product-${widget.product.id}',
               child: Image.network(
-                widget.product.imageUrl,
+                widget.product.imageUrl.startsWith('http')
+                    ? widget.product.imageUrl
+                    : 'http://10.0.2.2:8000/storage/${widget.product.imageUrl}',
                 width: double.infinity,
                 height: 300,
                 fit: BoxFit.cover,
@@ -123,7 +129,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     Row(
                       children: [
                         Text(
-                          'Rp ${originalPrice.toInt().toString()}',
+                          formatPrice(originalPrice.toInt()),
                           style: TextStyle(
                             fontSize: 16,
                             color: Colors.grey.shade700,
@@ -151,7 +157,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Rp ${discountedPrice.toInt().toString()}',
+                      formatPrice(discountedPrice.toInt()),
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
@@ -160,7 +166,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'You save: Rp ${savedAmount.toInt().toString()}',
+                      'You save: ${formatPrice(savedAmount.toInt())}',
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.green.shade700,
@@ -169,7 +175,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ),
                   ] else ...[
                     Text(
-                      'Rp ${originalPrice.toInt().toString()}',
+                      formatPrice(originalPrice.toInt()),
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,

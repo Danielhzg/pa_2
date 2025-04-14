@@ -105,21 +105,21 @@ class ProductController extends Controller
     public function update(Request $request, string $id)
     {
         $product = Product::findOrFail($id);
-        
+
         $validated = $request->validate([
-            'name' => 'required',
-            'description' => 'required',
-            'price' => 'required|numeric',
-            'stock' => 'required|integer',
-            'category_id' => 'required|exists:categories,id', // Changed from category to category_id
-            'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'price' => 'required|numeric|min:0',
+            'stock' => 'required|integer|min:0',
+            'category_id' => 'required|exists:categories,id', // Ensure category_id is valid
+            'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
         ]);
 
         if ($request->hasFile('image')) {
             if ($product->image) {
                 Storage::delete('public/' . $product->image);
             }
-            
+
             $image = $request->file('image');
             $imageName = time() . '.' . $image->getClientOriginalExtension();
             $image->storeAs('public/products', $imageName);
@@ -127,14 +127,6 @@ class ProductController extends Controller
         }
 
         $product->update($validated);
-
-        if ($request->wantsJson()) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Product updated successfully',
-                'data' => $product
-            ]);
-        }
 
         return redirect()->route('products.index')->with('success', 'Product updated successfully');
     }
