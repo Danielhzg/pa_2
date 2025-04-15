@@ -82,7 +82,7 @@
 
                 <div class="d-flex justify-content-end gap-2">
                     <a href="{{ route('admin.products.index') }}" class="btn btn-secondary">Cancel</a>
-                    <button type="submit" class="btn btn-primary">Update Product</button>
+                    <button type="submit" class="btn save-btn">Update Product</button>
                 </div>
             </form>
         </div>

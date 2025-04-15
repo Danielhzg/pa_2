@@ -12,13 +12,14 @@
             color: #333;
         }
         .navbar {
-            background-color: #ff99cc; /* Pink navbar */
+            background-color: var(--pink-primary); /* Mengubah warna navbar menjadi pink */
         }
         .navbar .nav-link {
-            color: #fff;
+            color: white; /* Warna teks navbar */
         }
         .navbar .nav-link:hover {
-            color: #ffe6f2;
+            background-color: var(--pink-dark); /* Warna hover link navbar */
+            color: white;
         }
         .card {
             border: none;

@@ -23,12 +23,18 @@
             <td>{{ $carousel->order }}</td>
             <td>{{ $carousel->active ? 'Yes' : 'No' }}</td>
             <td>
-                <a href="{{ route('admin.carousels.edit', $carousel) }}" class="btn btn-warning">Edit</a>
-                <form action="{{ route('admin.carousels.destroy', $carousel) }}" method="POST" style="display:inline;">
-                    @csrf
-                    @method('DELETE')
-                    <button type="submit" class="btn btn-danger">Delete</button>
-                </form>
+                <div class="action-buttons">
+                    <a href="{{ route('admin.carousels.edit', $carousel) }}" class="btn action-btn edit-btn" title="Edit">
+                        <i class="fas fa-edit"></i>
+                    </a>
+                    <form action="{{ route('admin.carousels.destroy', $carousel) }}" method="POST" style="display:inline;">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="btn action-btn delete-btn" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </form>
+                </div>
             </td>
         </tr>
         @endforeach

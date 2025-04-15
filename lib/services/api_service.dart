@@ -151,20 +151,32 @@ class ApiService {
         },
       );
 
+      print('Carousel API Response Body: ${response.body}'); // Debugging log
+
       if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
-        print('Carousel API Response: $responseData'); // Log the response
-        if (responseData['success'] == true) {
-          return responseData['data'];
+        final List<dynamic>? responseData = json.decode(response.body);
+
+        if (responseData != null) {
+          return responseData.map((item) {
+            return {
+              'id': item['id'] ?? 0,
+              'title': item['title'] ?? 'No Title',
+              'description': item['description'] ?? 'No Description',
+              'image': item['image'] ?? '',
+              'order': item['order'] ?? 0,
+            };
+          }).toList();
         } else {
-          throw Exception('API error: ${responseData['message']}');
+          print('Response data is null');
+          return []; // Return an empty list if data is null
         }
       } else {
-        throw Exception('Failed to load carousels: ${response.statusCode}');
+        print('Failed to load carousels: ${response.statusCode}');
+        return []; // Return an empty list on error
       }
     } catch (e) {
       print('Error fetching carousels: $e');
-      throw Exception('Failed to connect to the server');
+      return []; // Return an empty list on error
     }
   }
 }

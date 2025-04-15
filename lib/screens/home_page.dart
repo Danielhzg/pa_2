@@ -112,7 +112,23 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
       if (mounted) {
         setState(() {
-          _banners = banners;
+          // Log the raw data for debugging
+          print('Raw banners data: $banners');
+
+          // Ensure all entries are processed, even if some properties are missing
+          _banners = banners.map((banner) {
+            return {
+              'id': banner['id'] ?? 0,
+              'title': banner['title'] ?? 'No Title',
+              'description': banner['description'] ?? 'No Description',
+              'image': banner['image'] ?? '',
+              'order': banner['order'] ?? 0,
+            };
+          }).toList();
+
+          // Sort banners by the 'order' property
+          _banners.sort((a, b) => a['order'].compareTo(b['order']));
+
           _loadingBanners = false;
         });
       }
@@ -518,7 +534,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         itemBuilder: (context, index) {
           final banner = _banners[index];
           final imageUrl =
-              'http://localhost:8000/storage/${banner['image']}'; // Update API URL
+              'http://10.0.2.2:8000/storage/${banner['image']}'; // Update API URL for Android emulator
           final title = banner['title'] ?? '';
           final description = banner['description'] ?? '';
 

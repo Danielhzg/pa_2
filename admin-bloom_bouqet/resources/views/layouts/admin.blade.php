@@ -10,21 +10,24 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
-            --dark-bg: #f6f9fc;
+            --dark-bg: #FF6B9E;
             --dark-secondary: #ffffff;
             --accent: #7e57c2;
-            --gradient-1: linear-gradient(135deg, #7e57c2, #b085f5);
-            --gradient-2: linear-gradient(135deg, #b085f5, #7e57c2);
+            --gradient-1: linear-gradient(135deg,  #FF87B2,  #FF87B2);
+            --gradient-2: linear-gradient(135deg, #FF87B2 ,  #FF87B2);
             --text: #2d3436;
             --text-secondary: #636e72;
             --shadow: rgba(126, 87, 194, 0.1);
             --card-hover: rgba(126, 87, 194, 0.05);
+            --pink-primary:#ffffff;
+            --pink-dark:rgb(241, 133, 171);
+            --pink-light: #FFA8C7;
         }
 
         body {
             font-family: 'Inter', sans-serif;
-            background: var(--dark-bg);
-            color: var(--text);
+            background-color: #FFDEE2;
+            color: #333;
         }
 
         #sidebar {
@@ -50,7 +53,8 @@
         }
 
         .nav-link:hover {
-            background: rgba(255, 255, 255, 0.2);
+            background-color: var(--pink-dark);
+            border-radius: 5px;
             color: white;
             transform: translateX(5px);
         }
@@ -69,9 +73,9 @@
 
         .card {
             background: var(--dark-secondary);
-            border: 1px solid rgba(126, 87, 194, 0.1);
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             border-radius: 16px;
-            box-shadow: 0 8px 16px var(--shadow);
             overflow: hidden;
             transition: all 0.3s ease;
         }
@@ -141,11 +145,15 @@
             top: 0;
             left: 280px;
             height: 70px;
-            background: white;
-            box-shadow: 0 2px 10px var(--shadow);
+            background-color: var(--pink-primary);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             z-index: 100;
             padding: 0 2rem;
             backdrop-filter: blur(10px);
+        }
+
+        .navbar-brand, .nav-link {
+            color: #fff !important;
         }
 
         .notification-badge {
@@ -200,12 +208,144 @@
             border-color: var(--accent);
             box-shadow: 0 0 0 0.25rem rgba(126, 87, 194, 0.25);
         }
+
+        .btn-primary {
+            background-color: var(--pink-primary);
+            border-color: var(--pink-primary);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--pink-dark);
+            border-color: var(--pink-dark);
+        }
+
+        .alert {
+            animation: fadeIn 0.5s ease-in-out, fadeOut 0.5s ease-in-out 3s forwards;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+        }
+
+        .notification {
+            background-color: var(--pink-primary);
+            color: #fff;
+        }
+
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+
+        .toast {
+            background-color: var(--pink-primary);
+            color: #fff;
+        }
+
+        /* Sidebar styles */
+        .main-sidebar {
+            background-color: #fff;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        }
+
+        .nav-sidebar .nav-item .nav-link {
+            color: #666;
+        }
+
+        .nav-sidebar .nav-item .nav-link:hover,
+        .nav-sidebar .nav-item .nav-link.active {
+            background-color: var(--pink-light);
+            color: var(--pink-primary);
+        }
+
+        .nav-sidebar .nav-item .nav-link.active i {
+            color: var(--pink-primary);
+        }
+
+        /* Table styles */
+        .table thead th {
+            background-color: var(--pink-primary);
+            color: white;
+            border: none;
+        }
+
+        .table-hover tbody tr:hover {
+            background-color: #fff5f8;
+        }
+
+        /* Pagination styles */
+        .page-item.active .page-link {
+            background-color: var(--pink-primary);
+            border-color: var(--pink-primary);
+        }
+
+        .page-link {
+            color: var(--pink-primary);
+        }
+
+        .page-link:hover {
+            color: var(--pink-dark);
+        }
+
+        /* Form styles */
+        .form-control:focus {
+            border-color: var(--pink-light);
+            box-shadow: 0 0 0 0.2rem rgba(255, 135, 178, 0.25);
+        }
+
+        /* Select2 customization */
+        .select2-container--default .select2-results__option--highlighted[aria-selected] {
+            background-color: var(--pink-primary);
+        }
+
+        /* Custom checkbox and radio */
+        .custom-control-input:checked ~ .custom-control-label::before {
+            background-color: var(--pink-primary);
+            border-color: var(--pink-primary);
+        }
+
+        /* Progress bar */
+        .progress-bar {
+            background-color: var(--pink-primary);
+        }
+
+        /* Card header */
+        .card-header {
+            background-color: #fff;
+            border-bottom: 2px solid var(--pink-light);
+        }
+
+        /* Footer */
+        .main-footer {
+            background-color: #fff;
+            border-top: 1px solid var(--pink-light);
+        }
     </style>
 </head>
 <body>
     <!-- Sidebar -->
     <div id="sidebar">
-        <h4 class="brand mb-4">✨ Florist Admin</h4>
+        <h4 class="brand mb-4"> Bloom Bouqet</h4>
         <nav class="nav flex-column">
             <a class="nav-link {{ Request::is('admin') ? 'active' : '' }}" href="{{ route('admin.home') }}">
                 <i class="fas fa-home"></i> Dashboard

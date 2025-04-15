@@ -27,10 +27,12 @@
   <link rel="stylesheet" href="{{URL::asset('Template/plugins/summernote/summernote-bs4.min.css')}}">
   <style>
     :root {
+      /* Definisi warna pink yang lebih cerah dan konsisten */
       --pink-primary: #ff69b4;
       --pink-secondary: #ff8dc7;
       --pink-dark: #ff1493;
       --pink-light: #ffb6c1;
+      --pink-pale: #ffeff5;
       --pink-gradient: linear-gradient(135deg, rgba(255,105,180,0.95) 0%, rgba(255,20,147,0.95) 100%);
       --glass-effect: rgba(255, 255, 255, 0.15);
     }
@@ -38,7 +40,7 @@
     /* Global Styles */
     body {
       font-family: 'Source Sans Pro', sans-serif;
-      background: #fff5f7;
+      background: var(--pink-pale);
     }
 
     /* Navbar */
@@ -141,7 +143,7 @@
 
     /* Content Area */
     .content-wrapper {
-      background: #fff5f7 !important;
+      background: var(--pink-pale) !important;
       padding: 2rem;
     }
 
@@ -259,6 +261,106 @@
       font-weight: 600;
       font-size: 0.9rem;
     }
+
+    /* Buttons with Primary Color (Override Bootstrap default blue) */
+    .btn-primary {
+      background-color: var(--pink-primary) !important;
+      border-color: var(--pink-primary) !important;
+    }
+
+    .btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+      background-color: var(--pink-dark) !important;
+      border-color: var(--pink-dark) !important;
+    }
+
+    /* Badge Colors */
+    .badge-primary {
+      background-color: var(--pink-primary) !important;
+    }
+
+    .badge-warning {
+      background-color: #ffbd4a !important;
+      color: #212529;
+    }
+
+    /* Form Controls */
+    .form-control:focus {
+      border-color: var(--pink-primary);
+      box-shadow: 0 0 0 0.2rem rgba(255,105,180,0.25);
+    }
+
+    /* Table Styling */
+    .table thead th {
+      border-bottom: 2px solid var(--pink-light);
+    }
+
+    .table-bordered td, .table-bordered th {
+      border: 1px solid rgba(255,105,180,0.2);
+    }
+
+    /* Pagination */
+    .page-item.active .page-link {
+      background-color: var(--pink-primary);
+      border-color: var(--pink-primary);
+    }
+
+    .page-link {
+      color: var(--pink-primary);
+    }
+
+    .page-link:hover {
+      color: var(--pink-dark);
+    }
+
+    /* Alert Styling */
+    .alert-primary {
+      background-color: rgba(255,105,180,0.1);
+      border-color: rgba(255,105,180,0.2);
+      color: var(--pink-dark);
+    }
+
+    /* Custom Scroll Bar */
+    ::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--pink-light);
+      border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--pink-primary);
+    }
+
+    /* Active State for Sidebar */
+    .sidebar-dark-primary .nav-sidebar > .nav-item > .nav-link.active {
+      background-color: rgba(255,255,255,0.2) !important;
+      color: #fff !important;
+    }
+
+    /* Login/Register Pages */
+    .login-box .card-header, .register-box .card-header {
+      background: var(--pink-gradient);
+      color: white;
+    }
+
+    .login-box .btn-primary, .register-box .btn-primary {
+      background: var(--pink-gradient);
+      border: none;
+      width: 100%;
+      padding: 0.75rem;
+    }
+
+    /* Progress Bars */
+    .progress-bar {
+      background-color: var(--pink-primary);
+    }
   </style>
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
@@ -266,7 +368,7 @@
 
   <!-- Preloader -->
   <div class="preloader flex-column justify-content-center align-items-center">
-    <img class="animation__shake" src="dist/img/AdminLTELogo.png" alt="AdminLTELogo" height="60" width="60">
+    <img class="animation__shake" src="{{ asset('images/logo.png') }}" alt="Bloom Bouqet Logo" height="80" width="80">
   </div>
 
   <!-- Simplified Navbar -->
@@ -316,7 +418,7 @@
           <span class="dropdown-header">3 Notifications</span>
           <div class="dropdown-divider"></div>
           <a href="#" class="dropdown-item">
-            <i class="fas fa-shopping-cart mr-2"></i> New Order
+            <i class="fas fa-shopping-cart mr-2" style="color: var(--pink-primary);"></i> New Order
             <span class="float-right text-muted text-sm">3 mins</span>
           </a>
           <div class="dropdown-divider"></div>
@@ -334,12 +436,12 @@
         </a>
         <div class="dropdown-menu dropdown-menu-right">
           <a href="#" class="dropdown-item">
-            <i class="fas fa-user mr-2"></i> Profile
+            <i class="fas fa-user mr-2" style="color: var(--pink-primary);"></i> Profile
           </a>
           <div class="dropdown-divider"></div>
           <form action="{{ route('logout') }}" method="GET" class="dropdown-item">
             @csrf
-            <button type="submit" class="btn btn-link" style="color: inherit; text-decoration: none;">
+            <button type="submit" class="btn btn-link p-0" style="color: #dc3545; text-decoration: none;">
               <i class="fas fa-sign-out-alt mr-2"></i> Logout
             </button>
           </form>
@@ -351,9 +453,9 @@
   <!-- Main Sidebar Container -->
   <aside class="main-sidebar sidebar-dark-primary elevation-4">
     <!-- Brand Logo -->
-    <a href="index3.html" class="brand-link">
-      <img src="{{URL::asset('Template/dist/img/AdminLTELogo.png')}}" alt="AdminLTE Logo" class="brand-image img-circle elevation-3" style="opacity: .8">
-      <span class="brand-text font-weight-light">Bucket Bunga Admin</span>
+    <a href="/admin/dashboard" class="brand-link">
+      <img src="{{URL::asset('Template/dist/img/AdminLTELogo.png')}}" alt="Bloom Bouqet Logo" class="brand-image img-circle elevation-3" style="opacity: .8">
+      <span class="brand-text font-weight-light">Bloom Bouqet</span>
     </a>
 
     <!-- Sidebar -->
@@ -361,10 +463,10 @@
       <!-- Sidebar user panel (optional) -->
       <div class="user-panel mt-3 pb-3 mb-3 d-flex">
         <div class="image">
-          <img src="dist/img/user2-160x160.jpg" class="img-circle elevation-2" alt="User Image">
+          <img src="{{URL::asset('Template/dist/img/user2-160x160.jpg')}}" class="img-circle elevation-2" alt="User Image">
         </div>
         <div class="info">
-          <a href="#" class="d-block">Alexander Pierce</a>
+          <a href="#" class="d-block">Admin</a>
         </div>
       </div>
 
@@ -384,15 +486,27 @@
       <nav class="mt-2">
         <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
           <li class="nav-item">
-            <a href="#" class="nav-link active">
+            <a href="{{ route('admin.dashboard') }}" class="nav-link {{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
               <i class="nav-icon fas fa-home"></i>
               <p>Dashboard</p>
             </a>
           </li>
           <li class="nav-item">
-            <a href="/produk/tampilanproduk" class="nav-link">
+            <a href="{{ route('admin.products.index') }}" class="nav-link {{ request()->routeIs('admin.products.*') ? 'active' : '' }}">
               <i class="nav-icon fas fa-shopping-bag"></i>
               <p>Products</p>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="{{ route('admin.categories.index') }}" class="nav-link {{ request()->routeIs('admin.categories.*') ? 'active' : '' }}">
+              <i class="nav-icon fas fa-tags"></i>
+              <p>Categories</p>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="{{ route('admin.carousels.index') }}" class="nav-link {{ request()->routeIs('admin.carousels.*') ? 'active' : '' }}">
+              <i class="nav-icon fas fa-images"></i>
+              <p>Carousel</p>
             </a>
           </li>
           <li class="nav-item">
@@ -435,10 +549,10 @@
   <!-- /.content-wrapper -->
   
   <footer class="main-footer">
-    <strong>Copyright &copy; 4-2021 <a href="https://adminlte.io">AdminLTE.io</a>.</strong>
+    <strong>Copyright &copy; 2024 <a href="#" style="color: var(--pink-primary);">Bloom Bouqet</a>.</strong>
     All rights reserved.
     <div class="float-right d-none d-sm-inline-block">
-      <b>Version</b> 3.2.0
+      <b>Version</b> 1.0.0
     </div>
   </footer>
 
@@ -477,12 +591,37 @@
 <!-- Summernote -->
 <script src="{{URL::asset('Template/plugins/summernote/summernote-bs4.min.js')}}"></script>
 <!-- overlayScrollbars -->
-<script src="{{URL::asset('Template/plugins/overlayScrollbars/js/jquery.overlayScrollbars.min')}}.js"></script>
+<script src="{{URL::asset('Template/plugins/overlayScrollbars/js/jquery.overlayScrollbars.min.js')}}"></script>
 <!-- AdminLTE App -->
 <script src="{{URL::asset('Template/dist/js/adminlte.js')}}"></script>
-<!-- AdminLTE for demo purposes -->
-<script src="{{URL::asset('Template/dist/js/demo.js')}}"></script>
-<!-- AdminLTE dashboard demo (This is only for demo purposes) -->
-<script src="{{URL::asset('Template/dist/js/pages/dashboard.js')}}"></script>
+
+<script>
+  // Override any potential purple colors with pink
+  document.addEventListener('DOMContentLoaded', function() {
+    // Mengganti warna default tombol primary
+    const style = document.createElement('style');
+    style.textContent = `
+      .btn-primary, .bg-primary, .badge-primary {
+        background-color: var(--pink-primary) !important;
+        border-color: var(--pink-primary) !important;
+      }
+      .btn-primary:hover, .btn-primary:active, .btn-primary:focus {
+        background-color: var(--pink-dark) !important;
+        border-color: var(--pink-dark) !important;
+      }
+      .text-primary {
+        color: var(--pink-primary) !important;
+      }
+      .border-primary {
+        border-color: var(--pink-primary) !important;
+      }
+      :root {
+        --blue: var(--pink-primary);
+        --primary: var(--pink-primary);
+      }
+    `;
+    document.head.appendChild(style);
+  });
+</script>
 </body>
 </html>
