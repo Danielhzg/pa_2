@@ -1,0 +1,19 @@
+.nav-item.active .nav-link {
+    font-weight: bold;
+    color: var(--pink-primary);
+    background-color: rgba(255, 105, 180, 0.1);
+    border-radius: 5px;
+    padding: 0.5rem 1rem;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.nav-item .nav-link {
+    color: #333; /* Default color for non-active links */
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.nav-item .nav-link:hover {
+    color: var(--pink-primary);
+    background-color: rgba(255, 105, 180, 0.05);
+    border-radius: 5px;
+}

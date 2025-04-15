@@ -50,19 +50,25 @@
             font-weight: 500;
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
         }
 
         .nav-link:hover {
-            background-color: var(--pink-dark);
-            border-radius: 5px;
-            color: white;
             transform: translateX(5px);
+            background-color: var(--pink-dark);
+            color: white;
         }
 
         .nav-link.active {
-            background: white;
-            color: var(--accent);
-            box-shadow: 0 5px 15px rgba(255,105,180,0.3);
+            background: var(--pink-light);
+            color: var(--pink-primary);
+            box-shadow: 0 5px 15px rgba(255, 105, 180, 0.3);
+            border-left: 5px solid var(--pink-dark);
+            transition: all 0.3s ease;
+        }
+
+        .nav-link.active i {
+            color: var(--pink-dark);
         }
 
         .main-content {
@@ -282,7 +288,7 @@
             color: var(--pink-primary);
         }
 
-        /* Table styles */
+       
         .table thead th {
             background-color: var(--pink-primary);
             color: white;
@@ -348,7 +354,7 @@
         <h4 class="brand mb-4"> Bloom Bouqet</h4>
         <nav class="nav flex-column">
             <a class="nav-link {{ Request::is('admin') ? 'active' : '' }}" href="{{ route('admin.home') }}">
-                <i class="fas fa-home"></i> Dashboard
+                <i class="fas fa-home"></i> Dashboard 
             </a>
             <a class="nav-link" href="{{ route('admin.categories.index') }}">
                 <i class="fas fa-tags"></i> Kategori
