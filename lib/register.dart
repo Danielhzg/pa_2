@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'services/auth_service.dart';
+import 'screens/otp_verification_page.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -27,10 +28,7 @@ class _RegisterPageState extends State<RegisterPage> {
       setState(() => _isLoading = true);
 
       try {
-        // Get the auth service safely without triggering build-time updates
         final authService = Provider.of<AuthService>(context, listen: false);
-
-        // Wait for initialization to complete
         await authService.initializationFuture;
 
         print('Register button tapped');
@@ -49,38 +47,28 @@ class _RegisterPageState extends State<RegisterPage> {
         if (!mounted) return;
 
         if (result['success']) {
-          // Show success notification
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Registration successful!'),
-              backgroundColor: Colors.green,
-              behavior: SnackBarBehavior.floating,
-              margin: EdgeInsets.all(16),
-              duration: Duration(seconds: 3),
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => OtpVerificationPage(
+                email: _emailController.text.trim(),
+              ),
             ),
           );
-
-          // Navigate to login page after short delay
-          Future.delayed(const Duration(seconds: 2), () {
-            Navigator.pushReplacementNamed(context, '/login');
-          });
         } else {
           // Enhanced error handling
           String errorMessage = 'Registration failed';
 
-          // Check for message in the result
           if (result.containsKey('message') && result['message'] != null) {
             errorMessage = result['message'];
           }
 
-          // Extract specific validation errors if available
           if (result.containsKey('details') && result['details'] is Map) {
             final details = result['details'] as Map;
 
             if (details.containsKey('errors') && details['errors'] is Map) {
               final errors = details['errors'] as Map;
               if (errors.isNotEmpty) {
-                // Get first error message from the first field with an error
                 final firstErrorField = errors.keys.first;
                 final firstErrorMessage = errors[firstErrorField]?.first;
 
