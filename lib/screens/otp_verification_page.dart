@@ -64,17 +64,17 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
   }
 
   void _setupClipboardListener() {
-    // Add focus listeners to check clipboard when first field gains focus only
-    _focusNodes.first.addListener(() {
-      if (_focusNodes.first.hasFocus) {
-        _checkClipboard();
-      }
-    });
+    // Add focus listeners to check clipboard when any field gains focus
+    for (var node in _focusNodes) {
+      node.addListener(() {
+        if (node.hasFocus) {
+          _checkClipboard();
+        }
+      });
+    }
   }
 
   Future<void> _checkClipboard() async {
-    if (_isLoading) return;
-    
     try {
       final ClipboardData? data = await Clipboard.getData(Clipboard.kTextPlain);
       final String? text = data?.text;
@@ -82,7 +82,29 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
       if (text != null && 
           text.length == 6 && 
           RegExp(r'^\d{6}$').hasMatch(text)) {
-        _handlePastedOtp(text);
+        // Show confirmation dialog before auto-filling
+        if (!mounted) return;
+        final shouldAutofill = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Auto-fill OTP'),
+            content: const Text('Would you like to use the copied OTP code?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('No'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Yes'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldAutofill == true) {
+          _handlePastedOtp(text);
+        }
       }
     } catch (e) {
       print('Error checking clipboard: $e');
@@ -94,7 +116,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
     for (int i = 0; i < 6; i++) {
       _controllers[i].text = otp[i];
     }
-    // Remove focus and verify
+    // Remove focus from last field and verify
     _focusNodes.last.unfocus();
     _verifyOtp();
   }
