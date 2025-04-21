@@ -23,10 +23,10 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
     6,
     (index) => FocusNode(),
   );
-  
+
   bool _isLoading = false;
   bool _canResend = false;
-  int _timeLeft = 300; // 5 minutes in seconds
+  int _timeLeft = 180; // 3 minutes in seconds
   Timer? _timer;
   StreamSubscription<ConnectivityResult>? _connectivitySubscription;
   bool _isOffline = false;
@@ -54,9 +54,11 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
 
   void _setupConnectivityListener() async {
     final connectivity = Connectivity();
-    _isOffline = await connectivity.checkConnectivity() == ConnectivityResult.none;
-    
-    _connectivitySubscription = connectivity.onConnectivityChanged.listen((result) {
+    _isOffline =
+        await connectivity.checkConnectivity() == ConnectivityResult.none;
+
+    _connectivitySubscription =
+        connectivity.onConnectivityChanged.listen((result) {
       setState(() {
         _isOffline = result == ConnectivityResult.none;
       });
@@ -78,9 +80,9 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
     try {
       final ClipboardData? data = await Clipboard.getData(Clipboard.kTextPlain);
       final String? text = data?.text;
-      
-      if (text != null && 
-          text.length == 6 && 
+
+      if (text != null &&
+          text.length == 6 &&
           RegExp(r'^\d{6}$').hasMatch(text)) {
         // Show confirmation dialog before auto-filling
         if (!mounted) return;
@@ -123,7 +125,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
 
   void _startTimer() {
     setState(() {
-      _timeLeft = 300;
+      _timeLeft = 180; // Changed from 300 (5 minutes) to 180 (3 minutes)
       _canResend = false;
     });
 
@@ -190,7 +192,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
     }
 
     String otp = _controllers.map((c) => c.text).join();
-    
+
     if (otp.length != 6) {
       _showErrorSnackBar('Masukkan 6 digit kode OTP');
       return;
@@ -205,13 +207,18 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
       if (!mounted) return;
 
       if (result['success']) {
-        Navigator.pushReplacementNamed(context, '/home');
+        Navigator.pushReplacementNamed(
+            context, '/login'); // Redirect to login page
       } else {
         if (result['expired'] == true) {
           setState(() => _canResend = true);
         }
         _showErrorSnackBar(result['message'] ?? 'Verifikasi gagal');
       }
+    } catch (e) {
+      print('Error during OTP verification: $e');
+      _showErrorSnackBar(
+          'Terjadi kesalahan saat memverifikasi. Silakan coba lagi.');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -286,11 +293,11 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
             Text(
               widget.email,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
             const SizedBox(height: 30),
-            
+
             // OTP Input Fields
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -323,9 +330,9 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 30),
-            
+
             // Timer
             Center(
               child: Text(
@@ -336,9 +343,9 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             // Verify Button
             SizedBox(
               width: double.infinity,
@@ -357,7 +364,8 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                         width: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
                     : const Text(
@@ -369,9 +377,9 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                       ),
               ),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             // Resend Button
             Center(
               child: TextButton(

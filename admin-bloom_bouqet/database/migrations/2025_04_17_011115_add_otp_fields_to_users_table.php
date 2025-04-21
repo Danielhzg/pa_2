@@ -14,14 +14,15 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             $table->string('otp')->nullable();
             $table->timestamp('otp_expires_at')->nullable();
-            $table->integer('otp_attempts')->default(0);
+            $table->string('phone')->nullable(); // Add phone field
+            $table->timestamp('email_verified_at')->nullable(); // Add email verification field
         });
     }
 
     public function down()
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['otp', 'otp_expires_at', 'otp_attempts']);
+            $table->dropColumn(['otp', 'otp_expires_at', 'phone', 'email_verified_at']);
         });
     }
 };

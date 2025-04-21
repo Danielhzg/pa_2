@@ -12,18 +12,22 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            if (!Schema::hasColumn('users', 'username')) {
-                $table->string('username')->unique()->after('email');
-            }
-
+            // Tambahkan field full_name setelah username jika belum ada
             if (!Schema::hasColumn('users', 'full_name')) {
                 $table->string('full_name')->after('username');
             }
-
+            
+            // Tambahkan field phone setelah email jika belum ada
+            if (!Schema::hasColumn('users', 'phone')) {
+                $table->string('phone')->after('email');
+            }
+            
+            // Tambahkan field address setelah phone jika belum ada
             if (!Schema::hasColumn('users', 'address')) {
                 $table->text('address')->nullable()->after('phone');
             }
-
+            
+            // Tambahkan field birth_date setelah address jika belum ada
             if (!Schema::hasColumn('users', 'birth_date')) {
                 $table->date('birth_date')->nullable()->after('address');
             }
@@ -36,19 +40,19 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            // drop only if columns exist
-            if (Schema::hasColumn('users', 'username')) {
-                $table->dropColumn('username');
-            }
-
+            // Drop columns if they exist
             if (Schema::hasColumn('users', 'full_name')) {
                 $table->dropColumn('full_name');
             }
-
+            
+            if (Schema::hasColumn('users', 'phone')) {
+                $table->dropColumn('phone');
+            }
+            
             if (Schema::hasColumn('users', 'address')) {
                 $table->dropColumn('address');
             }
-
+            
             if (Schema::hasColumn('users', 'birth_date')) {
                 $table->dropColumn('birth_date');
             }

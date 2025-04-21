@@ -13,8 +13,13 @@ class User extends Authenticatable
 
     protected $fillable = [
         'username',  // Make sure this matches the database field
+        'full_name', // Add full_name to fillable
         'email',
+        'phone', // Add phone to fillable
+        'address', // Add address to fillable
+        'birth_date', // Add birth_date to fillable
         'password',
+        'email_verified_at', // Add email_verified_at to fillable
     ];
 
     protected $hidden = [
@@ -24,6 +29,7 @@ class User extends Authenticatable
 
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'birth_date' => 'date', // Cast birth_date as date
     ];
 
     public function orders()

@@ -1050,52 +1050,48 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildProductImage(String imageUrl) {
+    // Logging untuk debugging URL gambar
+    print("Original imageUrl: $imageUrl");
+
+    String finalUrl;
+
     if (imageUrl.startsWith('http')) {
-      return Image.network(
-        imageUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          print("Error loading image: $error");
-          return _buildPlaceholderImage();
-        },
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Center(
-            child: CircularProgressIndicator(
-              value: loadingProgress.expectedTotalBytes != null
-                  ? loadingProgress.cumulativeBytesLoaded /
-                      loadingProgress.expectedTotalBytes!
-                  : null,
-              color: primaryColor,
-            ),
-          );
-        },
-      );
-    } else if (imageUrl.startsWith('products/')) {
-      final String fullUrl = 'http://10.0.2.2:8000/storage/$imageUrl';
-      return Image.network(
-        fullUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          print("Error loading image from storage: $error");
-          return _buildPlaceholderImage();
-        },
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Center(
-            child: CircularProgressIndicator(
-              value: loadingProgress.expectedTotalBytes != null
-                  ? loadingProgress.cumulativeBytesLoaded /
-                      loadingProgress.expectedTotalBytes!
-                  : null,
-              color: primaryColor,
-            ),
-          );
-        },
-      );
+      // Jika sudah URL lengkap, gunakan langsung
+      finalUrl = imageUrl;
     } else {
-      return _buildPlaceholderImage();
+      // Jika path relatif, tambahkan base URL dengan format yang benar
+      // Hapus garis miring di awal jika ada untuk mencegah path ganda
+      if (imageUrl.startsWith('/')) {
+        imageUrl = imageUrl.substring(1);
+      }
+      finalUrl = 'http://10.0.2.2:8000/storage/$imageUrl';
     }
+
+    print("Final URL used: $finalUrl");
+
+    return CachedNetworkImage(
+      imageUrl: finalUrl,
+      fit: BoxFit.cover,
+      placeholder: (context, url) => Container(
+        color: Colors.grey[200],
+        child: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      ),
+      errorWidget: (context, url, error) {
+        print("Error loading image: $error, URL: $finalUrl");
+        return Container(
+          color: Colors.grey[200],
+          child: const Center(
+            child: Icon(
+              LineIcons.exclamationCircle,
+              size: 40,
+              color: Colors.red,
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildPlaceholderImage() {

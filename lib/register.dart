@@ -14,14 +14,18 @@ class RegisterPage extends StatefulWidget {
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
+  final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _birthDateController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  DateTime? _selectedDate;
 
   Future<void> _handleRegister() async {
     if (_formKey.currentState!.validate()) {
@@ -33,13 +37,19 @@ class _RegisterPageState extends State<RegisterPage> {
 
         print('Register button tapped');
         print('Username: ${_usernameController.text.trim()}');
+        print('Full Name: ${_fullNameController.text.trim()}');
         print('Email: ${_emailController.text.trim()}');
         print('Phone: ${_phoneController.text.trim()}');
+        print('Address: ${_addressController.text.trim()}');
+        print('Birth Date: ${_birthDateController.text.trim()}');
 
         final result = await authService.register(
           username: _usernameController.text.trim(),
+          fullName: _fullNameController.text.trim(),
           email: _emailController.text.trim(),
           phone: _phoneController.text.trim(),
+          address: _addressController.text.trim(),
+          birthDate: _birthDateController.text.trim(),
           password: _passwordController.text,
           passwordConfirmation: _confirmPasswordController.text,
         );
@@ -107,6 +117,41 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
+  // Fungsi untuk memilih tanggal lahir
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(1950),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFFFF87B2),
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFFF87B2),
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+        _birthDateController.text =
+            "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -171,6 +216,32 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
                 const SizedBox(height: 16),
 
+                // Full Name field
+                TextFormField(
+                  controller: _fullNameController,
+                  decoration: InputDecoration(
+                    labelText: 'Full Name',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFFF87B2)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: Color(0xFFFF87B2), width: 2),
+                    ),
+                    prefixIcon: const Icon(Icons.person_outline,
+                        color: Color(0xFFFF87B2)),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your full name';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
                 // Email field
                 TextFormField(
                   controller: _emailController,
@@ -227,6 +298,66 @@ class _RegisterPageState extends State<RegisterPage> {
                     }
                     if (value.length < 10 || value.length > 13) {
                       return 'Phone number must be between 10 and 13 digits';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Address field
+                TextFormField(
+                  controller: _addressController,
+                  decoration: InputDecoration(
+                    labelText: 'Address',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFFF87B2)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: Color(0xFFFF87B2), width: 2),
+                    ),
+                    prefixIcon:
+                        const Icon(Icons.home, color: Color(0xFFFF87B2)),
+                  ),
+                  maxLines: 2,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your address';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Birth date field
+                TextFormField(
+                  controller: _birthDateController,
+                  decoration: InputDecoration(
+                    labelText: 'Birth Date',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFFF87B2)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: Color(0xFFFF87B2), width: 2),
+                    ),
+                    prefixIcon: const Icon(Icons.calendar_today,
+                        color: Color(0xFFFF87B2)),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.date_range,
+                          color: Color(0xFFFF87B2)),
+                      onPressed: () => _selectDate(context),
+                    ),
+                  ),
+                  readOnly: true,
+                  onTap: () => _selectDate(context),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please select your birth date';
                     }
                     return null;
                   },
@@ -386,8 +517,11 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   void dispose() {
     _usernameController.dispose();
+    _fullNameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _addressController.dispose();
+    _birthDateController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();

@@ -14,7 +14,7 @@ return new class extends Migration
         // Cek apakah kolom 'phone' belum ada
         if (!Schema::hasColumn('users', 'phone')) {
             Schema::table('users', function (Blueprint $table) {
-                $table->string('phone')->nullable()->default(null)->after('email');
+                $table->string('phone')->unique()->nullable(false)->after('email');
             });
         }
     }

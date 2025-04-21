@@ -15,10 +15,10 @@ use App\Http\Controllers\CarouselController;
 
 Route::prefix('v1')->group(function () {
     // Auth routes
-    Route::post('register', [AuthController::class, 'register']);
+    Route::post('register', [AuthController::class, 'register'])->name('register');
     Route::post('login', [AuthController::class, 'login']);
-    Route::post('verify-otp', [AuthController::class, 'verifyOtp']);
-    Route::post('resend-otp', [AuthController::class, 'resendOtp']);
+    Route::post('verify-otp', [AuthController::class, 'verifyOtp'])->name('otp.verify');
+    Route::post('resend-otp', [AuthController::class, 'resendOtp'])->name('otp.resend');
     
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {
@@ -37,6 +37,9 @@ Route::prefix('v1')->group(function () {
 
     // Carousel endpoint
     Route::get('carousels', [CarouselController::class, 'index']);
+
+    // Fetch user by email
+    Route::get('user/{email}', [AuthController::class, 'getUserByEmail'])->name('user.get');
 });
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {

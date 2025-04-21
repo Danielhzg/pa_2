@@ -10,33 +10,30 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class AuthController extends Controller
 {
-    // Maksimum percobaan OTP yang diizinkan
     const MAX_OTP_ATTEMPTS = 3;
 
     /**
      * Register a new user
-     * 
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
      */
     public function register(Request $request)
     {
         try {
-            \Log::info('Registration attempt:', $request->all());
-            
             $validator = Validator::make($request->all(), [
                 'username' => 'required|string|unique:users',
+                'full_name' => 'required|string|max:255',
                 'email' => 'required|email|unique:users',
                 'phone' => 'required|string',
                 'password' => 'required|min:6|confirmed',
+                'address' => 'required|string',
+                'birth_date' => 'required|date',
             ]);
 
             if ($validator->fails()) {
-                \Log::warning('Validation failed:', ['errors' => $validator->errors()->toArray()]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
@@ -44,59 +41,31 @@ class AuthController extends Controller
                 ], 422);
             }
 
-            // Generate OTP yang lebih aman menggunakan random_bytes
-            $otp = strval(hexdec(bin2hex(random_bytes(3))) % 1000000);
-            $otp = str_pad($otp, 6, '0', STR_PAD_LEFT);
-            $otpExpires = now()->addMinutes(5);
+            $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
+            $otpExpires = now()->addMinutes(3);
 
-            \Log::info('Creating user with data:', [
+            $userData = [
                 'username' => $request->username,
-                'email' => $request->email,
-                'phone' => $request->phone
-            ]);
-
-            $user = User::create([
-                'username' => $request->username,
+                'full_name' => $request->full_name,
                 'email' => $request->email,
                 'phone' => $request->phone,
                 'password' => Hash::make($request->password),
+                'address' => $request->address,
+                'birth_date' => $request->birth_date,
                 'otp' => $otp,
                 'otp_expires_at' => $otpExpires,
-                'otp_attempts' => 0
-            ]);
+            ];
 
-            try {
-                Mail::to($user->email)->send(new OtpMail($otp));
-                \Log::info('OTP email sent successfully to: ' . $user->email);
-                
-                return response()->json([
-                    'success' => true,
-                    'message' => 'OTP has been sent to your email',
-                    'data' => [
-                        'email' => $user->email
-                    ]
-                ], 201);
-            } catch (\Exception $e) {
-                \Log::error('Failed to send OTP email:', [
-                    'error' => $e->getMessage(),
-                    'user_id' => $user->id
-                ]);
-                
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Account created but failed to send OTP. Please contact support.',
-                    'data' => [
-                        'email' => $user->email
-                    ]
-                ], 201);
-            }
+            Cache::put('user_registration_' . $request->email, $userData, now()->addMinutes(10));
 
+            Mail::to($request->email)->send(new OtpMail($otp));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'User registered successfully. OTP has been sent to your email.',
+                'data' => ['email' => $request->email]
+            ], 201);
         } catch (\Exception $e) {
-            \Log::error('Registration error:', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            
             return response()->json([
                 'success' => false,
                 'message' => 'Registration failed. Please try again later.',
@@ -107,9 +76,6 @@ class AuthController extends Controller
 
     /**
      * Login user
-     * 
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
      */
     public function login(Request $request)
     {
@@ -127,14 +93,27 @@ class AuthController extends Controller
                 ], 422);
             }
 
-            $credentials = $request->only('username', 'password');
-            $user = User::where('username', $credentials['username'])->first();
+            $user = User::where('username', $request->username)->first();
 
-            if (!$user || !Hash::check($credentials['password'], $user->password)) {
+            if (!$user) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid credentials'
+                    'message' => 'User not found. Please ensure you have completed the registration and OTP verification process.'
+                ], 404);
+            }
+
+            if (!Hash::check($request->password, $user->password)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid password. Please try again.'
                 ], 401);
+            }
+
+            if (!$user->email_verified_at) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Email not verified. Please verify your email before logging in.'
+                ], 403);
             }
 
             $token = $user->createToken('auth_token')->plainTextToken;
@@ -142,14 +121,9 @@ class AuthController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Login successful',
-                'data' => [
-                    'user' => $user,
-                    'token' => $token
-                ]
+                'data' => ['user' => $user, 'token' => $token]
             ], 200);
-
         } catch (\Exception $e) {
-            \Log::error('Login error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Login failed',
@@ -160,101 +134,67 @@ class AuthController extends Controller
 
     /**
      * Verify OTP code
-     * 
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
      */
     public function verifyOtp(Request $request)
     {
         try {
-            $validator = Validator::make($request->all(), [
+            $request->validate([
                 'email' => 'required|email',
-                'otp' => 'required|string|size:6',
+                'otp' => 'required|digits:6',
             ]);
 
-            if ($validator->fails()) {
+            $userData = Cache::get('user_registration_' . $request->email);
+
+            if (!$userData) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Validation failed',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            $user = User::where('email', $request->email)->first();
-
-            if (!$user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'User not found'
-                ], 404);
-            }
-
-            // Cek jumlah percobaan
-            if ($user->otp_attempts >= self::MAX_OTP_ATTEMPTS) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Too many attempts. Please request a new OTP.'
-                ], 429);
-            }
-
-            // Increment percobaan
-            $user->increment('otp_attempts');
-
-            // Cek OTP
-            if ($user->otp !== $request->otp) {
-                $remainingAttempts = self::MAX_OTP_ATTEMPTS - $user->otp_attempts;
-                return response()->json([
-                    'success' => false,
-                    'message' => "Invalid OTP. {$remainingAttempts} attempts remaining."
+                    'message' => 'Invalid or expired OTP. Please try again.',
                 ], 400);
             }
 
-            // Cek expired
-            if ($user->otp_expires_at < now()) {
+            if ($userData['otp'] !== $request->otp) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'OTP has expired. Please request a new one.'
+                    'message' => 'Invalid OTP. Please try again.',
                 ], 400);
             }
 
-            // Verifikasi berhasil
-            $user->otp = null;
-            $user->otp_expires_at = null;
-            $user->otp_attempts = 0;
-            $user->email_verified_at = now();
-            $user->save();
+            if (now()->greaterThan($userData['otp_expires_at'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Expired OTP. Please request a new one.',
+                ], 400);
+            }
 
-            // Generate token dengan expiry
-            $token = $user->createToken('auth_token', ['*'], now()->addDays(7))->plainTextToken;
+            // Save user data to the database
+            $user = User::create([
+                'username' => $userData['username'],
+                'full_name' => $userData['full_name'],
+                'email' => $userData['email'],
+                'phone' => $userData['phone'],
+                'password' => $userData['password'],
+                'address' => $userData['address'],
+                'birth_date' => $userData['birth_date'],
+                'email_verified_at' => now(),
+            ]);
+
+            Cache::forget('user_registration_' . $request->email);
 
             return response()->json([
                 'success' => true,
-                'message' => 'OTP verified successfully',
-                'data' => [
-                    'user' => $user,
-                    'token' => $token
-                ]
-            ]);
-
+                'message' => 'OTP verified successfully. Please log in to your account.',
+                'data' => $user
+            ], 200);
         } catch (\Exception $e) {
-            \Log::error('OTP verification error:', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            
             return response()->json([
                 'success' => false,
-                'message' => 'Verification failed. Please try again.',
-                'debug' => config('app.debug') ? $e->getMessage() : null
+                'message' => 'An error occurred during verification. Please try again.',
             ], 500);
         }
     }
 
     /**
      * Resend OTP
-     * 
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
      */
     public function resendOtp(Request $request)
     {
@@ -273,73 +213,42 @@ class AuthController extends Controller
 
             $user = User::where('email', $request->email)->first();
 
-            // Generate new OTP
-            $otp = strval(hexdec(bin2hex(random_bytes(3))) % 1000000);
-            $otp = str_pad($otp, 6, '0', STR_PAD_LEFT);
-            $otpExpires = now()->addMinutes(5);
+            $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
+            $otpExpires = now()->addMinutes(3);
 
-            // Update user with new OTP
-            $user->otp = $otp;
-            $user->otp_expires_at = $otpExpires;
-            $user->otp_attempts = 0;
-            $user->save();
-
-            try {
-                // Send new OTP email
-                Mail::to($user->email)->send(new OtpMail($otp));
-                \Log::info('New OTP email sent successfully to: ' . $user->email);
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'OTP baru telah dikirim ke email Anda',
-                ]);
-            } catch (\Exception $e) {
-                \Log::error('Failed to send new OTP email:', [
-                    'error' => $e->getMessage(),
-                    'user_id' => $user->id
-                ]);
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Gagal mengirim OTP baru. Silakan coba lagi.',
-                ], 500);
-            }
-
-        } catch (\Exception $e) {
-            \Log::error('Resend OTP error:', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+            $user->update([
+                'otp' => $otp,
+                'otp_expires_at' => $otpExpires,
+                'otp_attempts' => 0,
             ]);
-            
+
+            Mail::to($user->email)->send(new OtpMail($otp));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'OTP has been resent to your email.',
+            ]);
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memproses permintaan. Silakan coba lagi.',
-                'debug' => config('app.debug') ? $e->getMessage() : null
+                'message' => 'Failed to resend OTP. Please try again.',
             ], 500);
         }
     }
 
     /**
      * Get authenticated user
-     * 
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
      */
     public function user(Request $request)
     {
         return response()->json([
             'success' => true,
-            'data' => [
-                'user' => $request->user()
-            ]
+            'data' => ['user' => $request->user()]
         ]);
     }
 
     /**
      * Logout user
-     * 
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
      */
     public function logout(Request $request)
     {
@@ -353,13 +262,9 @@ class AuthController extends Controller
 
     /**
      * Update user profile
-     * 
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
      */
     public function updateProfile(Request $request)
     {
-        // Validate input data
         $validator = Validator::make($request->all(), [
             'name' => 'nullable|string|max:255',
             'email' => 'nullable|string|email|max:255|unique:users,email,' . $request->user()->id,
@@ -376,37 +281,63 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // Update user
         $user = $request->user();
-        
-        if ($request->has('name')) {
-            $user->name = $request->name;
-        }
-        
-        if ($request->has('email')) {
-            $user->email = $request->email;
-        }
-        
-        if ($request->has('phone')) {
-            $user->phone = $request->phone;
-        }
-        
-        if ($request->has('address')) {
-            $user->address = $request->address;
-        }
-        
-        if ($request->has('birth_date')) {
-            $user->birth_date = $request->birth_date;
-        }
-        
-        $user->save();
+        $user->update($request->only(['name', 'email', 'phone', 'address', 'birth_date']));
 
         return response()->json([
             'success' => true,
             'message' => 'Profile updated successfully',
-            'data' => [
-                'user' => $user
-            ]
+            'data' => ['user' => $user]
         ]);
+    }
+
+    /**
+     * Get user by email
+     */
+    public function getUserByEmail($email)
+    {
+        try {
+            $user = User::where('email', $email)->first();
+
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not found',
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $user,
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching user data.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Truncate the users table
+     * 
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function truncateUsers()
+    {
+        try {
+            DB::table('users')->truncate(); // Truncate the users table
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Users table has been truncated. Auto-increment ID has been reset.'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to truncate users table.',
+                'debug_message' => $e->getMessage()
+            ], 500);
+        }
     }
 }

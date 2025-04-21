@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Foundation\Auth\VerifiesEmails;
+use Illuminate\Http\Request;
+use App\Models\User;
 
 class VerificationController extends Controller
 {
@@ -37,5 +39,29 @@ class VerificationController extends Controller
         $this->middleware('auth');
         $this->middleware('signed')->only('verify');
         $this->middleware('throttle:6,1')->only('verify', 'resend');
+    }
+
+    public function verify(Request $request)
+    {
+        $user = $request->user();
+
+        if ($user->hasVerifiedEmail()) {
+            return response()->json(['message' => 'Email already verified.'], 200);
+        }
+
+        if ($user->markEmailAsVerified()) {
+            // Insert user data into the users table
+            \DB::table('users')->updateOrInsert(
+                ['email' => $user->email], // Ensure no duplicate entries
+                [
+                    'username' => $user->username,
+                    'password' => $user->password,
+                    'email_verified_at' => now(),
+                    // Add other fields as necessary
+                ]
+            );
+        }
+
+        return response()->json(['message' => 'Email successfully verified.'], 200);
     }
 }

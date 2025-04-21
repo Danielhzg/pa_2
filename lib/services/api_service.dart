@@ -151,32 +151,66 @@ class ApiService {
         },
       );
 
-      print('Carousel API Response Body: ${response.body}'); // Debugging log
+      print('Carousel API Response Status: ${response.statusCode}');
+      print('Carousel API Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
-        final List<dynamic>? responseData = json.decode(response.body);
+        dynamic decodedResponse = json.decode(response.body);
+        List<dynamic> carouselData = [];
 
-        if (responseData != null) {
-          return responseData.map((item) {
-            return {
-              'id': item['id'] ?? 0,
-              'title': item['title'] ?? 'No Title',
-              'description': item['description'] ?? 'No Description',
-              'image': item['image'] ?? '',
-              'order': item['order'] ?? 0,
-            };
-          }).toList();
-        } else {
-          print('Response data is null');
-          return []; // Return an empty list if data is null
+        // Periksa struktur respons
+        if (decodedResponse is Map) {
+          if (decodedResponse.containsKey('data') &&
+              decodedResponse['data'] is List) {
+            // Format respons dengan 'data' sebagai key
+            carouselData = decodedResponse['data'];
+          } else if (decodedResponse.containsKey('carousels') &&
+              decodedResponse['carousels'] is List) {
+            // Format respons dengan 'carousels' sebagai key
+            carouselData = decodedResponse['carousels'];
+          }
+        } else if (decodedResponse is List) {
+          // Format respons langsung sebagai array
+          carouselData = decodedResponse;
         }
+
+        // Konversi data carousel ke format yang seragam
+        final List<Map<String, dynamic>> result = [];
+        for (var item in carouselData) {
+          // Log setiap item carousel untuk debugging detail
+          print('Processing carousel item: ${item.toString()}');
+
+          var imageValue = item['image']?.toString() ?? '';
+          print('Carousel image path: $imageValue');
+
+          // Cek secara khusus untuk carousel promo 10%
+          if (item['title']?.toString().contains('10%') == true ||
+              item['description']?.toString().contains('10%') == true) {
+            print('FOUND PROMO 10% CAROUSEL: ${item.toString()}');
+          }
+
+          result.add({
+            'id': item['id'] is String
+                ? int.tryParse(item['id']) ?? 0
+                : (item['id'] ?? 0),
+            'title': item['title']?.toString() ?? 'No Title',
+            'description': item['description']?.toString() ?? 'No Description',
+            'image': imageValue,
+            'order': item['order'] is String
+                ? int.tryParse(item['order']) ?? 0
+                : (item['order'] ?? 0),
+          });
+        }
+
+        print('Processed ${result.length} carousel items');
+        return result;
       } else {
         print('Failed to load carousels: ${response.statusCode}');
-        return []; // Return an empty list on error
+        return [];
       }
     } catch (e) {
       print('Error fetching carousels: $e');
-      return []; // Return an empty list on error
+      return [];
     }
   }
 }
