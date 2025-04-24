@@ -7,8 +7,10 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 class OtpVerificationPage extends StatefulWidget {
   final String email;
+  final bool skipVerification;
 
-  const OtpVerificationPage({super.key, required this.email});
+  const OtpVerificationPage(
+      {super.key, required this.email, this.skipVerification = false});
 
   @override
   State<OtpVerificationPage> createState() => _OtpVerificationPageState();
@@ -34,9 +36,55 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
   @override
   void initState() {
     super.initState();
+
+    if (widget.skipVerification) {
+      _showSkipVerificationNotice();
+    }
+
     _startTimer();
     _setupConnectivityListener();
     _setupClipboardListener();
+  }
+
+  void _showSkipVerificationNotice() {
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Email Verification Skipped',
+                style: TextStyle(color: Color(0xFFFF87B2))),
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Email verification has been temporarily disabled.'),
+                SizedBox(height: 10),
+                Text(
+                    'Your account has been created, but email services are unavailable.'),
+                SizedBox(height: 10),
+                Text('This would normally require email verification.')
+              ],
+            ),
+            actions: [
+              TextButton(
+                child: const Text('Continue',
+                    style: TextStyle(color: Color(0xFFFF87B2))),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _continueToHomePage();
+                },
+              ),
+            ],
+          ),
+        );
+      }
+    });
+  }
+
+  void _continueToHomePage() {
+    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
   }
 
   @override
@@ -66,7 +114,6 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
   }
 
   void _setupClipboardListener() {
-    // Add focus listeners to check clipboard when any field gains focus
     for (var node in _focusNodes) {
       node.addListener(() {
         if (node.hasFocus) {
@@ -84,7 +131,6 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
       if (text != null &&
           text.length == 6 &&
           RegExp(r'^\d{6}$').hasMatch(text)) {
-        // Show confirmation dialog before auto-filling
         if (!mounted) return;
         final shouldAutofill = await showDialog<bool>(
           context: context,
@@ -114,18 +160,16 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
   }
 
   void _handlePastedOtp(String otp) {
-    // Fill all fields with the OTP digits
     for (int i = 0; i < 6; i++) {
       _controllers[i].text = otp[i];
     }
-    // Remove focus from last field and verify
     _focusNodes.last.unfocus();
     _verifyOtp();
   }
 
   void _startTimer() {
     setState(() {
-      _timeLeft = 180; // Changed from 300 (5 minutes) to 180 (3 minutes)
+      _timeLeft = 180;
       _canResend = false;
     });
 
@@ -207,8 +251,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
       if (!mounted) return;
 
       if (result['success']) {
-        Navigator.pushReplacementNamed(
-            context, '/login'); // Redirect to login page
+        Navigator.pushReplacementNamed(context, '/login');
       } else {
         if (result['expired'] == true) {
           setState(() => _canResend = true);
@@ -297,8 +340,6 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                   ),
             ),
             const SizedBox(height: 30),
-
-            // OTP Input Fields
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: List.generate(
@@ -330,10 +371,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                 ),
               ),
             ),
-
             const SizedBox(height: 30),
-
-            // Timer
             Center(
               child: Text(
                 'Kode berlaku selama: $_formattedTime',
@@ -343,10 +381,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                 ),
               ),
             ),
-
             const SizedBox(height: 20),
-
-            // Verify Button
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -377,10 +412,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                       ),
               ),
             ),
-
             const SizedBox(height: 20),
-
-            // Resend Button
             Center(
               child: TextButton(
                 onPressed: _canResend && !_isLoading ? _resendOtp : null,

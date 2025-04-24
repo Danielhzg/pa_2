@@ -18,9 +18,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
-  final _districtController = TextEditingController();
   final _cityController = TextEditingController();
-  final _postalCodeController = TextEditingController();
   final _birthDateController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -40,9 +38,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
         // Format the address in a structured way for easier parsing
         final formattedAddress = "${_addressController.text.trim()}, "
-            "${_districtController.text.trim()}, "
-            "${_cityController.text.trim()}, "
-            "${_postalCodeController.text.trim()}";
+            "${_cityController.text.trim()}";
 
         print('Register button tapped');
         print('Username: ${_usernameController.text.trim()}');
@@ -82,6 +78,139 @@ class _RegisterPageState extends State<RegisterPage> {
             errorMessage = result['message'];
           }
 
+          // Check for database connection errors
+          if (result.containsKey('debug') && result['debug'] != null) {
+            var debugMsg = result['debug'].toString();
+
+            // Check for SMTP/Email errors
+            if (debugMsg.contains('Failed to authenticate on SMTP server') ||
+                debugMsg.contains('Username and Password not accepted') ||
+                debugMsg.contains('BadCredentials')) {
+              // SMTP authentication error
+              errorMessage =
+                  'Email verification service is currently unavailable. Your account has been created but email verification is not working.';
+
+              // Show dialog with detailed error message and instructions
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Email Service Error',
+                      style: TextStyle(color: Color(0xFFFF87B2))),
+                  content: const SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                            'Your account was created successfully, but we could not send a verification email.'),
+                        SizedBox(height: 8),
+                        Text(
+                            'You can still use the app, but you may not receive email notifications.'),
+                        SizedBox(height: 16),
+                        Text('For administrators:',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('• Check SMTP credentials in .env file'),
+                        Text('• Check if 2-factor authentication is enabled'),
+                        Text('• Generate an app password for Gmail'),
+                        Text('• Or use Mailtrap for development testing'),
+                        SizedBox(height: 12),
+                        Text(
+                            'For more details, see admin-bloom_bouqet/smtp_setup.txt'),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      child: const Text('Continue to App',
+                          style: TextStyle(color: Color(0xFFFF87B2))),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        // Navigate to main page after registration instead of OTP verification
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => OtpVerificationPage(
+                              email: _emailController.text.trim(),
+                              skipVerification:
+                                  true, // Add this parameter to OtpVerificationPage
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              );
+              return; // Skip showing the snackbar and other error processing
+            } else if (debugMsg.contains('SQLSTATE[HY000] [2002]') ||
+                debugMsg.contains('target machine actively refused it') ||
+                debugMsg.contains('No connection could be made')) {
+              // Database connection error
+              errorMessage =
+                  'Cannot connect to the database server. Please check if MySQL is running on the correct port or ask an administrator for help.';
+
+              // Show dialog with detailed error message and instructions
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Database Connection Error',
+                      style: TextStyle(color: Color(0xFFFF87B2))),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                            'Cannot connect to the database. Please check:'),
+                        const SizedBox(height: 8),
+                        const Text('• If MySQL server is running'),
+                        const Text(
+                            '• If MySQL is using the correct port (3307)'),
+                        const Text(
+                            '• If the database "admin_bloom_bouqet" exists'),
+                        const SizedBox(height: 12),
+                        const Text('To fix this issue:',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        const Text('Option 1: Run the database setup script'),
+                        const Text('1. Open command prompt'),
+                        const Text(
+                            '2. Navigate to the admin-bloom_bouqet folder'),
+                        const Text('3. Run: php database_setup.php'),
+                        const Text(
+                            '4. The script will create the database for you'),
+                        const SizedBox(height: 8),
+                        const Text('Option 2: Manual setup'),
+                        const Text('1. Open XAMPP Control Panel'),
+                        const Text('2. Make sure MySQL is running'),
+                        const Text(
+                            '3. Open phpMyAdmin (http://localhost/phpmyadmin)'),
+                        const Text(
+                            '4. Click "New" in the sidebar to create a new database'),
+                        const Text(
+                            '5. Enter "admin_bloom_bouqet" as the database name'),
+                        const Text('6. Click "Create"'),
+                        const Text('7. Then restart the Laravel server with:'),
+                        const Text('   php artisan serve'),
+                        const SizedBox(height: 12),
+                        const Text('Technical details:',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(debugMsg, style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      child: const Text('OK',
+                          style: TextStyle(color: Color(0xFFFF87B2))),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+
           if (result.containsKey('details') && result['details'] is Map) {
             final details = result['details'] as Map;
 
@@ -111,9 +240,19 @@ class _RegisterPageState extends State<RegisterPage> {
         }
       } catch (e) {
         print('Exception in register handler: $e');
+
+        // Check if this is a database connection error
+        String errorMessage = 'Error: $e';
+        if (e.toString().contains('target machine actively refused it') ||
+            e.toString().contains('Connection refused') ||
+            e.toString().contains('No connection could be made')) {
+          errorMessage =
+              'Cannot connect to the database server. Please check if MySQL is running on the correct port.';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
+            content: Text(errorMessage),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -350,32 +489,6 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
                 const SizedBox(height: 16),
 
-                // District field
-                TextFormField(
-                  controller: _districtController,
-                  decoration: InputDecoration(
-                    labelText: 'District',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFFF87B2)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide:
-                          const BorderSide(color: Color(0xFFFF87B2), width: 2),
-                    ),
-                    prefixIcon:
-                        const Icon(Icons.location_on, color: Color(0xFFFF87B2)),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your district';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
                 // City field
                 TextFormField(
                   controller: _cityController,
@@ -396,36 +509,6 @@ class _RegisterPageState extends State<RegisterPage> {
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Please enter your city';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // Postal Code field
-                TextFormField(
-                  controller: _postalCodeController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                  ],
-                  decoration: InputDecoration(
-                    labelText: 'Postal Code',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFFF87B2)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide:
-                          const BorderSide(color: Color(0xFFFF87B2), width: 2),
-                    ),
-                    prefixIcon: const Icon(Icons.markunread_mailbox,
-                        color: Color(0xFFFF87B2)),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your postal code';
                     }
                     return null;
                   },
@@ -622,9 +705,7 @@ class _RegisterPageState extends State<RegisterPage> {
     _emailController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
-    _districtController.dispose();
     _cityController.dispose();
-    _postalCodeController.dispose();
     _birthDateController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();

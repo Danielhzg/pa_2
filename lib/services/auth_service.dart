@@ -7,9 +7,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 
 class AuthService extends ChangeNotifier {
-  // Base API URL - Change this to your Laravel API URL
-  static const String _baseUrl =
-      'http://10.0.2.2:8000/api'; // Sesuaikan dengan port 8000
+  // Base API URLs - Try multiple possible configurations
+  // This helps ensure that at least one URL works depending on the environment
+  static final List<String> _baseUrls = [
+    'http://10.0.2.2:8000/api', // Android emulator pointing to localhost
+    'http://localhost:8000/api', // Direct localhost
+    'http://127.0.0.1:8000/api', // Alternative localhost
+    'http://192.168.0.106:8000/api', // Use your actual computer's IP address
+    'http://192.168.1.5:8000/api', // Another common LAN IP
+    'http://192.168.43.41:8000/api', // Hotspot IP address pattern
+  ];
+
+  // The URL that successfully connected
+  String? _workingBaseUrl;
 
   User? _currentUser;
   String? _token;
@@ -36,6 +46,10 @@ class AuthService extends ChangeNotifier {
     try {
       await _loadUserData();
       _initialized = true;
+
+      // Test which base URL works
+      await _testBaseUrls();
+
       // Complete the initialization future
       _initCompleter.complete();
       // No notifyListeners() here to avoid build-time notification
@@ -43,6 +57,101 @@ class AuthService extends ChangeNotifier {
       print('Error initializing AuthService: $e');
       _initialized = true;
       _initCompleter.completeError(e);
+    }
+  }
+
+  // Test which base URL works
+  Future<void> _testBaseUrls() async {
+    bool found = false;
+
+    for (var baseUrl in _baseUrls) {
+      try {
+        print('Testing API connection to: $baseUrl');
+
+        // Try a simple GET request first to test connectivity
+        final testUrl = '$baseUrl/v1/ping';
+        final response = await http
+            .get(Uri.parse(testUrl))
+            .timeout(const Duration(seconds: 3));
+
+        if (response.statusCode == 200) {
+          _workingBaseUrl = baseUrl;
+          print('Found working API URL: $_workingBaseUrl');
+          found = true;
+          break;
+        }
+      } catch (e) {
+        try {
+          // Fallback to testing without v1 prefix
+          final testUrl = '$baseUrl/ping';
+          final response = await http
+              .get(Uri.parse(testUrl))
+              .timeout(const Duration(seconds: 3));
+
+          if (response.statusCode == 200) {
+            _workingBaseUrl = baseUrl;
+            print('Found working API URL (without v1): $_workingBaseUrl');
+            found = true;
+            break;
+          }
+        } catch (e2) {
+          print('Testing $baseUrl failed: $e2');
+        }
+      }
+    }
+
+    if (!found) {
+      // If no URL works with ping endpoint, we'll just try them all one by one for actual requests
+      _workingBaseUrl = _baseUrls.first;
+      print(
+          'No working URL found through ping test, defaulting to: $_workingBaseUrl');
+
+      // Save all URLs to try them during API calls
+      print('Will try all URLs during API calls');
+    }
+  }
+
+  // Get the current base URL, with fallback
+  String get baseUrl {
+    return _workingBaseUrl ?? _baseUrls.first;
+  }
+
+  // Try a request with multiple base URLs
+  Future<http.Response> _tryRequestWithMultipleUrls({
+    required String endpoint,
+    required Future<http.Response> Function(String url) requestFunction,
+  }) async {
+    // First try with the known working URL
+    try {
+      final url = '$baseUrl/$endpoint';
+      return await requestFunction(url).timeout(const Duration(seconds: 15));
+    } catch (e) {
+      print('Failed with primary URL, trying alternatives: $e');
+
+      // If that fails, try all other URLs
+      for (var baseUrlToTry in _baseUrls) {
+        if (baseUrlToTry == baseUrl) continue; // Skip the one we already tried
+
+        try {
+          final url = '$baseUrlToTry/$endpoint';
+          print('Trying alternative URL: $url');
+          final response =
+              await requestFunction(url).timeout(const Duration(seconds: 15));
+
+          // If successful, update the working URL
+          _workingBaseUrl = baseUrlToTry;
+          print('Found working URL: $_workingBaseUrl');
+
+          return response;
+        } catch (e) {
+          print('Failed with URL $baseUrlToTry: $e');
+          continue;
+        }
+      }
+
+      // If all URLs fail, rethrow the exception
+      throw Exception(
+          'Failed to connect to any API endpoint. Please check your internet connection and try again.');
     }
   }
 
@@ -93,7 +202,6 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      const url = '$_baseUrl/v1/register';
       final body = {
         'username': username,
         'full_name': fullName,
@@ -106,19 +214,57 @@ class AuthService extends ChangeNotifier {
       };
 
       print('Attempting registration with:');
-      print('URL: $url');
       print('Body: ${json.encode(body)}');
 
-      final response = await http
-          .post(
+      // Try to make registration request with multiple possible endpoints
+      http.Response response;
+
+      try {
+        // First try with v1 prefix
+        response = await _tryRequestWithMultipleUrls(
+          endpoint: 'v1/register',
+          requestFunction: (url) => http.post(
             Uri.parse(url),
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json'
             },
             body: json.encode(body),
-          )
-          .timeout(const Duration(seconds: 30));
+          ),
+        );
+      } catch (e) {
+        // Check for specific database connection errors
+        if (e.toString().contains('target machine actively refused it') ||
+            e.toString().contains('Connection refused') ||
+            e.toString().contains('No connection could be made')) {
+          print('Database connection error detected: $e');
+          _isLoading = false;
+          notifyListeners();
+
+          // Return user-friendly message for database connection issues
+          return {
+            'success': false,
+            'message':
+                'Cannot connect to the database. Please check if the database server is running and try again.',
+            'debug': e.toString()
+          };
+        }
+
+        print('All v1 endpoints failed, trying without prefix: $e');
+
+        // If all v1 endpoints fail, try without prefix
+        response = await _tryRequestWithMultipleUrls(
+          endpoint: 'register',
+          requestFunction: (url) => http.post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: json.encode(body),
+          ),
+        );
+      }
 
       print('Register Response:');
       print('Status Code: ${response.statusCode}');
@@ -130,34 +276,72 @@ class AuthService extends ChangeNotifier {
         return {
           'success': false,
           'message': 'Server error. Please try again later.',
-          'debug': response.body.substring(0, 100)
+          'debug': response.body
         };
       }
 
+      String responseBody = response.body.trim();
+      if (responseBody.isEmpty) {
+        return {
+          'success': false,
+          'message': 'The server returned an empty response.',
+          'debug':
+              'Empty response body with status code: ${response.statusCode}'
+        };
+      }
+
+      // Check content type
       final contentType = response.headers['content-type'];
       if (contentType == null || !contentType.contains('application/json')) {
         print('Invalid content type: $contentType');
         return {
           'success': false,
           'message': 'Server returned invalid response format',
-          'debug': response.body.substring(0, 100)
+          'debug': responseBody
         };
       }
 
-      final responseData = json.decode(response.body);
-      print('Parsed response data: $responseData');
+      try {
+        final responseData = json.decode(responseBody);
+        print('Parsed response data: $responseData');
 
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return {
-          'success': true,
-          'message': responseData['message'] ?? 'Registration successful',
-          'data': responseData['data'],
-        };
-      } else {
+        if (response.statusCode == 201 || response.statusCode == 200) {
+          return {
+            'success': true,
+            'message': responseData['message'] ?? 'Registration successful',
+            'data': responseData['data'],
+          };
+        } else {
+          // Check for validation errors
+          if (responseData.containsKey('errors') &&
+              responseData['errors'] is Map) {
+            final errors = responseData['errors'] as Map;
+            if (errors.isNotEmpty) {
+              final firstErrorField = errors.keys.first;
+              final firstErrorMessage = errors[firstErrorField] is List
+                  ? errors[firstErrorField][0]
+                  : errors[firstErrorField].toString();
+
+              return {
+                'success': false,
+                'message': firstErrorMessage,
+                'details': responseData,
+              };
+            }
+          }
+
+          return {
+            'success': false,
+            'message': responseData['message'] ?? 'Registration failed',
+            'details': responseData,
+          };
+        }
+      } catch (e) {
+        print('Error parsing JSON: $e');
         return {
           'success': false,
-          'message': responseData['message'] ?? 'Registration failed',
-          'details': responseData,
+          'message': 'Could not process server response',
+          'debug': 'JSON parse error: $e, Response: $responseBody',
         };
       }
     } on FormatException catch (e) {
@@ -203,22 +387,44 @@ class AuthService extends ChangeNotifier {
 
     try {
       print('Attempting login with username: $username');
-      print('Login endpoint: $_baseUrl/v1/login');
 
-      final response = await http
-          .post(
-            Uri.parse(
-                '$_baseUrl/v1/login'), // Menggunakan endpoint v1/login untuk konsistensi dengan endpoint lainnya
+      final body = {
+        'username': username,
+        'password': password,
+      };
+
+      // Try to make login request with multiple possible endpoints
+      http.Response response;
+
+      try {
+        // First try with v1 prefix
+        response = await _tryRequestWithMultipleUrls(
+          endpoint: 'v1/login',
+          requestFunction: (url) => http.post(
+            Uri.parse(url),
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json'
             },
-            body: json.encode({
-              'username': username,
-              'password': password,
-            }),
-          )
-          .timeout(const Duration(seconds: 15));
+            body: json.encode(body),
+          ),
+        );
+      } catch (e) {
+        print('All v1 login endpoints failed, trying without prefix: $e');
+
+        // If all v1 endpoints fail, try without prefix
+        response = await _tryRequestWithMultipleUrls(
+          endpoint: 'login',
+          requestFunction: (url) => http.post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: json.encode(body),
+          ),
+        );
+      }
 
       print('Login Response Status: ${response.statusCode}');
       print('Login Response Body: ${response.body}');
@@ -277,7 +483,7 @@ class AuthService extends ChangeNotifier {
     try {
       if (_token != null) {
         final response = await http.post(
-          Uri.parse('$_baseUrl/logout'),
+          Uri.parse('$baseUrl/v1/logout'),
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $_token',
@@ -328,9 +534,11 @@ class AuthService extends ChangeNotifier {
     try {
       // Mencoba mengambil data profile dari beberapa endpoint berbeda
       List<String> endpoints = [
-        '$_baseUrl/v1/profile', // Endpoint utama untuk profile
-        '$_baseUrl/v1/user-profile', // Alternatif endpoint untuk profile
-        '$_baseUrl/user' // Endpoint fallback untuk user
+        '$baseUrl/v1/profile', // Primary endpoint
+        '$baseUrl/profile', // Fallback without v1
+        '$baseUrl/v1/user-profile', // Alternative endpoint
+        '$baseUrl/v1/user', // Another alternative
+        '$baseUrl/user' // Last fallback
       ];
 
       for (String endpoint in endpoints) {
@@ -416,22 +624,45 @@ class AuthService extends ChangeNotifier {
   // Verify OTP
   Future<Map<String, dynamic>> verifyOtp(String email, String otp) async {
     try {
-      final response = await http
-          .post(
-            Uri.parse('$_baseUrl/v1/verify-otp'),
+      final body = {
+        'email': email,
+        'otp': otp,
+      };
+
+      // Try to make verification request with multiple possible endpoints
+      http.Response response;
+
+      try {
+        // First try with v1 prefix
+        response = await _tryRequestWithMultipleUrls(
+          endpoint: 'v1/verify-otp',
+          requestFunction: (url) => http.post(
+            Uri.parse(url),
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json'
             },
-            body: json.encode({
-              'email': email,
-              'otp': otp,
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
+            body: json.encode(body),
+          ),
+        );
+      } catch (e) {
+        print('All v1 verify-otp endpoints failed, trying without prefix: $e');
+
+        // If all v1 endpoints fail, try without prefix
+        response = await _tryRequestWithMultipleUrls(
+          endpoint: 'verify-otp',
+          requestFunction: (url) => http.post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: json.encode(body),
+          ),
+        );
+      }
 
       final responseData = json.decode(response.body);
-
       print('Response from verifyOtp: $responseData');
 
       if (response.statusCode == 200) {
@@ -450,6 +681,7 @@ class AuthService extends ChangeNotifier {
       return {
         'success': false,
         'message': 'Terjadi kesalahan. Silakan coba lagi.',
+        'debug': e.toString(),
       };
     }
   }
@@ -460,16 +692,38 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http
-          .post(
-            Uri.parse('$_baseUrl/v1/resend-otp'),
+      // Try to make resend OTP request with multiple possible endpoints
+      http.Response response;
+
+      try {
+        // First try with v1 prefix
+        response = await _tryRequestWithMultipleUrls(
+          endpoint: 'v1/resend-otp',
+          requestFunction: (url) => http.post(
+            Uri.parse(url),
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json'
             },
             body: json.encode({'email': email}),
-          )
-          .timeout(const Duration(seconds: 30));
+          ),
+        );
+      } catch (e) {
+        print('All v1 resend-otp endpoints failed, trying without prefix: $e');
+
+        // If all v1 endpoints fail, try without prefix
+        response = await _tryRequestWithMultipleUrls(
+          endpoint: 'resend-otp',
+          requestFunction: (url) => http.post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: json.encode({'email': email}),
+          ),
+        );
+      }
 
       final responseData = json.decode(response.body);
 
@@ -507,6 +761,7 @@ class AuthService extends ChangeNotifier {
       return {
         'success': false,
         'message': 'Terjadi kesalahan. Silakan coba lagi.',
+        'debug': e.toString(),
       };
     } finally {
       _isLoading = false;
@@ -516,13 +771,37 @@ class AuthService extends ChangeNotifier {
 
   Future<Map<String, dynamic>> getUserByEmail(String email) async {
     try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/v1/user/$email'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 30));
+      // Try to get user by email with multiple possible endpoints
+      http.Response response;
+
+      try {
+        // First try with v1 prefix
+        response = await _tryRequestWithMultipleUrls(
+          endpoint: 'v1/user/$email',
+          requestFunction: (url) => http.get(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+          ),
+        );
+      } catch (e) {
+        print(
+            'All v1 getUserByEmail endpoints failed, trying without prefix: $e');
+
+        // If all v1 endpoints fail, try without prefix
+        response = await _tryRequestWithMultipleUrls(
+          endpoint: 'user/$email',
+          requestFunction: (url) => http.get(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+          ),
+        );
+      }
 
       final responseData = json.decode(response.body);
 
@@ -542,6 +821,7 @@ class AuthService extends ChangeNotifier {
       return {
         'success': false,
         'message': 'An error occurred. Please try again.',
+        'debug': e.toString(),
       };
     }
   }

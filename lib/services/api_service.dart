@@ -6,15 +6,149 @@ class ApiService {
   // Gunakan URL API Laravel Anda
   // Untuk emulator Android
   final String baseUrl = 'http://10.0.2.2:8000/api';
+  // final String baseUrl = 'http://localhost:8000/api';
+  // final String baseUrl = 'http://127.0.0.1:8000/api';
+
+  // Additional URLs to try if the main one fails
+  final List<String> fallbackUrls = [
+    'http://10.0.2.2:8000/api',
+    'http://localhost:8000/api',
+    'http://127.0.0.1:8000/api',
+    'http://192.168.0.106:8000/api',
+    'http://192.168.1.5:8000/api'
+  ];
+
+  // Check if database connection is available
+  Future<bool> isDatabaseConnected() async {
+    try {
+      final response = await _tryMultipleUrls('v1/ping',
+          headers: _getHeaders(), timeout: const Duration(seconds: 3));
+
+      if (response.statusCode == 200) {
+        return true;
+      }
+
+      // Try to check the response body for specific database errors
+      try {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        // If there's a specific database connection error message
+        if (responseData.containsKey('error') &&
+            responseData['error']
+                .toString()
+                .contains('SQLSTATE[HY000] [2002]')) {
+          return false;
+        }
+      } catch (e) {
+        // JSON parsing failed, but that doesn't confirm database issues
+        print('Error parsing ping response: $e');
+      }
+
+      return false;
+    } catch (e) {
+      print('Database connectivity check failed: $e');
+      return false;
+    }
+  }
+
+  // Try request with multiple URLs
+  Future<http.Response> _tryMultipleUrls(String endpoint,
+      {Map<String, String>? headers,
+      String? body,
+      String method = 'GET',
+      Duration? timeout}) async {
+    Exception? lastException;
+
+    for (var url in [baseUrl, ...fallbackUrls]) {
+      try {
+        final Uri uri = Uri.parse('$url/$endpoint');
+        http.Response response;
+
+        // Apply timeout if specified
+        Future<http.Response> request;
+
+        switch (method) {
+          case 'POST':
+            request = http.post(uri, headers: headers, body: body);
+            break;
+          case 'PUT':
+            request = http.put(uri, headers: headers, body: body);
+            break;
+          case 'DELETE':
+            request = http.delete(uri, headers: headers);
+            break;
+          default:
+            request = http.get(uri, headers: headers);
+        }
+
+        // Apply timeout if specified
+        if (timeout != null) {
+          response = await request.timeout(timeout);
+        } else {
+          response = await request;
+        }
+
+        // If successful, return the response
+        return response;
+      } catch (e) {
+        print('Error with URL $url: $e');
+        lastException = Exception(e.toString());
+        // Continue to the next URL
+      }
+    }
+
+    // If all URLs fail, throw the last exception
+    throw lastException ?? Exception('Failed to connect to any server URL');
+  }
+
+  // Helper method to create standard headers
+  Map<String, String> _getHeaders() {
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+  }
+
+  // Handle response with common error handling
+  dynamic _handleResponse(http.Response response) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      try {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        if (responseData.containsKey('success') &&
+            responseData['success'] == true) {
+          return responseData['data'] ?? responseData;
+        } else {
+          String message = responseData['message'] ?? 'Unknown error';
+          // Check for database connection issues
+          if (message.contains('SQLSTATE[HY000]') ||
+              response.body.contains('SQLSTATE[HY000]')) {
+            throw Exception(
+                'Database connection error. Please check if MySQL is running.');
+          }
+          throw Exception('API error: $message');
+        }
+      } catch (e) {
+        if (e is FormatException) {
+          throw Exception('Invalid response format from server');
+        }
+        rethrow;
+      }
+    } else {
+      String errorMessage = 'HTTP Error: ${response.statusCode}';
+      try {
+        final Map<String, dynamic> errorData = json.decode(response.body);
+        errorMessage = errorData['message'] ?? errorMessage;
+      } catch (e) {
+        // Use default error message if parsing fails
+      }
+      throw Exception(errorMessage);
+    }
+  }
 
   Future<List<dynamic>> fetchProducts() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/v1/products'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+      final response = await _tryMultipleUrls(
+        'v1/products',
+        headers: _getHeaders(),
       );
 
       if (response.statusCode == 200) {
