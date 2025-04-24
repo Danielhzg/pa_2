@@ -7,12 +7,15 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/product.dart';
 import '../services/auth_service.dart';
 import '../widgets/product_search.dart';
-import 'cart_page.dart';
+import '../utils/image_url_helper.dart'; // Tambahkan import untuk ImageUrlHelper
+import '../providers/favorites_provider.dart'; // Import FavoritesProvider
+import 'cart_page.dart'; // Add this import for CartPage
 import 'chat_page.dart';
 import 'profile_page.dart';
 import 'dart:async';
 import '../services/api_service.dart';
 import '../utils/database_helper.dart';
+import '../providers/cart_provider.dart'; // Tambahkan import untuk CartProvider
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -533,8 +536,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         },
         itemBuilder: (context, index) {
           final banner = _banners[index];
-          final imageUrl =
-              'http://10.0.2.2:8000/storage/${banner['image']}'; // Update API URL for Android emulator
+          final imageUrl = ImageUrlHelper.buildImageUrl(banner['image'] ?? '');
           final title = banner['title'] ?? '';
           final description = banner['description'] ?? '';
 
@@ -875,7 +877,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                               ),
                             ),
                             const SizedBox(width: 4),
-                            // Indikator stok di sebelah nama produk
                             _buildSimpleStockIndicator(product.stock),
                           ],
                         ),
@@ -894,30 +895,88 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                           height: 26,
                           child: ElevatedButton(
                             onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content:
-                                      Text('Added ${product.name} to cart'),
-                                  backgroundColor: primaryColor,
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
+                              if (product.stock > 0) {
+                                // Add to cart functionality
+                                final cartProvider = Provider.of<CartProvider>(
+                                    context,
+                                    listen: false);
+                                cartProvider.addToCart(product, 1);
+
+                                // Show success message
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        const Icon(
+                                          LineIcons.check,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Added ${product.name} to cart',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    backgroundColor: primaryColor,
+                                    behavior: SnackBarBehavior.floating,
+                                    margin: const EdgeInsets.fromLTRB(
+                                        20, 0, 20, 20),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    action: SnackBarAction(
+                                      label: 'VIEW CART',
+                                      textColor: Colors.white,
+                                      onPressed: () {
+                                        setState(() => _selectedIndex =
+                                            1); // Switch to cart page
+                                      },
+                                    ),
+                                    duration: const Duration(seconds: 2),
                                   ),
-                                ),
-                              );
+                                );
+                              } else {
+                                // Show out of stock message
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content:
+                                        Text('${product.name} is out of stock'),
+                                    backgroundColor: Colors.red,
+                                    behavior: SnackBarBehavior.floating,
+                                    margin: const EdgeInsets.fromLTRB(
+                                        20, 0, 20, 20),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
                             },
                             style: ElevatedButton.styleFrom(
                               foregroundColor: Colors.white,
-                              backgroundColor: primaryColor,
+                              backgroundColor: product.stock > 0
+                                  ? primaryColor
+                                  : Colors.grey,
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               padding: EdgeInsets.zero,
                             ),
-                            child: const Text(
-                              'Add to Cart',
-                              style: TextStyle(
+                            child: Text(
+                              product.stock > 0
+                                  ? 'Add to Cart'
+                                  : 'Out of Stock',
+                              style: const TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -1053,19 +1112,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     // Logging untuk debugging URL gambar
     print("Original imageUrl: $imageUrl");
 
-    String finalUrl;
-
-    if (imageUrl.startsWith('http')) {
-      // Jika sudah URL lengkap, gunakan langsung
-      finalUrl = imageUrl;
-    } else {
-      // Jika path relatif, tambahkan base URL dengan format yang benar
-      // Hapus garis miring di awal jika ada untuk mencegah path ganda
-      if (imageUrl.startsWith('/')) {
-        imageUrl = imageUrl.substring(1);
-      }
-      finalUrl = 'http://10.0.2.2:8000/storage/$imageUrl';
-    }
+    // Gunakan ImageUrlHelper untuk membangun URL gambar yang benar
+    String finalUrl = ImageUrlHelper.buildImageUrl(imageUrl);
 
     print("Final URL used: $finalUrl");
 

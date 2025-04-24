@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/product.dart';
+import '../utils/image_url_helper.dart';
+import '../providers/cart_provider.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
@@ -29,32 +32,64 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   Future<void> _addToCart() async {
     try {
-      // In production, use database helper:
-      // final cartItem = CartItem(
-      //   id: DateTime.now().millisecondsSinceEpoch,
-      //   productId: widget.product.id,
-      //   name: widget.product.name,
-      //   price: widget.product.price,
-      //   imageUrl: widget.product.imageUrl,
-      //   quantity: quantity,
-      // );
-      // await DatabaseHelper.instance.addToCart(cartItem, 1);
-
-      await Future.delayed(const Duration(milliseconds: 300));
+      // Menggunakan CartProvider untuk menambahkan produk ke keranjang
+      final cartProvider = Provider.of<CartProvider>(context, listen: false);
+      cartProvider.addToCart(widget.product, quantity);
 
       if (!mounted) return;
 
+      // Enhanced notification with consistent styling
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Added to cart successfully!'),
-          backgroundColor: Colors.green,
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(
+                Icons.check_circle_outline,
+                color: Colors.white,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Added ${widget.product.name} to cart',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFFFF87B2), // primaryColor
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          action: SnackBarAction(
+            label: 'VIEW CART',
+            textColor: Colors.white,
+            onPressed: () {
+              Navigator.pushNamed(context, '/cart');
+            },
+          ),
+          duration: const Duration(seconds: 2),
         ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error adding to cart: $e'),
+          content: Text(
+            'Error adding to cart: $e',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 13),
+          ),
           backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
     }
@@ -90,9 +125,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             Hero(
               tag: 'product-${widget.product.id}',
               child: Image.network(
-                widget.product.imageUrl.startsWith('http')
-                    ? widget.product.imageUrl
-                    : 'http://10.0.2.2:8000/storage/${widget.product.imageUrl}',
+                ImageUrlHelper.buildImageUrl(widget.product.imageUrl),
                 width: double.infinity,
                 height: 300,
                 fit: BoxFit.cover,

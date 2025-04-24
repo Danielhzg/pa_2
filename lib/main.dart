@@ -10,6 +10,8 @@ import 'screens/product_detail_page.dart';
 import 'screens/cart_page.dart';
 import 'screens/chat_page.dart';
 import 'screens/profile_page.dart';
+import 'providers/cart_provider.dart'; // Import CartProvider
+import 'providers/delivery_provider.dart'; // Import DeliveryProvider
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -136,9 +138,19 @@ class ProviderConfig extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<AuthService>(
-      create: (_) => AuthService(),
-      lazy: false,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthService>(
+          create: (_) => AuthService(),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<CartProvider>(
+          create: (_) => CartProvider(),
+        ),
+        ChangeNotifierProvider<DeliveryProvider>(
+          create: (_) => DeliveryProvider(),
+        ),
+      ],
       child: child,
     );
   }

@@ -1,3 +1,5 @@
+import '../utils/image_url_helper.dart';
+
 class Product {
   final int id;
   final String name;
@@ -31,7 +33,8 @@ class Product {
     String imageUrl = 'assets/images/contoh.jpg'; // Default fallback
 
     if (json.containsKey('image') && json['image'] != null) {
-      imageUrl = json['image'].toString();
+      // Gunakan ImageUrlHelper untuk membuat URL gambar yang benar
+      imageUrl = ImageUrlHelper.buildImageUrl(json['image'].toString());
     }
 
     return Product(

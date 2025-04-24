@@ -109,13 +109,29 @@ class ApiService {
 
   Future<List<Product>> searchProducts(String query) async {
     try {
-      final response = await http
-          .get(Uri.parse('http://10.0.2.2:8000/api/products?search=$query'));
+      final response = await http.get(
+        Uri.parse('$baseUrl/v1/products/search?query=$query'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      );
+
+      print('Search API Response Status: ${response.statusCode}');
+      print('Search query: $query');
+
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => Product.fromJson(json)).toList();
+        final Map<String, dynamic> responseData = json.decode(response.body);
+
+        if (responseData['success'] == true && responseData['data'] != null) {
+          final List<dynamic> data = responseData['data'];
+          return data.map((json) => Product.fromJson(json)).toList();
+        } else {
+          // Jika tidak ada data yang ditemukan, kembalikan list kosong
+          return [];
+        }
       } else {
-        throw Exception('Failed to load products');
+        throw Exception('Failed to search products: ${response.statusCode}');
       }
     } catch (e) {
       print('Error searching products: $e');

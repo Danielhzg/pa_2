@@ -29,6 +29,7 @@ Route::prefix('v1')->group(function () {
 
     // Product endpoints
     Route::get('products', [ProductController::class, 'index']); // Get all products
+    Route::get('products/search', [ProductController::class, 'search']); // Search products by query
     Route::get('products/category/{category}', [ProductController::class, 'getByCategory']); // Get products by category
     Route::post('products', [ProductController::class, 'store']); // Add product
     

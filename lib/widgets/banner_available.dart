@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
+import '../utils/image_url_helper.dart'; // Tambahkan import untuk ImageUrlHelper
 
 class BannerAvailable extends StatefulWidget {
   const BannerAvailable({super.key});
@@ -69,7 +70,7 @@ class _BannerAvailableState extends State<BannerAvailable> {
                   children: [
                     CachedNetworkImage(
                       imageUrl:
-                          'http://your-laravel-api-url/storage/${banner['image']}',
+                          ImageUrlHelper.buildImageUrl(banner['image'] ?? ''),
                       placeholder: (context, url) =>
                           const CircularProgressIndicator(),
                       errorWidget: (context, url, error) =>

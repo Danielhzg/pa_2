@@ -18,6 +18,9 @@ class _RegisterPageState extends State<RegisterPage> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
+  final _districtController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _postalCodeController = TextEditingController();
   final _birthDateController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -35,12 +38,18 @@ class _RegisterPageState extends State<RegisterPage> {
         final authService = Provider.of<AuthService>(context, listen: false);
         await authService.initializationFuture;
 
+        // Format the address in a structured way for easier parsing
+        final formattedAddress = "${_addressController.text.trim()}, "
+            "${_districtController.text.trim()}, "
+            "${_cityController.text.trim()}, "
+            "${_postalCodeController.text.trim()}";
+
         print('Register button tapped');
         print('Username: ${_usernameController.text.trim()}');
         print('Full Name: ${_fullNameController.text.trim()}');
         print('Email: ${_emailController.text.trim()}');
         print('Phone: ${_phoneController.text.trim()}');
-        print('Address: ${_addressController.text.trim()}');
+        print('Address: $formattedAddress');
         print('Birth Date: ${_birthDateController.text.trim()}');
 
         final result = await authService.register(
@@ -48,7 +57,7 @@ class _RegisterPageState extends State<RegisterPage> {
           fullName: _fullNameController.text.trim(),
           email: _emailController.text.trim(),
           phone: _phoneController.text.trim(),
-          address: _addressController.text.trim(),
+          address: formattedAddress,
           birthDate: _birthDateController.text.trim(),
           password: _passwordController.text,
           passwordConfirmation: _confirmPasswordController.text,
@@ -304,11 +313,22 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
                 const SizedBox(height: 16),
 
-                // Address field
+                // Address heading
+                const Text(
+                  'Address Information',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFFF87B2),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Street Address field
                 TextFormField(
                   controller: _addressController,
                   decoration: InputDecoration(
-                    labelText: 'Address',
+                    labelText: 'Street Address',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: const BorderSide(color: Color(0xFFFF87B2)),
@@ -321,17 +341,98 @@ class _RegisterPageState extends State<RegisterPage> {
                     prefixIcon:
                         const Icon(Icons.home, color: Color(0xFFFF87B2)),
                   ),
-                  maxLines: 2,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Please enter your address';
+                      return 'Please enter your street address';
                     }
                     return null;
                   },
                 ),
                 const SizedBox(height: 16),
 
-                // Birth date field
+                // District field
+                TextFormField(
+                  controller: _districtController,
+                  decoration: InputDecoration(
+                    labelText: 'District',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFFF87B2)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: Color(0xFFFF87B2), width: 2),
+                    ),
+                    prefixIcon:
+                        const Icon(Icons.location_on, color: Color(0xFFFF87B2)),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your district';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // City field
+                TextFormField(
+                  controller: _cityController,
+                  decoration: InputDecoration(
+                    labelText: 'City',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFFF87B2)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: Color(0xFFFF87B2), width: 2),
+                    ),
+                    prefixIcon: const Icon(Icons.location_city,
+                        color: Color(0xFFFF87B2)),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your city';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Postal Code field
+                TextFormField(
+                  controller: _postalCodeController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
+                  decoration: InputDecoration(
+                    labelText: 'Postal Code',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFFF87B2)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: Color(0xFFFF87B2), width: 2),
+                    ),
+                    prefixIcon: const Icon(Icons.markunread_mailbox,
+                        color: Color(0xFFFF87B2)),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your postal code';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Birth Date field
                 TextFormField(
                   controller: _birthDateController,
                   decoration: InputDecoration(
@@ -521,6 +622,9 @@ class _RegisterPageState extends State<RegisterPage> {
     _emailController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
+    _districtController.dispose();
+    _cityController.dispose();
+    _postalCodeController.dispose();
     _birthDateController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();

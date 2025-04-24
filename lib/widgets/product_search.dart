@@ -3,6 +3,7 @@ import 'dart:ui'; // Add this import for BackdropFilter
 import 'package:line_icons/line_icons.dart'; // Add this import for LineIcons
 import '../models/product.dart';
 import '../services/api_service.dart';
+import '../utils/image_url_helper.dart'; // Import ImageUrlHelper
 
 class ProductSearch extends SearchDelegate<Product?> {
   final ApiService _apiService = ApiService();
@@ -66,25 +67,24 @@ class ProductSearch extends SearchDelegate<Product?> {
 
   @override
   Widget buildResults(BuildContext context) {
+    if (query.isEmpty) {
+      return const Center(child: Text('Enter a search term'));
+    }
+
     return FutureBuilder<List<Product>>(
-      future: _apiService.getAllProducts(),
+      future: _apiService.searchProducts(query),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(
+              child: CircularProgressIndicator(color: primaryColor));
         } else if (snapshot.hasError) {
+          print('Search error: ${snapshot.error}');
           return Center(child: Text('Error: ${snapshot.error}'));
         } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Center(child: Text('No products found.'));
-        }
-
-        final products = snapshot.data!
-            .where((product) =>
-                product.name.toLowerCase().contains(query.toLowerCase()))
-            .toList();
-
-        if (products.isEmpty) {
           return const Center(child: Text('No products match your search.'));
         }
+
+        final products = snapshot.data!;
 
         return GridView.builder(
           padding: const EdgeInsets.all(8.0),
@@ -111,24 +111,19 @@ class ProductSearch extends SearchDelegate<Product?> {
     }
 
     return FutureBuilder<List<Product>>(
-      future: _apiService.getAllProducts(),
+      future: _apiService.searchProducts(query),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(
+              child: CircularProgressIndicator(color: primaryColor));
         } else if (snapshot.hasError) {
+          print('Search suggestion error: ${snapshot.error}');
           return Center(child: Text('Error: ${snapshot.error}'));
         } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return const Center(child: Text('No products match your search.'));
         }
 
-        final products = snapshot.data!
-            .where((product) =>
-                product.name.toLowerCase().contains(query.toLowerCase()))
-            .toList();
-
-        if (products.isEmpty) {
-          return const Center(child: Text('No products match your search.'));
-        }
+        final products = snapshot.data!;
 
         return GridView.builder(
           padding: const EdgeInsets.all(8.0),
@@ -436,50 +431,34 @@ class ProductSearch extends SearchDelegate<Product?> {
   }
 
   Widget _buildProductImage(String imageUrl) {
-    if (imageUrl.startsWith('http')) {
-      return Image.network(
-        imageUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return _buildPlaceholderImage();
-        },
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Center(
-            child: CircularProgressIndicator(
-              value: loadingProgress.expectedTotalBytes != null
-                  ? loadingProgress.cumulativeBytesLoaded /
-                      loadingProgress.expectedTotalBytes!
-                  : null,
-              color: primaryColor,
-            ),
-          );
-        },
-      );
-    } else if (imageUrl.startsWith('products/')) {
-      final String fullUrl = 'http://10.0.2.2:8000/storage/$imageUrl';
-      return Image.network(
-        fullUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return _buildPlaceholderImage();
-        },
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Center(
-            child: CircularProgressIndicator(
-              value: loadingProgress.expectedTotalBytes != null
-                  ? loadingProgress.cumulativeBytesLoaded /
-                      loadingProgress.expectedTotalBytes!
-                  : null,
-              color: primaryColor,
-            ),
-          );
-        },
-      );
-    } else {
-      return _buildPlaceholderImage();
-    }
+    // Logging untuk debugging
+    print("Product original imageUrl: $imageUrl");
+
+    // Gunakan ImageUrlHelper untuk membangun URL gambar yang benar
+    String finalUrl = ImageUrlHelper.buildImageUrl(imageUrl);
+
+    print("Product final URL: $finalUrl");
+
+    return Image.network(
+      finalUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        print("Error loading product image: $error, URL: $finalUrl");
+        return _buildPlaceholderImage();
+      },
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return Center(
+          child: CircularProgressIndicator(
+            value: loadingProgress.expectedTotalBytes != null
+                ? loadingProgress.cumulativeBytesLoaded /
+                    loadingProgress.expectedTotalBytes!
+                : null,
+            color: primaryColor,
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildPlaceholderImage() {

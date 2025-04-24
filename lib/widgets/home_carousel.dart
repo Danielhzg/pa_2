@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart'; // Import untuk CarouselSlider
 import '../services/api_service.dart';
+import '../utils/image_url_helper.dart'; // Import ImageUrlHelper
 
 class HomeCarousel extends StatefulWidget {
   const HomeCarousel({super.key});
@@ -79,35 +80,9 @@ class _HomeCarouselState extends State<HomeCarousel> {
             print(
                 'Processing carousel item in widget: ${item['id']} - ${item['title']}');
 
-            // Ambil path gambar dan buat URL
+            // Ambil path gambar dan gunakan ImageUrlHelper untuk membuat URL lengkap
             var imagePath = item['image']?.toString() ?? '';
-            String imageUrl;
-
-            // Cek apakah ini adalah carousel promo 10%
-            bool isPromo10 =
-                (item['title']?.toString().contains('10%') == true ||
-                    item['description']?.toString().contains('10%') == true);
-
-            if (isPromo10) {
-              print('This is a promo 10% carousel, special handling applied');
-            }
-
-         
-            if (imagePath.startsWith('http')) {
-              // Jika sudah URL lengkap
-              imageUrl = imagePath;
-            } else if (imagePath.isEmpty) {
-              // Jika path kosong, gunakan placeholder
-              imageUrl =
-                  'https://via.placeholder.com/800x400?text=Image+Not+Available';
-              print('Empty image path for carousel ${item['id']}');
-            } else {
-             
-              if (imagePath.startsWith('/')) {
-                imagePath = imagePath.substring(1);
-              }
-              imageUrl = 'http://10.0.2.2:8000/storage/$imagePath';
-            }
+            String imageUrl = ImageUrlHelper.buildImageUrl(imagePath);
 
             print('Final carousel image URL: $imageUrl');
 
