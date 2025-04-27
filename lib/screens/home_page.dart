@@ -310,7 +310,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 child: const Text(
                   'View All',
                   style: TextStyle(
-                    color: primaryColor,
+                    color: Color.fromRGBO(255, 135, 178, 1),
                     fontWeight: FontWeight.w600,
                   ),
                 ),

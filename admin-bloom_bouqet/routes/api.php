@@ -5,6 +5,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\ProductController;
 use App\Http\Controllers\API\CategoryController;
+use App\Http\Controllers\API\PaymentController;
+use App\Http\Controllers\API\OrderController;
 use App\Http\Controllers\CarouselController;
 
 /*
@@ -25,6 +27,12 @@ Route::prefix('v1')->group(function () {
         Route::get('user', [AuthController::class, 'user']);
         Route::post('logout', [AuthController::class, 'logout']);
         Route::post('update-profile', [AuthController::class, 'updateProfile']);
+        
+        // Orders routes that require authentication
+        Route::get('orders', [OrderController::class, 'getUserOrders']);
+        Route::post('orders', [OrderController::class, 'createOrder']);
+        Route::get('orders/{orderId}', [OrderController::class, 'getOrder']);
+        Route::put('orders/{orderId}/status', [OrderController::class, 'updateStatus']);
     });
 
     // Product endpoints
@@ -41,7 +49,17 @@ Route::prefix('v1')->group(function () {
 
     // Fetch user by email
     Route::get('user/{email}', [AuthController::class, 'getUserByEmail'])->name('user.get');
+    
+    // Payment routes
+    Route::post('payments/create', [PaymentController::class, 'createPayment']);
+    Route::get('payments/{orderId}/status', [PaymentController::class, 'checkStatus']);
 });
+
+// Public order creation endpoint for Midtrans
+Route::post('orders/create', [OrderController::class, 'createOrder']);
+
+// Midtrans notification handler
+Route::post('payments/notification', [PaymentController::class, 'notification']);
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();

@@ -104,6 +104,13 @@ class CartProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // Remove only selected items from cart
+  void removeSelectedItems() {
+    _items.removeWhere((item) => item.isSelected);
+    _saveCartToStorage();
+    notifyListeners();
+  }
+
   // Kosongkan keranjang
   void clear() {
     _items = [];

@@ -18,6 +18,7 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _slideAnimation;
   late Animation<double> _rotateAnimation;
   late Animation<double> _bounceAnimation;
+  bool _hasInitialized = false;
 
   @override
   void initState() {
@@ -64,25 +65,38 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    // Start the delayed navigation
-    _startNavigationTimer();
+    // Initialize auth service
+    _initializeAuthService();
+  }
+
+  Future<void> _initializeAuthService() async {
+    // Get auth service
+    final authService = Provider.of<AuthService>(context, listen: false);
+
+    // Wait for initialization
+    await authService.initializationFuture;
+
+    if (mounted) {
+      setState(() {
+        _hasInitialized = true;
+      });
+
+      // Start navigation timer after initialization
+      _startNavigationTimer();
+    }
   }
 
   void _startNavigationTimer() {
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         _controller.reverse().then((_) {
-          // Get the auth service after the splash animation, not during build
-          // Use Future.microtask to ensure this doesn't happen during build
-          Future.microtask(() {
-            final authService =
-                Provider.of<AuthService>(context, listen: false);
-            if (authService.isLoggedIn) {
-              Navigator.pushReplacementNamed(context, '/home');
-            } else {
-              Navigator.pushReplacementNamed(context, '/login');
-            }
-          });
+          // Navigate based on auth status
+          final authService = Provider.of<AuthService>(context, listen: false);
+          if (authService.isLoggedIn) {
+            Navigator.pushReplacementNamed(context, '/home');
+          } else {
+            Navigator.pushReplacementNamed(context, '/login');
+          }
         });
       }
     });

@@ -9,12 +9,14 @@ import '../providers/cart_provider.dart';
 class QRPaymentScreen extends StatefulWidget {
   final double amount;
   final String orderId;
+  final String snapToken;
   final Function(Payment) onPaymentSuccess;
 
   const QRPaymentScreen({
     Key? key,
     required this.amount,
     required this.orderId,
+    required this.snapToken,
     required this.onPaymentSuccess,
   }) : super(key: key);
 
@@ -37,7 +39,7 @@ class _QRPaymentScreenState extends State<QRPaymentScreen> {
   @override
   void initState() {
     super.initState();
-    _generateQRCode();
+    _initQRPayment();
   }
 
   @override
@@ -46,33 +48,29 @@ class _QRPaymentScreenState extends State<QRPaymentScreen> {
     super.dispose();
   }
 
-  Future<void> _generateQRCode() async {
+  Future<void> _initQRPayment() async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // Generate QR code through the API
-      final qrCodeUrl = await _paymentService.generateQRCode(
-        widget.amount,
-        widget.orderId,
-      );
-
-      // Create a dynamic QR code with payment info
-      final qrData = "PAYMENT|${widget.orderId}|${widget.amount}";
+      // Use Snap Token to generate QRIS Code
+      // For demo, we'll generate a QR code with the Snap Token as the content
+      // In a real implementation, this data would be used to display the actual QRIS
+      final qrData =
+          "MIDTRANS|${widget.snapToken}|${widget.orderId}|${widget.amount}";
 
       setState(() {
-        _qrCodeUrl = qrCodeUrl;
         _qrCodeData = qrData;
         _isLoading = false;
       });
 
-      // Process initial payment record
+      // Process payment record
       final payment = await _paymentService.processPayment(
         orderId: widget.orderId,
         amount: widget.amount,
-        paymentMethod: 'QR Code',
-        qrCodeUrl: qrCodeUrl,
+        paymentMethod: 'QRIS',
+        qrCodeUrl: null, // With Midtrans, the QR is generated in the backend
       );
 
       setState(() {
@@ -80,7 +78,7 @@ class _QRPaymentScreenState extends State<QRPaymentScreen> {
       });
 
       // Start checking payment status periodically
-      _startPaymentStatusCheck(payment.id);
+      _startPaymentStatusCheck(widget.orderId);
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -88,31 +86,47 @@ class _QRPaymentScreenState extends State<QRPaymentScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to generate QR code: $e'),
+          content: Text('Failed to initialize QR payment: $e'),
           backgroundColor: Colors.red,
         ),
       );
     }
   }
 
-  void _startPaymentStatusCheck(String paymentId) {
+  void _startPaymentStatusCheck(String orderId) {
     // Check payment status every 5 seconds
     _statusCheckTimer =
         Timer.periodic(const Duration(seconds: 5), (timer) async {
       try {
-        final status = await _paymentService.checkPaymentStatus(paymentId);
+        // Check transaction status with Midtrans
+        final status = await _paymentService.checkTransactionStatus(orderId);
+        final transactionStatus = status['transaction_status'] ?? 'pending';
+
+        String paymentStatus = 'pending';
+        if (transactionStatus == 'settlement' ||
+            transactionStatus == 'capture') {
+          paymentStatus = 'completed';
+        } else if (transactionStatus == 'deny' ||
+            transactionStatus == 'cancel' ||
+            transactionStatus == 'expire') {
+          paymentStatus = 'failed';
+        }
 
         setState(() {
-          _paymentStatus = status;
+          _paymentStatus = paymentStatus;
         });
 
         // If payment is completed, stop checking and notify
-        if (status == 'completed') {
+        if (paymentStatus == 'completed' && _payment != null) {
           _statusCheckTimer?.cancel();
+          widget.onPaymentSuccess(_payment!);
 
-          if (_payment != null) {
-            widget.onPaymentSuccess(_payment!);
-          }
+          // Optionally pop with true result after a short delay
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              Navigator.pop(context, true);
+            }
+          });
         }
       } catch (e) {
         print('Error checking payment status: $e');

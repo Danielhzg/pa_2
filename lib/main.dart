@@ -76,7 +76,7 @@ class MyApp extends StatelessWidget {
             ),
           ),
         ),
-        home: const AppLoading(),
+        home: const SplashScreen(),
         routes: {
           '/login': (context) => const LoginPage(),
           '/register': (context) => const RegisterPage(),
@@ -152,47 +152,6 @@ class ProviderConfig extends StatelessWidget {
         ),
       ],
       child: child,
-    );
-  }
-}
-
-// Loading screen waiting for auth initialization
-class AppLoading extends StatelessWidget {
-  const AppLoading({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    // Access the auth service without listening for changes
-    final authService = Provider.of<AuthService>(context, listen: false);
-
-    return FutureBuilder(
-      future: authService.initializationFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(
-            backgroundColor: Colors.white,
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Image.asset(
-                    'assets/images/logo.png',
-                    width: 150,
-                    height: 150,
-                  ),
-                  const SizedBox(height: 30),
-                  const CircularProgressIndicator(
-                    color: Color(0xFFFF87B2),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        // When initialization completes, show the SplashScreen
-        return const SplashScreen();
-      },
     );
   }
 }

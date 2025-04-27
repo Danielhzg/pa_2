@@ -41,3 +41,8 @@ Route::prefix('admin/categories')->group(function () {
     Route::put('/{category}', [AdminController::class, 'updateCategory'])->name('admin.categories.update');
     Route::delete('/{category}', [AdminController::class, 'deleteCategory'])->name('admin.categories.delete');
 });
+
+// Allow access to storage files
+Route::get('/storage/{path}', function ($path) {
+    return response()->file(storage_path('app/public/' . $path));
+})->where('path', '.*')->middleware('cors');

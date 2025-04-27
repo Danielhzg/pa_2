@@ -9,8 +9,12 @@ import '../services/payment_service.dart';
 import '../services/order_service.dart';
 import 'address_selection_screen.dart';
 import 'qr_payment_screen.dart';
+// import 'payment_method_screen.dart'; // Commented out as we're integrating this
+import 'payment_webview_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class CheckoutPage extends StatefulWidget {
   const CheckoutPage({super.key});
@@ -23,10 +27,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
   static const Color primaryColor = Color(0xFFFF87B2);
   static const Color accentColor = Color(0xFFFFE5EE);
   bool _isLoading = true;
+  bool _isLoadingPaymentMethods = true;
 
-  // Only allow QR Code payment method
-  final String _paymentMethod = 'QR Code';
+  // Payment method - now variable
+  String _paymentMethod = 'qr_code';
+  String _paymentMethodName = 'QR Code Payment';
+  List<dynamic> _paymentMethods = [];
 
+  final PaymentService _paymentService = PaymentService();
   final OrderService _orderService = OrderService();
 
   @override
@@ -38,14 +46,91 @@ class _CheckoutPageState extends State<CheckoutPage> {
   Future<void> _initCheckout() async {
     setState(() {
       _isLoading = true;
+      _isLoadingPaymentMethods = true;
     });
 
     // Initialize delivery provider
     await Provider.of<DeliveryProvider>(context, listen: false).initAddresses();
 
+    // Load payment methods
+    await _loadPaymentMethods();
+
     setState(() {
       _isLoading = false;
     });
+  }
+
+  Future<void> _loadPaymentMethods() async {
+    try {
+      // Get payment methods from Midtrans
+      final methods = await _paymentService.getMidtransPaymentMethods();
+      setState(() {
+        _paymentMethods = methods;
+        _isLoadingPaymentMethods = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingPaymentMethods = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load payment methods: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Method to handle payment method selection
+  void _selectPaymentMethod(String method) {
+    setState(() {
+      _paymentMethod = method;
+      _paymentMethodName = _getPaymentMethodName(method);
+    });
+  }
+
+  String _getPaymentMethodName(String methodCode) {
+    // First check if it's one of the bank VA options
+    for (var method in _paymentMethods) {
+      if (method['code'] == methodCode) {
+        return method['name'];
+      }
+    }
+
+    // Otherwise check standard options
+    switch (methodCode) {
+      case 'qr_code':
+        return 'QR Code Payment';
+      case 'bank_transfer':
+        return 'Bank Transfer';
+      case 'credit_card':
+        return 'Credit Card';
+      case 'e_wallet':
+        return 'E-Wallet';
+      case 'cod':
+        return 'Cash on Delivery';
+      default:
+        return 'Online Payment';
+    }
+  }
+
+  IconData _getPaymentMethodIcon(String methodCode) {
+    switch (methodCode) {
+      case 'qr_code':
+        return Icons.qr_code;
+      case 'bank_transfer':
+        return Icons.account_balance;
+      case 'credit_card':
+        return Icons.credit_card;
+      case 'e_wallet':
+        return Icons.account_balance_wallet;
+      case 'cod':
+        return Icons.payments_outlined;
+      default:
+        return Icons.payment;
+    }
   }
 
   @override
@@ -229,44 +314,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           // Payment Method Section
                           _buildSectionHeader('Payment Method'),
 
-                          Card(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 2,
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      color: accentColor,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Icon(
-                                      Icons.qr_code,
-                                      color: primaryColor,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  const Text(
-                                    'QR Code Payment',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  const Icon(
-                                    Icons.check_circle,
-                                    color: primaryColor,
-                                  ),
-                                ],
+                          // Loading indicator for payment methods
+                          if (_isLoadingPaymentMethods)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 20.0),
+                                child: CircularProgressIndicator(
+                                    color: primaryColor),
                               ),
-                            ),
-                          ),
+                            )
+                          else
+                            _buildPaymentMethods(),
 
                           const SizedBox(height: 16),
 
@@ -276,33 +334,43 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             elevation: 2,
-                            child: const Padding(
-                              padding: EdgeInsets.all(16.0),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
+                                  const Text(
                                     'Payment Instructions',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16,
                                     ),
                                   ),
-                                  SizedBox(height: 12),
-                                  Text(
-                                    '1. Click "Place Order" to proceed to payment',
-                                    style: TextStyle(fontSize: 14),
-                                  ),
-                                  SizedBox(height: 6),
-                                  Text(
-                                    '2. Scan the QR code with your mobile banking or e-wallet app',
-                                    style: TextStyle(fontSize: 14),
-                                  ),
-                                  SizedBox(height: 6),
-                                  Text(
-                                    '3. Complete the payment to process your order',
-                                    style: TextStyle(fontSize: 14),
-                                  ),
+                                  const SizedBox(height: 12),
+                                  if (_paymentMethod == 'qr_code') ...[
+                                    _buildInstructionStep(1,
+                                        'Click "Place Order" to proceed to payment'),
+                                    _buildInstructionStep(2,
+                                        'Scan the QR code with your mobile banking or e-wallet app'),
+                                    _buildInstructionStep(3,
+                                        'Complete the payment to process your order'),
+                                  ] else if (_paymentMethod ==
+                                          'bank_transfer' ||
+                                      _paymentMethod.contains('_va')) ...[
+                                    _buildInstructionStep(1,
+                                        'Click "Place Order" to receive bank transfer details'),
+                                    _buildInstructionStep(2,
+                                        'Transfer the exact amount to the provided account number'),
+                                    _buildInstructionStep(3,
+                                        'Your order will be processed after payment confirmation'),
+                                  ] else ...[
+                                    _buildInstructionStep(1,
+                                        'Click "Place Order" to proceed to payment'),
+                                    _buildInstructionStep(2,
+                                        'Follow the instructions to complete your payment'),
+                                    _buildInstructionStep(3,
+                                        'Your order will be processed after payment confirmation'),
+                                  ],
                                 ],
                               ),
                             ),
@@ -322,6 +390,285 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 );
               },
             ),
+    );
+  }
+
+  Widget _buildPaymentMethods() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // QR Code Payment
+        _buildPaymentMethodItem(
+          code: 'qris',
+          name: 'QR Code Payment (QRIS)',
+          icon: Icons.qr_code,
+          description: 'Bayar dengan aplikasi e-wallet dan mobile banking',
+        ),
+
+        // Judul Bagian Virtual Account
+        const Padding(
+          padding: EdgeInsets.only(top: 16, bottom: 8),
+          child: Text(
+            'Virtual Account Bank',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Colors.grey,
+            ),
+          ),
+        ),
+
+        // BCA Virtual Account
+        _buildPaymentMethodItem(
+          code: 'bca',
+          name: 'BCA Virtual Account',
+          icon: Icons.account_balance,
+          description: 'Bayar via internet banking, mobile banking, ATM BCA',
+        ),
+
+        // BNI Virtual Account
+        _buildPaymentMethodItem(
+          code: 'bni',
+          name: 'BNI Virtual Account',
+          icon: Icons.account_balance,
+          description: 'Bayar via internet banking, mobile banking, ATM BNI',
+        ),
+
+        // BRI Virtual Account
+        _buildPaymentMethodItem(
+          code: 'bri',
+          name: 'BRI Virtual Account',
+          icon: Icons.account_balance,
+          description: 'Bayar via internet banking, mobile banking, ATM BRI',
+        ),
+
+        // Mandiri Bill Payment
+        _buildPaymentMethodItem(
+          code: 'mandiri',
+          name: 'Mandiri Bill Payment',
+          icon: Icons.account_balance,
+          description:
+              'Bayar via internet banking, mobile banking, ATM Mandiri',
+        ),
+
+        // Permata Virtual Account
+        _buildPaymentMethodItem(
+          code: 'permata',
+          name: 'Permata Virtual Account',
+          icon: Icons.account_balance,
+          description:
+              'Bayar via internet banking, mobile banking, ATM Permata',
+        ),
+
+        // Metode lainnya
+        const Padding(
+          padding: EdgeInsets.only(top: 16, bottom: 8),
+          child: Text(
+            'Metode Pembayaran Lainnya',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Colors.grey,
+            ),
+          ),
+        ),
+
+        // Bank Transfer (Generic)
+        _buildPaymentMethodItem(
+          code: 'bank_transfer',
+          name: 'Transfer Bank Manual',
+          icon: Icons.account_balance,
+          description: 'Transfer manual via bank Anda',
+        ),
+
+        // Credit Card
+        _buildPaymentMethodItem(
+          code: 'credit_card',
+          name: 'Kartu Kredit',
+          icon: Icons.credit_card,
+          description: 'Visa, Mastercard, JCB',
+        ),
+
+        // COD
+        _buildPaymentMethodItem(
+          code: 'cod',
+          name: 'Cash on Delivery',
+          icon: Icons.payments_outlined,
+          description: 'Bayar ketika menerima pesanan',
+        ),
+
+        // Dynamic methods dari API (jika ada)
+        ..._paymentMethods.map((method) {
+          if ([
+            'qris',
+            'bca',
+            'bni',
+            'bri',
+            'mandiri',
+            'permata',
+            'bank_transfer',
+            'credit_card',
+            'cod'
+          ].contains(method['code'])) {
+            return const SizedBox
+                .shrink(); // Skip jika sudah ditampilkan di atas
+          }
+
+          IconData iconData = Icons.payment;
+          if (method.containsKey('icon') && method['icon'] is String) {
+            switch (method['icon']) {
+              case 'qr_code':
+                iconData = Icons.qr_code;
+                break;
+              case 'account_balance':
+                iconData = Icons.account_balance;
+                break;
+              case 'credit_card':
+                iconData = Icons.credit_card;
+                break;
+              case 'account_balance_wallet':
+                iconData = Icons.account_balance_wallet;
+                break;
+              default:
+                iconData = Icons.payment;
+            }
+          }
+
+          return _buildPaymentMethodItem(
+            code: method['code'],
+            name: method['name'],
+            icon: iconData,
+            description:
+                method['description'] ?? 'Bayar dengan ${method['name']}',
+          );
+        }).toList(),
+      ],
+    );
+  }
+
+  Widget _buildPaymentMethodItem({
+    required String code,
+    required String name,
+    required dynamic icon,
+    required String description,
+  }) {
+    final isSelected = _paymentMethod == code;
+
+    // Convert string icon name to IconData
+    IconData iconData = Icons.payment;
+    if (icon is String) {
+      switch (icon) {
+        case 'qr_code':
+          iconData = Icons.qr_code;
+          break;
+        case 'account_balance':
+          iconData = Icons.account_balance;
+          break;
+        case 'credit_card':
+          iconData = Icons.credit_card;
+          break;
+        case 'account_balance_wallet':
+          iconData = Icons.account_balance_wallet;
+          break;
+        case 'payments_outlined':
+          iconData = Icons.payments_outlined;
+          break;
+        default:
+          iconData = Icons.payment;
+      }
+    } else if (icon is IconData) {
+      iconData = icon;
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: isSelected ? 3 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: isSelected
+            ? const BorderSide(color: primaryColor, width: 2)
+            : BorderSide.none,
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          _selectPaymentMethod(code);
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              // Payment Method Icon
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isSelected ? primaryColor : accentColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  iconData,
+                  color: isSelected ? Colors.white : primaryColor,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+
+              // Payment Method Details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Selection Indicator
+              Icon(
+                isSelected ? Icons.check_circle : Icons.circle_outlined,
+                color: isSelected ? primaryColor : Colors.grey,
+                size: 24,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInstructionStep(int number, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$number. ',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -574,8 +921,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     );
 
     try {
-      // Generate a unique order ID
-      final orderId = const Uuid().v4();
+      debugPrint('======== MEMULAI PROSES CHECKOUT ========');
 
       // Get delivery address
       final deliveryProvider =
@@ -587,58 +933,324 @@ class _CheckoutPageState extends State<CheckoutPage> {
       final shippingCost = deliveryProvider.shippingCost;
       final total = subtotal + shippingCost;
 
+      debugPrint('Delivery address: ${deliveryAddress.fullAddress}');
+      debugPrint('Phone: ${deliveryAddress.phone}');
+      debugPrint(
+          'Total amount: $total (subtotal: $subtotal, shipping: $shippingCost)');
+
       // Get selected items
       final selectedItems =
           cartProvider.items.where((item) => item.isSelected).toList();
 
-      // Create order with pending payment status
-      await _orderService.createOrder(
-        orderId: orderId,
-        items: selectedItems,
-        deliveryAddress: deliveryAddress,
-        subtotal: subtotal,
+      debugPrint('Selected items count: ${selectedItems.length}');
+
+      // Convert items to the format expected by the payment service
+      final itemsForPayment = selectedItems
+          .map((item) => {
+                'id': item.productId,
+                'name': item.name,
+                'price': item.price,
+                'quantity': item.quantity,
+              })
+          .toList();
+
+      // Generate a unique customer ID
+      final customerId = 'user_${DateTime.now().millisecondsSinceEpoch}';
+
+      // Get user email from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final userData = prefs.getString('user_data');
+      final userEmail = userData != null
+          ? jsonDecode(userData)['email']
+          : 'customer@example.com';
+
+      debugPrint('Customer ID: $customerId');
+      debugPrint('Email: $userEmail');
+
+      // Cek apakah memilih metode VA
+      String? selectedBank;
+      if (_paymentMethod == 'bca' ||
+          _paymentMethod == 'bni' ||
+          _paymentMethod == 'bri' ||
+          _paymentMethod == 'mandiri' ||
+          _paymentMethod == 'permata') {
+        selectedBank = _paymentMethod;
+        debugPrint('Selected bank for VA payment: $selectedBank');
+      } else {
+        debugPrint('Payment method: $_paymentMethod (bukan VA)');
+      }
+
+      // Get Midtrans Snap Token
+      debugPrint('Memanggil getMidtransSnapToken...');
+      final result = await _paymentService.getMidtransSnapToken(
+        items: itemsForPayment,
+        customerId: customerId,
         shippingCost: shippingCost,
-        total: total,
-        paymentMethod: _paymentMethod,
-        paymentStatus: 'pending',
+        shippingAddress: deliveryAddress.fullAddress,
+        phoneNumber: deliveryAddress.phone,
+        email: userEmail,
+        selectedBank: selectedBank,
       );
 
       // Pop loading dialog
-      Navigator.pop(context);
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
 
-      // Navigate to QR Payment screen
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => QRPaymentScreen(
-            amount: total,
-            orderId: orderId,
-            onPaymentSuccess: (payment) async {
-              try {
-                // Update order with completed payment status
-                await _orderService.updateOrderStatus(
-                  orderId: orderId,
-                  paymentStatus: 'completed',
-                  orderStatus: 'processing',
-                );
+      if (!result['success']) {
+        debugPrint('❌ Midtrans API error: ${result['message']}');
+        throw Exception(result['message']);
+      }
 
-                // Handle payment success
-                _handlePaymentSuccess(context, cartProvider, payment);
-              } catch (e) {
-                print('Error updating order status: $e');
-              }
-            },
+      final orderId = result['data']['order_id'];
+      final String snapToken = result['data']['token'] ?? '';
+      final String redirectUrl = result['data']['redirect_url'] ?? '';
+      final dynamic vaNumber = result['data']['va_number'];
+      final String? bank = result['data']['bank'];
+
+      debugPrint('============= PAYMENT DETAILS =============');
+      debugPrint('Order ID: $orderId');
+      debugPrint('Snap Token: $snapToken');
+      debugPrint('Redirect URL: $redirectUrl');
+
+      if (vaNumber != null) {
+        debugPrint('VA NUMBER FOUND: $vaNumber');
+        if (bank != null) {
+          debugPrint('BANK: $bank');
+        }
+      } else {
+        debugPrint('No VA number in response');
+      }
+
+      debugPrint('Payment Method: $_paymentMethod');
+      debugPrint('==========================================');
+
+      // Jika ini pembayaran virtual account, tampilkan dialog dengan informasi VA
+      if (vaNumber != null) {
+        // Tutup dialog loading jika masih terbuka
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+
+        // Format bank name untuk tampilan
+        String bankName = '';
+        switch (bank) {
+          case 'bca':
+            bankName = 'BCA';
+            break;
+          case 'bni':
+            bankName = 'BNI';
+            break;
+          case 'bri':
+            bankName = 'BRI';
+            break;
+          case 'mandiri':
+            bankName = 'Mandiri';
+            break;
+          case 'permata':
+            bankName = 'Permata';
+            break;
+          default:
+            bankName = bank?.toUpperCase() ?? 'Bank';
+        }
+
+        debugPrint('Menampilkan dialog VA untuk bank: $bankName');
+        debugPrint('VA Number: $vaNumber');
+
+        // Pastikan VA number adalah string
+        final String vaNumberStr = vaNumber.toString();
+
+        // Tampilkan dialog VA dengan format yang lebih baik
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: [
+                const Icon(Icons.account_balance, color: primaryColor),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    'Virtual Account $bankName',
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Silakan lakukan pembayaran dengan rincian berikut:',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Bank'),
+                          Text(
+                            bankName,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const Divider(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Nomor VA'),
+                          Flexible(
+                            child: Text(
+                              vaNumberStr,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Divider(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Total'),
+                          Text(
+                            NumberFormat.currency(
+                              locale: 'id',
+                              symbol: 'Rp',
+                              decimalDigits: 0,
+                            ).format(total),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: primaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.yellow.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.yellow.shade700),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline,
+                          size: 20, color: Colors.yellow.shade800),
+                      const SizedBox(width: 8),
+                      const Flexible(
+                        child: Text(
+                          'Salin nomor virtual account untuk melakukan pembayaran',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Pembayaran akan dikonfirmasi secara otomatis oleh sistem.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context); // Tutup dialog
+                },
+                child: const Text('Cek Status'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context); // Tutup dialog
+                  cartProvider.clear(); // Bersihkan keranjang setelah sukses
+                  Navigator.pop(context); // Kembali ke layar sebelumnya
+
+                  // Tampilkan pesan sukses
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Pesanan berhasil dibuat! Silakan selesaikan pembayaran.',
+                      ),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                ),
+                child: const Text('Selesai'),
+              ),
+            ],
           ),
-        ),
-      );
+        );
 
-      // If payment was not successful or user returned without payment
-      if (result != true) {
+        return; // Hentikan eksekusi lebih lanjut
+      }
+
+      // Process payment based on method
+      debugPrint('Proses pembayaran metode non-VA');
+      bool paymentResult = false;
+
+      if (_paymentMethod == 'qris') {
+        // QR Code payment using QRIS
+        debugPrint('Memproses pembayaran QRIS');
+        paymentResult = await _handleQRCodePayment(orderId, total, snapToken);
+      } else {
+        // Bank transfers and other methods - use WebView with redirect URL
+        debugPrint('Memproses pembayaran dengan WebView URL: $redirectUrl');
+        paymentResult =
+            await _handleMidtransWebPayment(orderId, redirectUrl, snapToken);
+      }
+
+      // If payment was not successful, don't continue
+      if (!paymentResult) {
+        debugPrint('Pembayaran dibatalkan atau gagal');
         return;
       }
+
+      // On successful payment, clear cart
+      debugPrint('Pembayaran berhasil, membersihkan keranjang');
+      cartProvider.clear();
+
+      if (!mounted) return;
+
+      // Navigate back to the previous screen
+      Navigator.of(context).pop(); // Pop checkout screen
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Payment successful! Your order has been placed.'),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
-      // Pop loading dialog
-      Navigator.pop(context);
+      debugPrint('❌ ERROR DALAM PEMROSESAN PEMBAYARAN: $e');
+
+      // Pop loading dialog if still showing
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
 
       // Show error message
       ScaffoldMessenger.of(context).showSnackBar(
@@ -650,26 +1262,59 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
   }
 
-  void _handlePaymentSuccess(
-    BuildContext context,
-    CartProvider cartProvider,
-    Payment payment,
-  ) {
-    // Process order
-    cartProvider.clear();
-
-    if (!mounted) return;
-
-    // Navigate back to the previous screen
-    Navigator.of(context).pop(true); // Pop QR screen with success result
-    Navigator.of(context).pop(); // Pop checkout screen
-
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Payment successful! Your order has been placed.'),
-        backgroundColor: Colors.green,
+  // Handle QR Code Payment method with Snap Token
+  Future<bool> _handleQRCodePayment(
+      String orderId, double total, String snapToken) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => QRPaymentScreen(
+          amount: total,
+          orderId: orderId,
+          snapToken: snapToken,
+          onPaymentSuccess: (payment) async {
+            try {
+              // Payment success handled in callback
+            } catch (e) {
+              print('Error updating order status: $e');
+            }
+          },
+        ),
       ),
     );
+
+    // Return true if payment was successful
+    return result == true;
+  }
+
+  // Handle Midtrans WebView Payment with redirect URL
+  Future<bool> _handleMidtransWebPayment(
+      String orderId, String redirectUrl, String snapToken) async {
+    try {
+      // Open WebView for payment
+      final webViewResult = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PaymentWebViewScreen(
+            redirectUrl: redirectUrl,
+            transactionId: snapToken,
+            onPaymentComplete: (status) {
+              // Payment status callback
+            },
+          ),
+        ),
+      );
+
+      // Return true if payment was successful
+      return webViewResult == true;
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error processing payment: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
   }
 }

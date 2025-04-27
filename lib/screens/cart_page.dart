@@ -5,7 +5,7 @@ import '../utils/image_url_helper.dart';
 import '../providers/cart_provider.dart';
 import 'package:line_icons/line_icons.dart';
 import '../models/product.dart';
-import './checkout_page.dart'; // Add import for the CheckoutPage
+import './checkout_page.dart';
 
 class CartPage extends StatefulWidget {
   const CartPage({super.key});
@@ -19,7 +19,7 @@ class _CartPageState extends State<CartPage>
   late AnimationController _controller;
 
   // Colors
-  static const Color primaryColor = Color(0xFFFF87B2);
+  static const Color primaryColor = Color.fromRGBO(255, 135, 178, 1);
   static const Color accentColor = Color(0xFFFFE5EE);
   static const Color darkTextColor = Color(0xFF333333);
 
