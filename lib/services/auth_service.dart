@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
+import 'package:provider/provider.dart';
+import '../providers/cart_provider.dart';
 
 class AuthService extends ChangeNotifier {
   // Base API URLs - Try multiple possible configurations
@@ -184,6 +186,18 @@ class AuthService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('user_data');
     await prefs.remove('auth_token');
+  }
+
+  // Update CartProvider with the current user ID
+  void updateCartProvider(BuildContext context) {
+    final cartProvider = Provider.of<CartProvider>(context, listen: false);
+    if (_currentUser != null) {
+      cartProvider.setUserId(_currentUser!.id.toString());
+      print('Updated CartProvider with user ID: ${_currentUser!.id}');
+    } else {
+      cartProvider.setUserId(null);
+      print('Updated CartProvider with guest user');
+    }
   }
 
   // Register a new user
@@ -379,7 +393,8 @@ class AuthService extends ChangeNotifier {
   }
 
   // Login user with username and password
-  Future<bool> login(String username, String password) async {
+  Future<bool> login(String username, String password,
+      {BuildContext? context}) async {
     await initializationFuture;
 
     _isLoading = true;
@@ -446,6 +461,11 @@ class AuthService extends ChangeNotifier {
             _token = authToken;
             await _saveUserData(_currentUser!, _token!);
 
+            // Update CartProvider with user ID if context is provided
+            if (context != null) {
+              updateCartProvider(context);
+            }
+
             _isLoading = false;
             notifyListeners();
             return true;
@@ -473,7 +493,7 @@ class AuthService extends ChangeNotifier {
   }
 
   // Logout user
-  Future<bool> logout() async {
+  Future<bool> logout({BuildContext? context}) async {
     // Ensure initialization has completed
     await initializationFuture;
 
@@ -495,6 +515,11 @@ class AuthService extends ChangeNotifier {
           _token = null;
           await _clearUserData();
 
+          // Update CartProvider if context is provided
+          if (context != null) {
+            updateCartProvider(context);
+          }
+
           _isLoading = false;
           notifyListeners();
           return true;
@@ -506,6 +531,11 @@ class AuthService extends ChangeNotifier {
       _token = null;
       await _clearUserData();
 
+      // Update CartProvider if context is provided
+      if (context != null) {
+        updateCartProvider(context);
+      }
+
       _isLoading = false;
       notifyListeners();
       return true;
@@ -514,6 +544,11 @@ class AuthService extends ChangeNotifier {
       _currentUser = null;
       _token = null;
       await _clearUserData();
+
+      // Update CartProvider if context is provided
+      if (context != null) {
+        updateCartProvider(context);
+      }
 
       _isLoading = false;
       notifyListeners();
@@ -824,5 +859,16 @@ class AuthService extends ChangeNotifier {
         'debug': e.toString(),
       };
     }
+  }
+
+  // Get auth token
+  Future<String?> getToken() async {
+    if (_token != null) {
+      return _token;
+    }
+
+    // Try to load from SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('auth_token');
   }
 }

@@ -3,10 +3,21 @@ import 'dart:convert';
 import '../models/order.dart';
 import '../models/cart_item.dart';
 import '../models/delivery_address.dart';
+import 'auth_service.dart';
 
 class OrderService {
-  // Use the same base URL as in ApiService
   final String baseUrl = 'http://10.0.2.2:8000/api';
+  final AuthService _authService = AuthService();
+
+  // Get auth headers
+  Future<Map<String, String>> _getHeaders() async {
+    final token = await _authService.getToken();
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
 
   // Create a new order
   Future<Order> createOrder({
@@ -21,12 +32,11 @@ class OrderService {
     String? qrCodeUrl,
   }) async {
     try {
+      final headers = await _getHeaders();
+
       final response = await http.post(
         Uri.parse('$baseUrl/v1/orders'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: headers,
         body: json.encode({
           'id': orderId,
           'items': items.map((item) => item.toJson()).toList(),
@@ -48,8 +58,12 @@ class OrderService {
         } else {
           throw Exception('Failed to create order: ${data['message']}');
         }
+      } else if (response.statusCode == 401) {
+        throw Exception('Unauthorized: Please login again');
       } else {
-        throw Exception('Failed to create order: ${response.statusCode}');
+        final error = json.decode(response.body);
+        throw Exception(
+            'Failed to create order: ${error['message'] ?? response.statusCode}');
       }
     } catch (e) {
       print('Error creating order: $e');
@@ -64,15 +78,14 @@ class OrderService {
     String? orderStatus,
   }) async {
     try {
-      final response = await http.patch(
-        Uri.parse('$baseUrl/v1/orders/$orderId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+      final headers = await _getHeaders();
+
+      final response = await http.put(
+        Uri.parse('$baseUrl/v1/orders/$orderId/status'),
+        headers: headers,
         body: json.encode({
-          'paymentStatus': paymentStatus,
-          'orderStatus': orderStatus,
+          'payment_status': paymentStatus,
+          'status': orderStatus,
         }),
       );
 
@@ -83,8 +96,12 @@ class OrderService {
         } else {
           throw Exception('Failed to update order: ${data['message']}');
         }
+      } else if (response.statusCode == 401) {
+        throw Exception('Unauthorized: Please login again');
       } else {
-        throw Exception('Failed to update order: ${response.statusCode}');
+        final error = json.decode(response.body);
+        throw Exception(
+            'Failed to update order: ${error['message'] ?? response.statusCode}');
       }
     } catch (e) {
       print('Error updating order: $e');
@@ -95,12 +112,11 @@ class OrderService {
   // Get order by ID
   Future<Order> getOrderById(String orderId) async {
     try {
+      final headers = await _getHeaders();
+
       final response = await http.get(
         Uri.parse('$baseUrl/v1/orders/$orderId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -110,12 +126,48 @@ class OrderService {
         } else {
           throw Exception('Failed to get order: ${data['message']}');
         }
+      } else if (response.statusCode == 401) {
+        throw Exception('Unauthorized: Please login again');
       } else {
-        throw Exception('Failed to get order: ${response.statusCode}');
+        final error = json.decode(response.body);
+        throw Exception(
+            'Failed to get order: ${error['message'] ?? response.statusCode}');
       }
     } catch (e) {
       print('Error getting order: $e');
       throw Exception('Failed to get order: $e');
+    }
+  }
+
+  // Get user orders
+  Future<List<Order>> getUserOrders() async {
+    try {
+      final headers = await _getHeaders();
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/v1/orders'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          return (data['data'] as List)
+              .map((order) => Order.fromJson(order))
+              .toList();
+        } else {
+          throw Exception('Failed to get orders: ${data['message']}');
+        }
+      } else if (response.statusCode == 401) {
+        throw Exception('Unauthorized: Please login again');
+      } else {
+        final error = json.decode(response.body);
+        throw Exception(
+            'Failed to get orders: ${error['message'] ?? response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting orders: $e');
+      throw Exception('Failed to get orders: $e');
     }
   }
 }

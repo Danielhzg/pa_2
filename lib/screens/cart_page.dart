@@ -123,7 +123,7 @@ class _CartPageState extends State<CartPage>
                       ),
                     ),
                     onPressed: () {
-                      Navigator.pop(context);
+                      Navigator.pushReplacementNamed(context, '/home');
                     },
                     child: const Text(
                       'Continue Shopping',

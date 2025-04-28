@@ -42,6 +42,13 @@ Route::prefix('admin/categories')->group(function () {
     Route::delete('/{category}', [AdminController::class, 'deleteCategory'])->name('admin.categories.delete');
 });
 
+// Order Management Routes
+Route::prefix('admin/orders')->name('admin.orders.')->middleware(['auth'])->group(function () {
+    Route::get('/', [App\Http\Controllers\Admin\OrderController::class, 'index'])->name('index');
+    Route::get('/{id}', [App\Http\Controllers\Admin\OrderController::class, 'show'])->name('show');
+    Route::put('/{id}/status', [App\Http\Controllers\Admin\OrderController::class, 'updateStatus'])->name('update-status');
+});
+
 // Allow access to storage files
 Route::get('/storage/{path}', function ($path) {
     return response()->file(storage_path('app/public/' . $path));

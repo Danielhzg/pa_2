@@ -7,6 +7,7 @@ import '../models/product.dart';
 class CartProvider with ChangeNotifier {
   List<CartItem> _items = [];
   bool _isLoading = false; // Add loading state
+  String? _userId; // Add userId to track the current user
 
   List<CartItem> get items => _items;
   bool get isLoading => _isLoading; // Getter for loading state
@@ -31,6 +32,15 @@ class CartProvider with ChangeNotifier {
 
   int get selectedItemCount {
     return _items.where((item) => item.isSelected).length;
+  }
+
+  // Set current user ID - call this when user logs in or out
+  void setUserId(String? userId) {
+    if (_userId != userId) {
+      _userId = userId;
+      // Load cart for the new user
+      loadCartFromStorage();
+    }
   }
 
   // Menambahkan produk ke keranjang
@@ -118,6 +128,11 @@ class CartProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // Get storage key that's unique for each user
+  String _getCartStorageKey() {
+    return _userId != null ? 'cart_$_userId' : 'cart_guest';
+  }
+
   // Menyimpan data keranjang ke SharedPreferences
   Future<void> _saveCartToStorage() async {
     final prefs = await SharedPreferences.getInstance();
@@ -133,7 +148,9 @@ class CartProvider with ChangeNotifier {
             })
         .toList();
 
-    await prefs.setString('cart', json.encode(cartData));
+    final storageKey = _getCartStorageKey();
+    print('Saving cart for user key: $storageKey with ${_items.length} items');
+    await prefs.setString(storageKey, json.encode(cartData));
   }
 
   // Memuat data keranjang dari SharedPreferences
@@ -145,8 +162,23 @@ class CartProvider with ChangeNotifier {
     });
 
     try {
+      // Get user ID from SharedPreferences if not already set
+      if (_userId == null) {
+        final prefs = await SharedPreferences.getInstance();
+        final userData = prefs.getString('user_data');
+        if (userData != null) {
+          final user = json.decode(userData);
+          _userId = user['id'].toString();
+        }
+      }
+
+      final storageKey = _getCartStorageKey();
+      print('Loading cart for user key: $storageKey');
+
       final prefs = await SharedPreferences.getInstance();
-      if (!prefs.containsKey('cart')) {
+      if (!prefs.containsKey(storageKey)) {
+        // If no cart exists for this user, clear the cart
+        _items = [];
         _isLoading = false;
         // Use WidgetsBinding for notifyListeners to ensure it's not called during build
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -155,20 +187,24 @@ class CartProvider with ChangeNotifier {
         return;
       }
 
-      final cartData = json.decode(prefs.getString('cart')!);
+      final cartData = json.decode(prefs.getString(storageKey)!);
       _items = (cartData as List)
           .map((item) => CartItem(
                 id: item['id'],
                 productId: item['productId'],
                 name: item['name'],
-                price: item['price'],
+                price: item['price'].toDouble(),
                 imageUrl: item['imageUrl'],
                 quantity: item['quantity'],
                 isSelected: item['isSelected'] ?? true,
               ))
           .toList();
+
+      print('Loaded ${_items.length} items for user key: $storageKey');
     } catch (e) {
       print('Error loading cart: $e');
+      // In case of error, ensure the cart is empty
+      _items = [];
     } finally {
       _isLoading = false;
       // Use WidgetsBinding for the final notifyListeners to ensure it's not called during build

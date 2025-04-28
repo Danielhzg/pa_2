@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Models\Order;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class PaymentController extends Controller
 {
@@ -137,6 +139,35 @@ class PaymentController extends Controller
             $snapToken = \Midtrans\Snap::getSnapToken($payload);
             $redirectUrl = "https://app.sandbox.midtrans.com/snap/v2/vtweb/$snapToken";
 
+            // Generate QR code data for QRIS payment method
+            $qrCodeData = null;
+            $qrCodeUrl = null;
+            
+            if ($request->payment_method === 'qris' || $request->payment_method === 'qr_code') {
+                // Generate QR code data
+                $qrCodeData = "QRIS.ID|MERCHANT.{$request->order_id}|AMOUNT.{$request->total_amount}|"
+                            . "DATETIME." . date('YmdHis') . "|EXPIRE." . date('YmdHis', strtotime('+24 hours'));
+                
+                // Generate QR code image if QrCode library is available
+                if (class_exists('SimpleSoftwareIO\QrCode\Facades\QrCode')) {
+                    $qrCodeSvg = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')
+                                ->size(300)
+                                ->errorCorrection('H')
+                                ->generate($qrCodeData);
+                    
+                    $qrCodeUrl = 'data:image/svg+xml;base64,' . base64_encode($qrCodeSvg);
+                }
+            }
+
+            // Save QR data to the order if exists
+            if ($qrCodeData) {
+                \App\Models\Order::where('order_id', $request->order_id)
+                    ->update([
+                        'qr_code_data' => $qrCodeData,
+                        'qr_code_url' => $qrCodeUrl,
+                    ]);
+            }
+
             // Save transaction to database if needed
             // DB::table('transactions')->insert([...]);
 
@@ -147,6 +178,8 @@ class PaymentController extends Controller
                     'order_id' => $request->order_id,
                     'token' => $snapToken,
                     'redirect_url' => $redirectUrl,
+                    'qr_code_data' => $qrCodeData,
+                    'qr_code_url' => $qrCodeUrl,
                 ]
             ], 200);
 
@@ -231,6 +264,91 @@ class PaymentController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to process notification: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Generate QR code for payment
+     */
+    public function generateQRCode($orderId)
+    {
+        try {
+            // Find the order
+            $order = Order::where('order_id', $orderId)->first();
+            
+            // If order not found, create a temporary QR code with the provided order ID
+            if (!$order) {
+                $qrData = "QRIS.ID|MERCHANT.{$orderId}|AMOUNT.0|"
+                    . "DATETIME." . date('YmdHis') . "|EXPIRE." . date('YmdHis', strtotime('+24 hours'));
+
+                // Generate QR code image as SVG and convert to base64
+                $qrCodeSvg = QrCode::format('svg')
+                        ->size(300)
+                        ->errorCorrection('H')
+                        ->generate($qrData);
+                
+                $qrCodeBase64 = 'data:image/svg+xml;base64,' . base64_encode($qrCodeSvg);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Temporary QR code generated',
+                    'data' => [
+                        'order_id' => $orderId,
+                        'qr_code_data' => $qrData,
+                        'qr_code_url' => $qrCodeBase64,
+                        'amount' => 0,
+                        'expires_at' => date('Y-m-d H:i:s', strtotime('+24 hours')),
+                    ]
+                ], 200);
+            }
+
+            // Create QR code data based on payment method
+            $qrData = '';
+            
+            if ($order->payment_method === 'qris' || $order->payment_method === 'qr_code') {
+                // For QRIS (Indonesian standard QR code payments)
+                // Create a standardized string containing payment info
+                $qrData = "QRIS.ID|MERCHANT.{$order->order_id}|AMOUNT.{$order->total_amount}|"
+                        . "DATETIME." . date('YmdHis') . "|EXPIRE." . date('YmdHis', strtotime('+24 hours'));
+            } else {
+                // For Midtrans payment methods (using their token)
+                $qrData = "MIDTRANS|{$order->midtrans_token}|{$order->order_id}|{$order->total_amount}";
+            }
+
+            // Store the QR code data on the order
+            $order->qr_code_data = $qrData;
+            
+            // Generate QR code image as SVG and convert to base64
+            $qrCodeSvg = QrCode::format('svg')
+                        ->size(300)
+                        ->errorCorrection('H')
+                        ->generate($qrData);
+            
+            $qrCodeBase64 = 'data:image/svg+xml;base64,' . base64_encode($qrCodeSvg);
+            
+            // Store the QR code image URL on the order (optional if you save images to disk)
+            $order->qr_code_url = $qrCodeBase64;
+            $order->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'QR code generated successfully',
+                'data' => [
+                    'order_id' => $order->order_id,
+                    'qr_code_data' => $qrData,
+                    'qr_code_url' => $qrCodeBase64,
+                    'amount' => $order->total_amount,
+                    'expires_at' => date('Y-m-d H:i:s', strtotime('+24 hours')),
+                ]
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('QR Code Generation Error: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate QR code: ' . $e->getMessage(),
             ], 500);
         }
     }

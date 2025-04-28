@@ -24,6 +24,8 @@ return new class extends Migration
             $table->string('payment_status')->default('pending'); // pending, success, failed, expired
             $table->string('midtrans_token')->nullable();
             $table->string('midtrans_redirect_url')->nullable();
+            $table->text('qr_code_data')->nullable(); // Data encoded in the QR code
+            $table->string('qr_code_url')->nullable(); // URL to the QR code image if stored
             $table->timestamps();
         });
     }

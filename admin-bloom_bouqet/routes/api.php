@@ -53,6 +53,7 @@ Route::prefix('v1')->group(function () {
     // Payment routes
     Route::post('payments/create', [PaymentController::class, 'createPayment']);
     Route::get('payments/{orderId}/status', [PaymentController::class, 'checkStatus']);
+    Route::get('payments/{orderId}/qr-code', [PaymentController::class, 'generateQRCode']);
 });
 
 // Public order creation endpoint for Midtrans
@@ -60,6 +61,9 @@ Route::post('orders/create', [OrderController::class, 'createOrder']);
 
 // Midtrans notification handler
 Route::post('payments/notification', [PaymentController::class, 'notification']);
+
+// Fallback QR code generator for troubleshooting
+Route::get('payments/{orderId}/qr-code', [PaymentController::class, 'generateQRCode']);
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();

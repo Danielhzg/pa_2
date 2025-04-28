@@ -18,14 +18,16 @@ class OrderController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'order_id' => 'required|string',
+                'id' => 'required|string',
                 'items' => 'required|array',
-                'shipping_address' => 'required|string',
-                'phone_number' => 'required|string',
-                'total_amount' => 'required|numeric',
-                'shipping_cost' => 'required|numeric',
-                'payment_method' => 'required|string',
-                'status' => 'required|string',
+                'deliveryAddress' => 'required|array',
+                'subtotal' => 'required|numeric',
+                'shippingCost' => 'required|numeric',
+                'total' => 'required|numeric',
+                'paymentMethod' => 'required|string',
+                'paymentStatus' => 'required|string',
+                'orderStatus' => 'required|string',
+                'qrCodeUrl' => 'nullable|string',
             ]);
 
             if ($validator->fails()) {
@@ -42,14 +44,16 @@ class OrderController extends Controller
 
             // Store order in database
             $orderId = DB::table('orders')->insertGetId([
-                'order_id' => $request->order_id,
+                'order_id' => $request->id,
                 'user_id' => $userId,
-                'shipping_address' => $request->shipping_address,
-                'phone_number' => $request->phone_number,
-                'total_amount' => $request->total_amount,
-                'shipping_cost' => $request->shipping_cost,
-                'payment_method' => $request->payment_method,
-                'status' => $request->status,
+                'shipping_address' => json_encode($request->deliveryAddress),
+                'phone_number' => $request->deliveryAddress['phone'] ?? '',
+                'total_amount' => $request->total,
+                'shipping_cost' => $request->shippingCost,
+                'payment_method' => $request->paymentMethod,
+                'status' => $request->orderStatus,
+                'payment_status' => $request->paymentStatus,
+                'qr_code_url' => $request->qrCodeUrl,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -67,13 +71,28 @@ class OrderController extends Controller
                 ]);
             }
 
+            // Get the created order with items
+            $order = DB::table('orders')->where('id', $orderId)->first();
+            $items = DB::table('order_items')->where('order_id', $orderId)->get();
+
+            $orderData = [
+                'id' => $order->order_id,
+                'items' => $items,
+                'deliveryAddress' => json_decode($order->shipping_address, true),
+                'subtotal' => $order->total_amount - $order->shipping_cost,
+                'shippingCost' => $order->shipping_cost,
+                'total' => $order->total_amount,
+                'paymentMethod' => $order->payment_method,
+                'paymentStatus' => $order->payment_status,
+                'orderStatus' => $order->status,
+                'createdAt' => $order->created_at,
+                'qrCodeUrl' => $order->qr_code_url,
+            ];
+
             return response()->json([
                 'success' => true,
                 'message' => 'Order created successfully',
-                'data' => [
-                    'id' => $orderId,
-                    'order_id' => $request->order_id,
-                ]
+                'data' => $orderData
             ], 201);
 
         } catch (\Exception $e) {

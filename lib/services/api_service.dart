@@ -1,6 +1,8 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:math' show min;
 import '../models/product.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Gunakan URL API Laravel Anda
@@ -362,5 +364,93 @@ class ApiService {
       print('Error fetching carousels: $e');
       return [];
     }
+  }
+
+  // General HTTP methods with authentication
+  Future<Map<String, dynamic>> get(String endpoint,
+      {bool withAuth = false}) async {
+    try {
+      print('Making API GET request to: $endpoint');
+      final headers = await _getAuthHeaders(withAuth);
+      final response =
+          await _tryMultipleUrls(endpoint, headers: headers, method: 'GET');
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        try {
+          final jsonData = json.decode(response.body);
+          print(
+              'API response received: ${jsonData.toString().substring(0, min(100, jsonData.toString().length))}...');
+          return _handleResponse(response);
+        } catch (e) {
+          throw Exception(
+              'Invalid JSON response: ${response.body.substring(0, min(100, response.body.length))}');
+        }
+      } else {
+        throw Exception(
+            'HTTP Error ${response.statusCode}: ${response.body.substring(0, min(100, response.body.length))}');
+      }
+    } catch (e) {
+      print('GET request error: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> post(String endpoint, dynamic data,
+      {bool withAuth = false}) async {
+    try {
+      final headers = await _getAuthHeaders(withAuth);
+      final body = json.encode(data);
+      final response = await _tryMultipleUrls(endpoint,
+          headers: headers, body: body, method: 'POST');
+      return _handleResponse(response);
+    } catch (e) {
+      print('POST request error: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> put(String endpoint, dynamic data,
+      {bool withAuth = false}) async {
+    try {
+      final headers = await _getAuthHeaders(withAuth);
+      final body = json.encode(data);
+      final response = await _tryMultipleUrls(endpoint,
+          headers: headers, body: body, method: 'PUT');
+      return _handleResponse(response);
+    } catch (e) {
+      print('PUT request error: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> delete(String endpoint,
+      {bool withAuth = false}) async {
+    try {
+      final headers = await _getAuthHeaders(withAuth);
+      final response =
+          await _tryMultipleUrls(endpoint, headers: headers, method: 'DELETE');
+      return _handleResponse(response);
+    } catch (e) {
+      print('DELETE request error: $e');
+      rethrow;
+    }
+  }
+
+  // Get auth headers if needed
+  Future<Map<String, String>> _getAuthHeaders(bool withAuth) async {
+    final headers = _getHeaders();
+
+    if (withAuth) {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token != null) {
+        headers['Authorization'] = 'Bearer $token';
+      } else {
+        print('Warning: Auth token not found but withAuth is true');
+      }
+    }
+
+    return headers;
   }
 }

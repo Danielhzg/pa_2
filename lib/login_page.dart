@@ -61,7 +61,8 @@ class _LoginPageState extends State<LoginPage>
 
         // Only after initialization is complete, perform the login
         await authService.initializationFuture;
-        final success = await authService.login(username, password);
+        final success =
+            await authService.login(username, password, context: context);
 
         if (!mounted) return;
 

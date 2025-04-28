@@ -5,6 +5,7 @@ class Payment {
   final String status;
   final String paymentMethod;
   final String? qrCodeUrl;
+  final String? qrCodeData;
   final DateTime createdAt;
 
   Payment({
@@ -14,6 +15,7 @@ class Payment {
     required this.status,
     required this.paymentMethod,
     this.qrCodeUrl,
+    this.qrCodeData,
     required this.createdAt,
   });
 
@@ -25,6 +27,7 @@ class Payment {
       'status': status,
       'paymentMethod': paymentMethod,
       'qrCodeUrl': qrCodeUrl,
+      'qrCodeData': qrCodeData,
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -37,6 +40,7 @@ class Payment {
       status: json['status'],
       paymentMethod: json['paymentMethod'],
       qrCodeUrl: json['qrCodeUrl'],
+      qrCodeData: json['qrCodeData'],
       createdAt: DateTime.parse(json['createdAt']),
     );
   }

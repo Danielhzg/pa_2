@@ -28,6 +28,8 @@ class Order extends Model
         'payment_status',
         'midtrans_token',
         'midtrans_redirect_url',
+        'qr_code_data',
+        'qr_code_url',
     ];
 
     /**

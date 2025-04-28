@@ -30,8 +30,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
   bool _isLoadingPaymentMethods = true;
 
   // Payment method - now variable
-  String _paymentMethod = 'qr_code';
-  String _paymentMethodName = 'QR Code Payment';
+  String _paymentMethod = 'qris';
+  String _paymentMethodName = 'QR Code Payment (QRIS)';
   List<dynamic> _paymentMethods = [];
 
   final PaymentService _paymentService = PaymentService();
@@ -101,16 +101,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
     // Otherwise check standard options
     switch (methodCode) {
-      case 'qr_code':
-        return 'QR Code Payment';
+      case 'qris':
+        return 'QR Code Payment (QRIS)';
       case 'bank_transfer':
-        return 'Bank Transfer';
-      case 'credit_card':
-        return 'Credit Card';
-      case 'e_wallet':
-        return 'E-Wallet';
-      case 'cod':
-        return 'Cash on Delivery';
+        return 'Transfer Bank Manual';
       default:
         return 'Online Payment';
     }
@@ -118,16 +112,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   IconData _getPaymentMethodIcon(String methodCode) {
     switch (methodCode) {
-      case 'qr_code':
+      case 'qris':
         return Icons.qr_code;
       case 'bank_transfer':
         return Icons.account_balance;
-      case 'credit_card':
-        return Icons.credit_card;
-      case 'e_wallet':
-        return Icons.account_balance_wallet;
-      case 'cod':
-        return Icons.payments_outlined;
       default:
         return Icons.payment;
     }
@@ -347,7 +335,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                     ),
                                   ),
                                   const SizedBox(height: 12),
-                                  if (_paymentMethod == 'qr_code') ...[
+                                  if (_paymentMethod == 'qris') ...[
                                     _buildInstructionStep(1,
                                         'Click "Place Order" to proceed to payment'),
                                     _buildInstructionStep(2,
@@ -355,19 +343,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                     _buildInstructionStep(3,
                                         'Complete the payment to process your order'),
                                   ] else if (_paymentMethod ==
-                                          'bank_transfer' ||
-                                      _paymentMethod.contains('_va')) ...[
+                                      'bank_transfer') ...[
                                     _buildInstructionStep(1,
                                         'Click "Place Order" to receive bank transfer details'),
                                     _buildInstructionStep(2,
                                         'Transfer the exact amount to the provided account number'),
-                                    _buildInstructionStep(3,
-                                        'Your order will be processed after payment confirmation'),
-                                  ] else ...[
-                                    _buildInstructionStep(1,
-                                        'Click "Place Order" to proceed to payment'),
-                                    _buildInstructionStep(2,
-                                        'Follow the instructions to complete your payment'),
                                     _buildInstructionStep(3,
                                         'Your order will be processed after payment confirmation'),
                                   ],
@@ -405,74 +385,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
           description: 'Bayar dengan aplikasi e-wallet dan mobile banking',
         ),
 
-        // Judul Bagian Virtual Account
-        const Padding(
-          padding: EdgeInsets.only(top: 16, bottom: 8),
-          child: Text(
-            'Virtual Account Bank',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: Colors.grey,
-            ),
-          ),
-        ),
-
-        // BCA Virtual Account
-        _buildPaymentMethodItem(
-          code: 'bca',
-          name: 'BCA Virtual Account',
-          icon: Icons.account_balance,
-          description: 'Bayar via internet banking, mobile banking, ATM BCA',
-        ),
-
-        // BNI Virtual Account
-        _buildPaymentMethodItem(
-          code: 'bni',
-          name: 'BNI Virtual Account',
-          icon: Icons.account_balance,
-          description: 'Bayar via internet banking, mobile banking, ATM BNI',
-        ),
-
-        // BRI Virtual Account
-        _buildPaymentMethodItem(
-          code: 'bri',
-          name: 'BRI Virtual Account',
-          icon: Icons.account_balance,
-          description: 'Bayar via internet banking, mobile banking, ATM BRI',
-        ),
-
-        // Mandiri Bill Payment
-        _buildPaymentMethodItem(
-          code: 'mandiri',
-          name: 'Mandiri Bill Payment',
-          icon: Icons.account_balance,
-          description:
-              'Bayar via internet banking, mobile banking, ATM Mandiri',
-        ),
-
-        // Permata Virtual Account
-        _buildPaymentMethodItem(
-          code: 'permata',
-          name: 'Permata Virtual Account',
-          icon: Icons.account_balance,
-          description:
-              'Bayar via internet banking, mobile banking, ATM Permata',
-        ),
-
-        // Metode lainnya
-        const Padding(
-          padding: EdgeInsets.only(top: 16, bottom: 8),
-          child: Text(
-            'Metode Pembayaran Lainnya',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: Colors.grey,
-            ),
-          ),
-        ),
-
         // Bank Transfer (Generic)
         _buildPaymentMethodItem(
           code: 'bank_transfer',
@@ -481,66 +393,25 @@ class _CheckoutPageState extends State<CheckoutPage> {
           description: 'Transfer manual via bank Anda',
         ),
 
-        // Credit Card
-        _buildPaymentMethodItem(
-          code: 'credit_card',
-          name: 'Kartu Kredit',
-          icon: Icons.credit_card,
-          description: 'Visa, Mastercard, JCB',
-        ),
-
-        // COD
-        _buildPaymentMethodItem(
-          code: 'cod',
-          name: 'Cash on Delivery',
-          icon: Icons.payments_outlined,
-          description: 'Bayar ketika menerima pesanan',
-        ),
-
         // Dynamic methods dari API (jika ada)
         ..._paymentMethods.map((method) {
           if ([
             'qris',
+            'bank_transfer',
+            // List semua kode metode yang difilter
             'bca',
             'bni',
             'bri',
             'mandiri',
             'permata',
-            'bank_transfer',
             'credit_card',
             'cod'
           ].contains(method['code'])) {
             return const SizedBox
-                .shrink(); // Skip jika sudah ditampilkan di atas
+                .shrink(); // Skip jika sudah ditampilkan di atas atau diblokir
           }
 
-          IconData iconData = Icons.payment;
-          if (method.containsKey('icon') && method['icon'] is String) {
-            switch (method['icon']) {
-              case 'qr_code':
-                iconData = Icons.qr_code;
-                break;
-              case 'account_balance':
-                iconData = Icons.account_balance;
-                break;
-              case 'credit_card':
-                iconData = Icons.credit_card;
-                break;
-              case 'account_balance_wallet':
-                iconData = Icons.account_balance_wallet;
-                break;
-              default:
-                iconData = Icons.payment;
-            }
-          }
-
-          return _buildPaymentMethodItem(
-            code: method['code'],
-            name: method['name'],
-            icon: iconData,
-            description:
-                method['description'] ?? 'Bayar dengan ${method['name']}',
-          );
+          return const SizedBox.shrink(); // Tidak menampilkan metode lain
         }).toList(),
       ],
     );
@@ -1215,11 +1086,23 @@ class _CheckoutPageState extends State<CheckoutPage> {
         // QR Code payment using QRIS
         debugPrint('Memproses pembayaran QRIS');
         paymentResult = await _handleQRCodePayment(orderId, total, snapToken);
-      } else {
-        // Bank transfers and other methods - use WebView with redirect URL
-        debugPrint('Memproses pembayaran dengan WebView URL: $redirectUrl');
+      } else if (_paymentMethod == 'bank_transfer') {
+        // Bank transfers - use WebView with redirect URL
+        debugPrint(
+            'Memproses pembayaran Bank Transfer dengan WebView URL: $redirectUrl');
         paymentResult =
             await _handleMidtransWebPayment(orderId, redirectUrl, snapToken);
+      } else {
+        // Fallback if somehow an invalid payment method is selected
+        debugPrint('Metode pembayaran tidak valid: $_paymentMethod');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Silakan pilih metode pembayaran QRIS atau Transfer Bank'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
       }
 
       // If payment was not successful, don't continue
