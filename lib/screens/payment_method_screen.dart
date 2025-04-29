@@ -51,9 +51,10 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
     });
 
     try {
-      final methods = await _paymentService.getPaymentMethods();
+      final response = await _paymentService.getPaymentMethods();
       setState(() {
-        _paymentMethods = methods;
+        // Extract the data list from the response map
+        _paymentMethods = response['data'] ?? [];
         _isLoading = false;
       });
     } catch (e) {

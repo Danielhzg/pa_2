@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Florist Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -347,32 +348,36 @@
             border-top: 1px solid var(--pink-light);
         }
     </style>
+    @stack('styles')
 </head>
 <body>
     <!-- Sidebar -->
     <div id="sidebar">
         <h4 class="brand mb-4"> Bloom Bouqet</h4>
         <nav class="nav flex-column">
-            <a class="nav-link {{ Request::is('admin') ? 'active' : '' }}" href="{{ route('admin.home') }}">
+            <a class="nav-link {{ Request::is('admin') || Request::is('admin/dashboard') ? 'active' : '' }}" href="{{ route('admin.home') }}">
                 <i class="fas fa-home"></i> Dashboard 
             </a>
-            <a class="nav-link" href="{{ route('admin.categories.index') }}">
+            <a class="nav-link {{ Request::is('admin/categories*') ? 'active' : '' }}" href="{{ route('admin.categories.index') }}">
                 <i class="fas fa-tags"></i> Kategori
             </a>
-            <a class="nav-link " href="{{ route('admin.products.index') }}">
+            <a class="nav-link {{ Request::is('admin/products*') ? 'active' : '' }}" href="{{ route('admin.products.index') }}">
                 <i class="fas fa-seedling"></i> Produk
             </a>
-            <a class="nav-link" href="{{ route('admin.carousels.index') }}">
+            <a class="nav-link {{ Request::is('admin/carousels*') ? 'active' : '' }}" href="{{ route('admin.carousels.index') }}">
                 <i class="fas fa-images"></i> Carousel
             </a>
-            <a class="nav-link" href="#">
+            <a class="nav-link {{ Request::is('admin/orders*') ? 'active' : '' }}" href="{{ route('admin.orders.index') }}">
                 <i class="fas fa-shopping-bag"></i> Pesanan
             </a>
-            <a class="nav-link" href="#">
+            <a class="nav-link {{ Request::is('admin/customers*') ? 'active' : '' }}" href="{{ route('admin.customers.index') }}">
                 <i class="fas fa-users"></i> Pelanggan
             </a>
-            <a class="nav-link" href="#">
+            <a class="nav-link {{ Request::is('admin/reports*') ? 'active' : '' }}" href="{{ route('admin.reports.index') }}">
                 <i class="fas fa-chart-bar"></i> Laporan
+            </a>
+            <a class="nav-link {{ Request::is('admin/chats*') ? 'active' : '' }}" href="{{ route('admin.chats.index') }}">
+                <i class="fas fa-comments"></i> Chat <span id="unread-chat-badge" class="badge bg-danger ms-2" style="display: none;">0</span>
             </a>
         </nav>
     </div>
@@ -410,20 +415,23 @@
             <div class="dropdown">
                 <div class="nav-icon" role="button" data-bs-toggle="dropdown">
                     <i class="fas fa-envelope"></i>
-                    <div class="notification-badge">2</div>
+                    <div class="notification-badge" id="header-unread-count" style="display: none;">0</div>
                 </div>
                 <ul class="dropdown-menu dropdown-menu-end p-2" style="width: 300px;">
                     <li><h6 class="dropdown-header">Pesan</h6></li>
                     <li><hr class="dropdown-divider"></li>
-                    <li>
-                        <a class="dropdown-item p-2 rounded" href="#">
-                            <div class="d-flex gap-3">
-                                <img src="https://via.placeholder.com/32" class="rounded-circle">
-                                <div>
-                                    <p class="mb-0">John Doe</p>
-                                    <small class="text-secondary">Hai, pesanan saya...</small>
-                                </div>
+                    <li id="message-list">
+                        <div class="text-center py-3">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
                             </div>
+                            <p class="mb-0 mt-2 small">Memuat pesan...</p>
+                        </div>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <a class="dropdown-item text-primary text-center" href="{{ route('admin.chats.index') }}">
+                            Lihat Semua Pesan <i class="fas fa-arrow-right ms-1"></i>
                         </a>
                     </li>
                 </ul>
@@ -439,7 +447,7 @@
                     <li><a class="dropdown-item rounded" href="#"><i class="fas fa-cog me-2"></i> Pengaturan</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li>
-                        {{-- <form action="{{ route('logout') }}" method="POST"> --}}
+                        <form action="{{ route('logout') }}" method="POST">
                             @csrf
                             <button type="submit" class="dropdown-item rounded text-danger">
                                 <i class="fas fa-sign-out-alt me-2"></i> Logout
@@ -453,9 +461,116 @@
 
     <!-- Main Content -->
     <div class="main-content">
+        <!-- Alert Messages -->
+        @if(session('success'))
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                {{ session('success') }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        @endif
+
+        @if(session('error'))
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                {{ session('error') }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        @endif
+        
         @yield('content')
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <script>
+        // Fungsi untuk menampilkan notifikasi pesan yang belum dibaca
+        function fetchUnreadCount() {
+            fetch('{{ route("admin.chats.unread") }}')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.unread_count > 0) {
+                        const badge = document.getElementById('unread-chat-badge');
+                        badge.textContent = data.unread_count;
+                        badge.style.display = 'inline-block';
+                        
+                        // Update juga di header
+                        const headerBadge = document.getElementById('header-unread-count');
+                        headerBadge.textContent = data.unread_count;
+                        headerBadge.style.display = 'flex';
+                    }
+                })
+                .catch(error => console.error('Error fetching unread count:', error));
+        }
+        
+        // Fungsi untuk menampilkan pesan terbaru di dropdown
+        function fetchRecentMessages() {
+            const messageList = document.getElementById('message-list');
+            
+            fetch('{{ route("admin.chats.index") }}', {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.chats && data.chats.length > 0) {
+                    let html = '';
+                    // Ambil maksimal 3 pesan terbaru
+                    const recentChats = data.chats.slice(0, 3);
+                    
+                    recentChats.forEach(chat => {
+                        const unreadClass = chat.unread_count > 0 ? 'fw-bold' : '';
+                        html += `
+                            <a class="dropdown-item p-2 rounded" href="{{ url('admin/chats') }}/${chat.id}">
+                                <div class="d-flex gap-3">
+                                    <div class="rounded-circle bg-light d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                                        <i class="fas fa-user text-secondary"></i>
+                                    </div>
+                                    <div>
+                                        <p class="mb-0 ${unreadClass}">${chat.user ? chat.user.name : 'Pengguna'}</p>
+                                        <small class="text-secondary">${chat.last_message ? chat.last_message.substring(0, 30) + '...' : 'Tidak ada pesan'}</small>
+                                    </div>
+                                </div>
+                            </a>
+                        `;
+                    });
+                    
+                    messageList.innerHTML = html;
+                } else {
+                    messageList.innerHTML = `
+                        <div class="text-center py-3">
+                            <i class="fas fa-inbox text-muted mb-2" style="font-size: 1.5rem;"></i>
+                            <p class="mb-0 small">Belum ada pesan</p>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching recent messages:', error);
+                messageList.innerHTML = `
+                    <div class="text-center py-3">
+                        <i class="fas fa-exclamation-circle text-danger mb-2" style="font-size: 1.5rem;"></i>
+                        <p class="mb-0 small">Gagal memuat pesan</p>
+                    </div>
+                `;
+            });
+        }
+        
+        // Cek pesan baru setiap 30 detik
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchUnreadCount();
+            fetchRecentMessages();
+            
+            setInterval(fetchUnreadCount, 30000);
+            setInterval(fetchRecentMessages, 60000);
+            
+            // Tampilkan pesan terbaru saat dropdown dibuka
+            const messageDropdown = document.querySelector('.dropdown');
+            messageDropdown.addEventListener('show.bs.dropdown', fetchRecentMessages);
+        });
+    </script>
+    
+    @stack('scripts')
 </body>
 </html>

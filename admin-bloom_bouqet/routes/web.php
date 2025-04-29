@@ -4,6 +4,10 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\CarouselController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\CustomerController;
+use App\Http\Controllers\Admin\ChatController;
 use Illuminate\Support\Facades\Route;
 
 // Redirect root URL to admin page
@@ -14,6 +18,7 @@ Route::get('/', function () {
 // Define the login route
 Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [LoginController::class, 'login']);
+Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
 Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('/', [AdminController::class, 'index'])->name('home');
@@ -26,6 +31,27 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::delete('/products/{product}', [ProductController::class, 'destroy'])->name('products.destroy');
     Route::post('/categories/store', [AdminController::class, 'storeCategory'])->name('categories.store');
     Route::resource('carousels', CarouselController::class);
+
+    // Order Routes
+    Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
+    Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
+    Route::post('/orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.updateStatus');
+    Route::get('/orders/stats', [OrderController::class, 'getOrderStats'])->name('orders.stats');
+
+    // Report Routes
+    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::get('/reports/export', [ReportController::class, 'export'])->name('reports.export');
+    
+    // Customer Routes
+    Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
+    Route::get('/customers/{customer}', [CustomerController::class, 'show'])->name('customers.show');
+    
+    // Chat Routes
+    Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
+    Route::get('/chats/{chat}', [ChatController::class, 'show'])->name('chats.show');
+    Route::post('/chats/{chat}/send', [ChatController::class, 'sendMessage'])->name('chats.send');
+    Route::get('/chats/unread-count', [ChatController::class, 'getUnreadCount'])->name('chats.unread');
+    Route::get('/chats/{chat}/new-messages', [ChatController::class, 'getNewMessages'])->name('chats.new-messages');
 });
 
 Route::prefix('admin/products')->group(function () {
@@ -40,13 +66,6 @@ Route::prefix('admin/categories')->group(function () {
     Route::get('/{category}/edit', [AdminController::class, 'editCategory'])->name('admin.categories.edit');
     Route::put('/{category}', [AdminController::class, 'updateCategory'])->name('admin.categories.update');
     Route::delete('/{category}', [AdminController::class, 'deleteCategory'])->name('admin.categories.delete');
-});
-
-// Order Management Routes
-Route::prefix('admin/orders')->name('admin.orders.')->middleware(['auth'])->group(function () {
-    Route::get('/', [App\Http\Controllers\Admin\OrderController::class, 'index'])->name('index');
-    Route::get('/{id}', [App\Http\Controllers\Admin\OrderController::class, 'show'])->name('show');
-    Route::put('/{id}/status', [App\Http\Controllers\Admin\OrderController::class, 'updateStatus'])->name('update-status');
 });
 
 // Allow access to storage files

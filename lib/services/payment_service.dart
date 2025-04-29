@@ -4,46 +4,130 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/delivery_address.dart';
 import '../models/cart_item.dart';
-import '../models/payment.dart';
-import '../services/api_service.dart';
 import 'package:flutter/foundation.dart';
-import '../services/midtrans_service.dart';
 
 class PaymentService {
-  final String baseUrl = 'https://api.sandbox.midtrans.com/v2';
+  // Updated Midtrans API URLs
+  final String snapUrl = 'https://app.sandbox.midtrans.com/snap/v1';
+  final String coreApiUrl = 'https://api.sandbox.midtrans.com/v2';
   final String clientKey = 'SB-Mid-client-LqPJ6nGv11G9ceCF';
   final String serverKey = 'SB-Mid-server-xkWYB70njNQ8ETfGJj_lhcry';
   final String apiUrl = 'http://10.0.2.2:8000/api'; // Laravel API URL
-  final ApiService _apiService;
 
-  PaymentService() : _apiService = ApiService();
+  // Singleton instance
+  static final PaymentService _instance = PaymentService._internal();
+  factory PaymentService() => _instance;
+  PaymentService._internal();
+
+  bool _initialized = false;
+
+  // Initialize payment service and verify connectivity
+  Future<bool> initialize() async {
+    if (_initialized) return true;
+
+    debugPrint('Initializing PaymentService...');
+    try {
+      // Verify connectivity to Midtrans API
+      final midtransConnected = await pingMidtransAPI();
+      if (midtransConnected) {
+        debugPrint('Successfully connected to Midtrans API!');
+      } else {
+        debugPrint(
+            'WARNING: Could not connect to Midtrans API. Payment functionality may be limited.');
+      }
+
+      _initialized = true;
+      return true;
+    } catch (e) {
+      debugPrint('Error initializing PaymentService: $e');
+      return false;
+    }
+  }
 
   // Fetch available payment methods from the API
-  Future<List<Map<String, dynamic>>> getPaymentMethods() async {
+  Future<Map<String, dynamic>> getPaymentMethods() async {
     try {
-      final url = Uri.parse('$apiUrl/v1/payment-methods');
+      final url = Uri.parse('$apiUrl/payment-methods');
       final response = await http.get(
         url,
         headers: {
-          'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'Content-Type': 'application/json',
         },
       );
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
-        return List<Map<String, dynamic>>.from(responseData['data']);
+        return jsonDecode(response.body);
       } else {
-        throw Exception(
-            'Failed to load payment methods: ${response.statusCode}');
+        // If API fails, return hardcoded payment methods
+        return {
+          'success': true,
+          'data': [
+            {
+              'code': 'credit_card',
+              'name': 'Credit Card',
+              'logo': 'credit_card.png',
+            },
+            {
+              'code': 'bca_va',
+              'name': 'BCA Virtual Account',
+              'logo': 'bca.png',
+            },
+            {
+              'code': 'bni_va',
+              'name': 'BNI Virtual Account',
+              'logo': 'bni.png',
+            },
+            {
+              'code': 'bri_va',
+              'name': 'BRI Virtual Account',
+              'logo': 'bri.png',
+            },
+            {
+              'code': 'gopay',
+              'name': 'GoPay',
+              'logo': 'gopay.png',
+            },
+            {
+              'code': 'shopeepay',
+              'name': 'ShopeePay',
+              'logo': 'shopeepay.png',
+            },
+          ]
+        };
       }
     } catch (e) {
-      print('Error fetching payment methods: $e');
-      rethrow;
+      // Return hardcoded payment methods on error
+      debugPrint('Error loading payment methods: $e');
+      return {
+        'success': true,
+        'data': [
+          {
+            'code': 'credit_card',
+            'name': 'Credit Card',
+            'logo': 'credit_card.png',
+          },
+          {
+            'code': 'bca_va',
+            'name': 'BCA Virtual Account',
+            'logo': 'bca.png',
+          },
+          {
+            'code': 'bni_va',
+            'name': 'BNI Virtual Account',
+            'logo': 'bni.png',
+          },
+          {
+            'code': 'gopay',
+            'name': 'GoPay',
+            'logo': 'gopay.png',
+          },
+        ]
+      };
     }
   }
 
-  // Create a payment with Midtrans
+  // Create a payment with Midtrans and save order to Laravel API
   Future<Map<String, dynamic>> createPayment({
     required List<Map<String, dynamic>> items,
     required String customerId,
@@ -53,13 +137,19 @@ class PaymentService {
     required String paymentMethod,
   }) async {
     try {
-      // Generate order ID
-      final orderId =
-          'ORDER-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 8)}';
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      final userData = prefs.getString('user_data');
+      final userEmail = userData != null
+          ? jsonDecode(userData)['email']
+          : 'customer@example.com';
 
-      // Di environment development, gunakan simulasi pembayaran
-      debugPrint('⚠️ SIMULASI PEMBAYARAN UNTUK PENGEMBANGAN ⚠️');
-      debugPrint('Metode pembayaran: $paymentMethod');
+      if (token == null) {
+        return {
+          'success': false,
+          'message': 'Authentication required',
+        };
+      }
 
       // Calculate order amounts
       double totalAmount = 0;
@@ -92,85 +182,104 @@ class PaymentService {
         'quantity': 1,
       });
 
-      // Save order to database/API
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-      final userEmail = prefs.getString('user_email') ?? 'customer@example.com';
+      // Generate order ID
+      final orderId =
+          'ORDER-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 8)}';
 
-      if (token != null) {
-        try {
-          await http.post(
-            Uri.parse('$apiUrl/orders/create'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode({
-              'order_id': orderId,
-              'items': itemDetails,
-              'shipping_address': shippingAddress,
-              'phone_number': phoneNumber,
-              'total_amount': totalAmount,
-              'shipping_cost': shippingCost,
-              'payment_method': paymentMethod,
-              'status': 'pending',
-            }),
-          );
-          debugPrint('Order berhasil disimpan ke database');
-        } catch (e) {
-          debugPrint('Error menyimpan order ke database: $e');
-          // Lanjutkan meskipun gagal menyimpan ke database
-        }
-      }
-
-      // Simulasi respons Midtrans berdasarkan metode pembayaran
-      final snapToken =
-          'SIMULATED-TOKEN-${DateTime.now().millisecondsSinceEpoch}';
-      final redirectUrl =
-          'https://simulator.sandbox.midtrans.com/snap/v2/vtweb/$snapToken';
-
-      // Ciptakan nomor VA berdasarkan bank
-      String vaNumber = "979780";
-      for (int i = 0; i < 8; i++) {
-        vaNumber += (DateTime.now().millisecondsSinceEpoch % 10).toString();
-      }
-
-      String? bank;
-      if (paymentMethod.contains('_va')) {
-        bank = paymentMethod.split('_')[0];
-      } else if (paymentMethod == 'bank_transfer') {
-        bank = 'bca'; // Default bank
-      } else if (paymentMethod == 'qr_code') {
-        // Untuk QR Code, tidak perlu bank
-        bank = null;
-        vaNumber = ""; // Empty string instead of null
-      }
-
-      debugPrint('💳 DATA PEMBAYARAN SIMULASI 💳');
-      debugPrint('Order ID: $orderId');
-      debugPrint('Total: ${totalAmount.toInt()}');
-      debugPrint('Token: $snapToken');
-      debugPrint('Redirect URL: $redirectUrl');
-      debugPrint('Email: $userEmail');
-      debugPrint('Phone: $phoneNumber');
-
-      if (bank != null) {
-        debugPrint('Bank: $bank');
-        debugPrint('VA Number: $vaNumber');
-      }
-
-      return {
-        'success': true,
-        'data': {
-          'order_id': orderId,
-          'token': snapToken,
-          'redirect_url': redirectUrl,
-          'va_number': vaNumber,
-          'bank': bank,
-          'total_amount': totalAmount.toInt(),
+      // Create order in Laravel API
+      final orderResponse = await http.post(
+        Uri.parse('$apiUrl/orders/create'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
         },
-      };
+        body: jsonEncode({
+          'order_id': orderId,
+          'items': itemDetails,
+          'shipping_address': shippingAddress,
+          'phone_number': phoneNumber,
+          'total_amount': totalAmount,
+          'shipping_cost': shippingCost,
+          'payment_method': paymentMethod,
+          'status': 'pending',
+        }),
+      );
+
+      if (orderResponse.statusCode != 200 && orderResponse.statusCode != 201) {
+        debugPrint('Failed to create order: ${orderResponse.body}');
+        return {
+          'success': false,
+          'message': 'Failed to create order',
+        };
+      }
+
+      // Prepare customer details for Midtrans
+      final names = shippingAddress.split(',')[0].split(' ');
+      final firstName = names.isNotEmpty ? names[0] : 'Customer';
+      final lastName = names.length > 1 ? names.sublist(1).join(' ') : '';
+
+      // Create transaction in Midtrans
+      final String authString = base64.encode(utf8.encode('$serverKey:'));
+      final midtransResponse = await http.post(
+        Uri.parse('$snapUrl/transactions'),
+        headers: {
+          'Authorization': 'Basic $authString',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'transaction_details': {
+            'order_id': orderId,
+            'gross_amount': totalAmount.toInt(),
+          },
+          'customer_details': {
+            'first_name': firstName,
+            'last_name': lastName,
+            'email': userEmail,
+            'phone': phoneNumber,
+            'billing_address': {
+              'address': shippingAddress,
+            },
+            'shipping_address': {
+              'address': shippingAddress,
+            },
+          },
+          'item_details': itemDetails,
+          'enabled_payments': [
+            'credit_card',
+            'bca_va',
+            'bni_va',
+            'bri_va',
+            'echannel',
+            'permata_va',
+            'gopay',
+            'shopeepay',
+            'alfamart',
+            'indomaret',
+          ],
+        }),
+      );
+
+      if (midtransResponse.statusCode == 201 ||
+          midtransResponse.statusCode == 200) {
+        final midtransData = jsonDecode(midtransResponse.body);
+
+        return {
+          'success': true,
+          'data': {
+            'order_id': orderId,
+            'redirect_url': midtransData['redirect_url'],
+            'token': midtransData['token'],
+          },
+        };
+      } else {
+        debugPrint('Midtrans error: ${midtransResponse.body}');
+        return {
+          'success': false,
+          'message': 'Failed to create payment: ${midtransResponse.statusCode}',
+        };
+      }
     } catch (e) {
       debugPrint('Payment error: $e');
       return {
@@ -195,7 +304,7 @@ class PaymentService {
     final String orderId = const Uuid().v4();
     final String authString = base64.encode(utf8.encode('$serverKey:'));
 
-    final url = Uri.parse('$baseUrl/charge');
+    final url = Uri.parse('$coreApiUrl/charge');
     final headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -319,16 +428,9 @@ class PaymentService {
   Map<String, dynamic> _getPaymentSpecificParams(String paymentMethod) {
     switch (paymentMethod) {
       case 'Bank Transfer':
-        // Support multiple virtual accounts
         return {
           'bank_transfer': {
             'bank': 'bca',
-            'va_numbers': [
-              {'bank': 'bca', 'va_number': '12345678901'},
-              {'bank': 'bni', 'va_number': '12345678902'},
-              {'bank': 'bri', 'va_number': '12345678903'},
-              {'bank': 'mandiri', 'va_number': '12345678904'},
-            ],
           }
         };
       case 'E-Wallet':
@@ -428,205 +530,54 @@ class PaymentService {
     }
   }
 
-  // Check transaction status
-  Future<Map<String, dynamic>> checkTransactionStatus(String orderId) async {
+  // Get Midtrans payment methods
+  Future<List<Map<String, dynamic>>> getMidtransPaymentMethods() async {
     try {
-      // Try with ApiService first
-      try {
-        final response = await _apiService.get('v1/payments/$orderId/status',
-            withAuth: true);
-        return response['data'] ?? {};
-      } catch (firstError) {
-        debugPrint('First attempt failed: $firstError');
-
-        // Try alternative path
-        try {
-          final response =
-              await _apiService.get('payments/$orderId/status', withAuth: true);
-          return response['data'] ?? {};
-        } catch (secondError) {
-          debugPrint('Second attempt failed: $secondError');
-
-          // Try direct HTTP requests
-          final prefs = await SharedPreferences.getInstance();
-          final token = prefs.getString('auth_token');
-          final headers = {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          };
-
-          if (token != null) {
-            headers['Authorization'] = 'Bearer $token';
-          }
-
-          final urls = [
-            'http://10.0.2.2:8000/api/v1/payments/$orderId/status',
-            'http://10.0.2.2:8000/api/payments/$orderId/status',
-          ];
-
-          for (String url in urls) {
-            try {
-              debugPrint('Trying direct HTTP status request to: $url');
-              final response = await http.get(Uri.parse(url), headers: headers);
-
-              if (response.statusCode == 200) {
-                final data = json.decode(response.body);
-                if (data['success'] == true) {
-                  return data['data'] ?? {};
-                }
-              }
-            } catch (e) {
-              debugPrint('Error with direct HTTP status check: $e');
-            }
-          }
-
-          rethrow;
-        }
-      }
-    } catch (e) {
-      debugPrint('Error checking transaction status: $e');
-      return {'transaction_status': 'error'};
-    }
-  }
-
-  // Generate QR code for payment
-  Future<String> generateQRCode(double amount, String orderId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-
-      if (token == null) {
-        throw Exception('Authentication required');
-      }
-
-      // Call API to generate QR code
-      final response = await http.post(
-        Uri.parse('$apiUrl/payments/generate-qr'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
+      // You can fetch this from API or return static list
+      return [
+        {
+          'code': 'credit_card',
+          'name': 'Credit Card',
+          'logo': 'credit_card.png',
         },
-        body: jsonEncode({
-          'amount': amount,
-          'order_id': orderId,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true && data['data']['qr_url'] != null) {
-          return data['data']['qr_url'];
-        }
-      }
-
-      // If API fails, generate a dummy QR URL
-      // In a real app, this would connect to a payment gateway
-      return 'https://api.sandbox.midtrans.com/v2/qris/$orderId';
-    } catch (e) {
-      debugPrint('Error generating QR code: $e');
-      // Return a fallback URL in case of error
-      return 'https://api.sandbox.midtrans.com/v2/qris/fallback-$orderId';
-    }
-  }
-
-  // Process payment and return a Payment object
-  Future<Payment> processPayment({
-    required String orderId,
-    required double amount,
-    required String paymentMethod,
-    String? qrCodeUrl,
-    String? qrCodeData,
-  }) async {
-    // In a real app, this would communicate with the server
-    // to process the payment and return details
-    try {
-      // Simulate a payment process
-      final payment = Payment(
-        id: 'PAYMENT-${DateTime.now().millisecondsSinceEpoch}',
-        orderId: orderId,
-        amount: amount,
-        status: 'pending',
-        paymentMethod: paymentMethod,
-        qrCodeUrl: qrCodeUrl,
-        qrCodeData: qrCodeData,
-        createdAt: DateTime.now(),
-      );
-
-      // For development, store payment in shared preferences
-      await _savePaymentToStorage(payment);
-
-      return payment;
-    } catch (e) {
-      debugPrint('Error processing payment: $e');
-      throw Exception('Payment processing failed: $e');
-    }
-  }
-
-  // Save payment data to local storage
-  Future<void> _savePaymentToStorage(Payment payment) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final paymentsJson = prefs.getString('payments') ?? '[]';
-      final payments = List<Map<String, dynamic>>.from(
-        jsonDecode(paymentsJson) as List,
-      );
-
-      // Add the new payment
-      payments.add(payment.toJson());
-
-      // Save back to storage
-      await prefs.setString('payments', jsonEncode(payments));
-
-      debugPrint('Payment saved to local storage: ${payment.id}');
-    } catch (e) {
-      debugPrint('Error saving payment to storage: $e');
-      // Non-critical error, so just log it
-    }
-  }
-
-  // Check payment status
-  Future<String> checkPaymentStatus(String paymentId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-
-      if (token == null) {
-        throw Exception('Authentication required');
-      }
-
-      // Call API to check payment status
-      final response = await http.get(
-        Uri.parse('$apiUrl/payments/$paymentId/status'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
+        {
+          'code': 'bca_va',
+          'name': 'BCA Virtual Account',
+          'logo': 'bca.png',
         },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true && data['data']['status'] != null) {
-          return data['data']['status'];
-        }
-      }
-
-      // For demo purposes: randomly return 'completed' 20% of the time
-      // This simulates a payment being completed after some time
-      // In a real app, this would connect to a payment gateway
-      final random = DateTime.now().millisecondsSinceEpoch % 5;
-      if (random == 0) {
-        return 'completed';
-      }
-
-      return 'pending';
+        {
+          'code': 'bni_va',
+          'name': 'BNI Virtual Account',
+          'logo': 'bni.png',
+        },
+        {
+          'code': 'bri_va',
+          'name': 'BRI Virtual Account',
+          'logo': 'bri.png',
+        },
+        {
+          'code': 'gopay',
+          'name': 'GoPay',
+          'logo': 'gopay.png',
+        },
+        {
+          'code': 'shopeepay',
+          'name': 'ShopeePay',
+          'logo': 'shopeepay.png',
+        },
+        {
+          'code': 'qris',
+          'name': 'QRIS',
+          'logo': 'qris.png',
+        },
+      ];
     } catch (e) {
-      debugPrint('Error checking payment status: $e');
-      return 'pending';
+      debugPrint('Error loading Midtrans payment methods: $e');
+      throw Exception('Failed to load payment methods');
     }
   }
 
-  // Get Midtrans Snap Token for payment
+  // Get Midtrans snap token for transaction
   Future<Map<String, dynamic>> getMidtransSnapToken({
     required List<Map<String, dynamic>> items,
     required String customerId,
@@ -637,17 +588,6 @@ class PaymentService {
     String? selectedBank,
   }) async {
     try {
-      debugPrint('======== GET MIDTRANS SNAP TOKEN ========');
-
-      // Generate order ID
-      final orderId =
-          'ORDER-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 8)}';
-
-      debugPrint('Creating payment with Order ID: $orderId');
-      if (selectedBank != null) {
-        debugPrint('Selected Bank: $selectedBank');
-      }
-
       // Calculate total amount
       double totalAmount = 0;
       List<Map<String, dynamic>> itemDetails = [];
@@ -670,7 +610,7 @@ class PaymentService {
         });
       }
 
-      // Add shipping cost
+      // Add shipping cost to total
       totalAmount += shippingCost;
       itemDetails.add({
         'id': 'shipping',
@@ -679,97 +619,54 @@ class PaymentService {
         'quantity': 1,
       });
 
-      debugPrint('Total amount: $totalAmount');
-      debugPrint('Items count: ${itemDetails.length}');
+      // Generate order ID
+      final orderId =
+          'ORDER-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 8)}';
 
-      // Jika ini pembayaran dengan Virtual Account dan bank sudah dipilih
-      if (selectedBank != null &&
-          (selectedBank == 'bca' ||
-              selectedBank == 'bni' ||
-              selectedBank == 'bri' ||
-              selectedBank == 'permata' ||
-              selectedBank == 'mandiri')) {
-        debugPrint('Proses pembayaran Virtual Account bank: $selectedBank');
+      // Prepare customer details
+      final names = shippingAddress.split(',')[0].split(' ');
+      final firstName = names.isNotEmpty ? names[0] : 'Customer';
+      final lastName = names.length > 1 ? names.sublist(1).join(' ') : '';
 
-        // Import service Midtrans
-        final midtransService = MidtransService();
+      // Prepare authentication for Midtrans
+      final String authString = base64.encode(utf8.encode('$serverKey:'));
 
-        // Persiapkan data untuk Midtrans
-        final names = shippingAddress.split(',')[0].split(' ');
-        final firstName = names.isNotEmpty ? names[0] : 'Customer';
-        final lastName = names.length > 1 ? names.sublist(1).join(' ') : '';
+      // Decide which endpoint to use based on payment method
+      Uri endpointUrl;
+      Map<String, dynamic> requestBody = {};
 
-        debugPrint('Customer: $firstName $lastName');
-        debugPrint('Email: $email');
-        debugPrint('Phone: $phoneNumber');
+      if (selectedBank != null && selectedBank.isNotEmpty) {
+        // For VA payments, use Core API direct charge
+        endpointUrl = Uri.parse('$coreApiUrl/charge');
 
-        try {
-          // Gunakan createTransaction dari MidtransService untuk membuat transaksi langsung
-          debugPrint('Memanggil midtransService.createTransaction...');
-          final result = await midtransService.createTransaction(
-            orderId: orderId,
-            grossAmount: totalAmount.toInt(),
-            firstName: firstName,
-            lastName: lastName,
-            email: email,
-            phone: phoneNumber,
-            items: itemDetails,
-            paymentMethod: 'bank_transfer',
-            bankCode: selectedBank,
-          );
-
-          debugPrint('Direct VA charge response: ${result.toString()}');
-
-          // Cek keberadaan VA number
-          if (result['va_number'] == null ||
-              result['va_number'].toString().isEmpty) {
-            debugPrint(
-                '⚠️ VA Number tidak ada dalam response! Menggunakan fallback...');
-            // Buat fallback VA number jika tidak ada
-            String fallbackVA = '';
-            if (selectedBank == 'mandiri') {
-              fallbackVA = 'MAN${DateTime.now().millisecondsSinceEpoch}';
-            } else {
-              fallbackVA =
-                  '${selectedBank.toUpperCase().substring(0, 3)}${DateTime.now().millisecondsSinceEpoch}';
-            }
-            debugPrint('Fallback VA Number: $fallbackVA');
-            result['va_number'] = fallbackVA;
-          }
-
-          // Pastikan response dalam format yang benar
-          return {
-            'success': true,
-            'data': {
-              'order_id': result['order_id'] ?? orderId,
-              'token': result['transaction_id'] ??
-                  'VA-${DateTime.now().millisecondsSinceEpoch}',
-              'redirect_url': null,
-              'va_number': result['va_number'],
-              'bank': result['bank'] ?? selectedBank,
-              'transaction_status': result['transaction_status'] ?? 'pending',
-              'transaction_id': result['transaction_id'] ?? '',
+        requestBody = {
+          'payment_type': 'bank_transfer',
+          'transaction_details': {
+            'order_id': orderId,
+            'gross_amount': totalAmount.toInt(),
+          },
+          'customer_details': {
+            'first_name': firstName,
+            'last_name': lastName,
+            'email': email,
+            'phone': phoneNumber,
+            'billing_address': {
+              'address': shippingAddress,
             },
-          };
-        } catch (e) {
-          debugPrint('❌ ERROR saat memanggil createTransaction: $e');
-          // Gunakan fallback jika direct VA gagal
-          return _createFallbackVAPayment(orderId, totalAmount, selectedBank);
-        }
+            'shipping_address': {
+              'address': shippingAddress,
+            },
+          },
+          'item_details': itemDetails,
+          'bank_transfer': {
+            'bank': selectedBank.toLowerCase(),
+          },
+        };
       } else {
-        // Untuk metode pembayaran lain gunakan Snap
-        debugPrint('Menggunakan Midtrans SNAP untuk metode pembayaran lain');
+        // For other payment methods, use Snap
+        endpointUrl = Uri.parse('$snapUrl/transactions');
 
-        // Prepare customer details for Midtrans
-        final names = shippingAddress.split(',')[0].split(' ');
-        final firstName = names.isNotEmpty ? names[0] : 'Customer';
-        final lastName = names.length > 1 ? names.sublist(1).join(' ') : '';
-
-        // Create transaction in Midtrans to get snap token
-        final String authString = base64.encode(utf8.encode('$serverKey:'));
-
-        // Prepare the payload for Midtrans Snap
-        final Map<String, dynamic> payload = {
+        requestBody = {
           'transaction_details': {
             'order_id': orderId,
             'gross_amount': totalAmount.toInt(),
@@ -788,322 +685,558 @@ class PaymentService {
           },
           'item_details': itemDetails,
           'enabled_payments': [
+            'credit_card',
             'bca_va',
             'bni_va',
             'bri_va',
-            'echannel', // Mandiri
-            'permata_va',
-            'qris', // QRIS/QR Code
+            'gopay',
+            'shopeepay',
+            'qris',
           ],
         };
+      }
 
-        debugPrint(
-            'Sending Midtrans Snap request with payload: ${jsonEncode(payload)}');
+      // Make API request to Midtrans
+      final response = await http.post(
+        endpointUrl,
+        headers: {
+          'Authorization': 'Basic $authString',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode(requestBody),
+      );
 
-        try {
-          final midtransResponse = await http.post(
-            Uri.parse('https://app.sandbox.midtrans.com/snap/v1/transactions'),
-            headers: {
-              'Authorization': 'Basic $authString',
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode(payload),
-          );
+      debugPrint('Midtrans API URL: ${endpointUrl.toString()}');
+      debugPrint('Midtrans response code: ${response.statusCode}');
+      debugPrint('Midtrans response body: ${response.body}');
 
-          debugPrint(
-              'Midtrans Snap response status: ${midtransResponse.statusCode}');
-          debugPrint('Midtrans Snap response body: ${midtransResponse.body}');
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
 
-          if (midtransResponse.statusCode == 201 ||
-              midtransResponse.statusCode == 200) {
-            final midtransData = jsonDecode(midtransResponse.body);
-            debugPrint('Midtrans Snap token: ${midtransData['token']}');
-            debugPrint(
-                'Midtrans redirect URL: ${midtransData['redirect_url']}');
+        // Handle VA payment specific response
+        if (selectedBank != null) {
+          String? vaNumber;
 
-            // Save order details to backend
-            final prefs = await SharedPreferences.getInstance();
-            final token = prefs.getString('auth_token');
-
-            if (token != null) {
-              try {
-                await http.post(
-                  Uri.parse('$apiUrl/orders/create'),
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer $token',
-                    'Accept': 'application/json',
-                  },
-                  body: jsonEncode({
-                    'order_id': orderId,
-                    'items': itemDetails,
-                    'shipping_address': shippingAddress,
-                    'phone_number': phoneNumber,
-                    'total_amount': totalAmount,
-                    'shipping_cost': shippingCost,
-                    'payment_method': 'midtrans',
-                    'midtrans_token': midtransData['token'],
-                    'status': 'pending',
-                  }),
-                );
-                debugPrint('Order saved to backend successfully');
-              } catch (e) {
-                debugPrint('Failed to save order to backend: $e');
-                // Continue even if backend save fails
-              }
-            }
-
-            return {
-              'success': true,
-              'data': {
-                'order_id': orderId,
-                'token': midtransData['token'],
-                'redirect_url': midtransData['redirect_url'],
-                'va_number': null, // SNAP tidak langsung memberikan nomor VA
-                'bank': null,
-              },
-            };
+          if (selectedBank.toLowerCase() == 'bca') {
+            vaNumber = responseData['va_numbers']?[0]?['va_number'];
+          } else if (selectedBank.toLowerCase() == 'bni') {
+            vaNumber = responseData['va_numbers']?[0]?['va_number'];
+          } else if (selectedBank.toLowerCase() == 'bri') {
+            vaNumber = responseData['va_numbers']?[0]?['va_number'];
+          } else if (selectedBank.toLowerCase() == 'permata') {
+            vaNumber = responseData['permata_va_number'];
           } else {
-            debugPrint(
-                'Midtrans Snap request failed with status code: ${midtransResponse.statusCode}');
-            debugPrint('Response body: ${midtransResponse.body}');
-            throw Exception(
-                'Midtrans Snap request failed: ${midtransResponse.body}');
+            vaNumber = responseData['payment_code'];
           }
-        } catch (e) {
-          debugPrint('Error during SNAP API call: $e');
-          rethrow;
+
+          return {
+            'success': true,
+            'data': {
+              'order_id': orderId,
+              'transaction_id': responseData['transaction_id'] ?? '',
+              'va_number': vaNumber,
+              'bank': selectedBank,
+              'payment_type': responseData['payment_type'] ?? 'bank_transfer',
+              'status_code': responseData['status_code'] ?? '201',
+            },
+          };
+        } else {
+          // Handle SNAP response
+          return {
+            'success': true,
+            'data': {
+              'order_id': orderId,
+              'redirect_url': responseData['redirect_url'] ?? '',
+              'token': responseData['token'] ?? '',
+            },
+          };
         }
+      } else {
+        debugPrint('Midtrans API error: ${response.body}');
+        return {
+          'success': false,
+          'message': 'Failed to create payment: ${response.statusCode}',
+        };
       }
     } catch (e) {
-      debugPrint('❌ PAYMENT ERROR: $e');
-      debugPrint('Using fallback payment simulation');
-
-      // Generate simulated token in case of error
-      final orderId =
-          'ORDER-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 8)}';
-      final simulatedToken =
-          'SIMULATOR-TOKEN-${DateTime.now().millisecondsSinceEpoch}';
-      final simulatedRedirectUrl =
-          'https://simulator.sandbox.midtrans.com/snap/v2/vtweb/$simulatedToken';
-
-      // Generate simulated VA number
-      String simulatedVA = "97978";
-      for (int i = 0; i < 8; i++) {
-        simulatedVA +=
-            (DateTime.now().millisecondsSinceEpoch % 10).toString()[0];
-      }
-
+      debugPrint('Error creating Midtrans payment: $e');
       return {
-        'success': true, // Return success to prevent app from crashing
-        'data': {
-          'order_id': orderId,
-          'token': simulatedToken,
-          'redirect_url': simulatedRedirectUrl,
-          'va_number': simulatedVA,
-          'bank': selectedBank ??
-              'bca', // Simulasi menggunakan BCA atau selected bank
-          'message': 'Using payment simulation due to error: $e',
-        },
+        'success': false,
+        'message': 'Error: $e',
       };
     }
   }
 
-  // Membuat fallback payment untuk virtual account jika direct API gagal
-  Map<String, dynamic> _createFallbackVAPayment(
-      String orderId, double amount, String bankCode) {
-    debugPrint('======== MEMBUAT FALLBACK VA PAYMENT ========');
-    debugPrint('Bank: $bankCode, Amount: $amount');
+  // Get QR Code for payment
+  Future<Map<String, dynamic>> getQRCode(String orderId) async {
+    try {
+      // Get authentication token
+      final String authString = base64.encode(utf8.encode('$serverKey:'));
 
-    // Buat format VA number yang masuk akal sesuai bank
-    String vaNumber;
-    switch (bankCode) {
-      case 'bca':
-        vaNumber =
-            '8${DateTime.now().millisecondsSinceEpoch % 100000000000}'; // BCA 11-12 digit
-        break;
-      case 'bni':
-        vaNumber =
-            '988${DateTime.now().millisecondsSinceEpoch % 10000000000}'; // BNI biasanya dengan prefix 988
-        break;
-      case 'bri':
-        vaNumber =
-            '8${DateTime.now().millisecondsSinceEpoch % 100000000000}'; // BRI mirip BCA
-        break;
-      case 'permata':
-        vaNumber =
-            '8${DateTime.now().millisecondsSinceEpoch % 1000000000000}'; // Permata 13 digit
-        break;
-      case 'mandiri':
-        // Mandiri menggunakan format bill_key dan biller_code
-        return {
-          'success': true,
-          'data': {
-            'order_id': orderId,
-            'token': 'SIM-MAN-${DateTime.now().millisecondsSinceEpoch}',
-            'redirect_url': null,
-            'va_number':
-                '70012/${DateTime.now().millisecondsSinceEpoch % 1000000000}',
-            'bill_key': '${DateTime.now().millisecondsSinceEpoch % 1000000000}',
-            'biller_code': '70012',
-            'bank': 'mandiri',
-            'transaction_status': 'pending',
-            'transaction_id': 'SIM-${DateTime.now().millisecondsSinceEpoch}',
-            'gross_amount': amount.toInt(),
-            'is_simulation': true,
+      // First check if this is a valid order ID
+      final statusUrl = Uri.parse('$coreApiUrl/$orderId/status');
+      final statusResponse = await http.get(
+        statusUrl,
+        headers: {
+          'Authorization': 'Basic $authString',
+          'Accept': 'application/json',
+        },
+      );
+
+      debugPrint('Checking order status URL: ${statusUrl.toString()}');
+
+      if (statusResponse.statusCode != 200) {
+        debugPrint('Order not found or invalid: ${statusResponse.body}');
+
+        // Create a new QRIS transaction
+        final transaction = await http.post(
+          Uri.parse('$coreApiUrl/charge'),
+          headers: {
+            'Authorization': 'Basic $authString',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
           },
+          body: jsonEncode({
+            'payment_type': 'qris',
+            'transaction_details': {
+              'order_id': 'QRIS-$orderId',
+              'gross_amount': 10000, // Default amount if not specified
+            },
+            'qris': {'acquirer': 'gopay'}
+          }),
+        );
+
+        if (transaction.statusCode == 200 || transaction.statusCode == 201) {
+          final responseData = jsonDecode(transaction.body);
+
+          return {
+            'qr_code_url': responseData['actions']?.firstWhere(
+                  (action) => action['name'] == 'generate-qr-code',
+                  orElse: () => {'url': ''},
+                )['url'] ??
+                '',
+            'qr_code_data':
+                responseData['qris_data'] ?? responseData['payment_code'] ?? '',
+          };
+        } else {
+          debugPrint('Failed to create QRIS transaction: ${transaction.body}');
+          return _createFallbackQR(orderId);
+        }
+      }
+
+      // Transaction exists, try to get the QR code information
+      final statusData = jsonDecode(statusResponse.body);
+
+      if (statusData['payment_type'] == 'qris') {
+        // This is a QRIS transaction, extract QR data
+        return {
+          'qr_code_url': statusData['actions']?.firstWhere(
+                (action) => action['name'] == 'generate-qr-code',
+                orElse: () => {'url': ''},
+              )['url'] ??
+              '',
+          'qr_code_data':
+              statusData['qris_data'] ?? statusData['payment_code'] ?? '',
         };
-      default:
-        vaNumber = '${DateTime.now().millisecondsSinceEpoch % 100000000000}';
+      } else {
+        // Create a new QRIS transaction for this order
+        final qrisUrl = Uri.parse('$coreApiUrl/charge');
+        final qrisResponse = await http.post(
+          qrisUrl,
+          headers: {
+            'Authorization': 'Basic $authString',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode({
+            'payment_type': 'qris',
+            'transaction_details': {
+              'order_id': 'QRIS-$orderId',
+              'gross_amount': statusData['gross_amount'] ?? 10000,
+            },
+            'qris': {'acquirer': 'gopay'}
+          }),
+        );
+
+        if (qrisResponse.statusCode == 200 || qrisResponse.statusCode == 201) {
+          final responseData = jsonDecode(qrisResponse.body);
+
+          return {
+            'qr_code_url': responseData['actions']?.firstWhere(
+                  (action) => action['name'] == 'generate-qr-code',
+                  orElse: () => {'url': ''},
+                )['url'] ??
+                '',
+            'qr_code_data':
+                responseData['qris_data'] ?? responseData['payment_code'] ?? '',
+          };
+        }
+      }
+
+      // If all else fails, return fallback QR data
+      return _createFallbackQR(orderId);
+    } catch (e) {
+      debugPrint('Error generating QR code: $e');
+      return _createFallbackQR(orderId);
     }
+  }
 
-    debugPrint('Generated fallback VA: $vaNumber');
-
+  // Helper method to create fallback QR data
+  Map<String, dynamic> _createFallbackQR(String orderId) {
     return {
-      'success': true,
-      'data': {
-        'order_id': orderId,
-        'token':
-            'SIM-${bankCode.toUpperCase()}-${DateTime.now().millisecondsSinceEpoch}',
-        'redirect_url': null,
-        'va_number': vaNumber,
-        'bank': bankCode,
-        'transaction_status': 'pending',
-        'transaction_id': 'SIM-${DateTime.now().millisecondsSinceEpoch}',
-        'gross_amount': amount.toInt(),
-        'is_simulation': true,
-      },
+      'qr_code_url': '',
+      'qr_code_data':
+          'QRIS.ID|ORDER.$orderId|TIME.${DateTime.now().millisecondsSinceEpoch}',
     };
   }
 
-  // Get available payment methods from Midtrans
-  Future<List<Map<String, dynamic>>> getMidtransPaymentMethods() async {
-    // These are the payment methods we'll support
-    return [
-      {
-        'code': 'qris',
-        'name': 'QRIS (QR Code)',
-        'type': 'qr_code',
-        'description': 'Pay using any mobile banking app or e-wallet via QRIS',
-        'icon': 'qr_code',
-      },
-      {
-        'code': 'bca_va',
-        'name': 'BCA Virtual Account',
-        'type': 'bank',
-        'description': 'Pay via BCA Virtual Account',
-        'icon': 'account_balance',
-      },
-      {
-        'code': 'bni_va',
-        'name': 'BNI Virtual Account',
-        'type': 'bank',
-        'description': 'Pay via BNI Virtual Account',
-        'icon': 'account_balance',
-      },
-      {
-        'code': 'bri_va',
-        'name': 'BRI Virtual Account',
-        'type': 'bank',
-        'description': 'Pay via BRI Virtual Account',
-        'icon': 'account_balance',
-      },
-      {
-        'code': 'echannel',
-        'name': 'Mandiri Virtual Account',
-        'type': 'bank',
-        'description': 'Pay via Mandiri Bill Payment',
-        'icon': 'account_balance',
-      },
-      {
-        'code': 'permata_va',
-        'name': 'Permata Virtual Account',
-        'type': 'bank',
-        'description': 'Pay via Permata Virtual Account',
-        'icon': 'account_balance',
-      },
-    ];
-  }
+  // Process payment
+  Future<Map<String, dynamic>> processPayment({
+    required String orderId,
+    required double amount,
+    required String paymentMethod,
+    String? qrCodeUrl,
+    String? qrCodeData,
+  }) async {
+    try {
+      // Get authentication token
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      final userData = prefs.getString('user_data');
 
-  // Get QR code for payment
-  Future<Map<String, dynamic>> getQRCode(String orderId) async {
-    // Try multiple possible API endpoints to increase chance of success
-    List<String> possibleEndpoints = [
-      'v1/payments/$orderId/qr-code', // No leading slash
-      'payments/$orderId/qr-code', // No leading slash
-    ];
+      if (token == null) {
+        return {
+          'success': false,
+          'message': 'Authentication required',
+        };
+      }
 
-    Exception? lastException;
+      // First check if this transaction has already been created in Midtrans
+      final String authString = base64.encode(utf8.encode('$serverKey:'));
+      final statusUrl = Uri.parse('$coreApiUrl/$orderId/status');
 
-    // Try with ApiService first
-    for (String endpoint in possibleEndpoints) {
+      debugPrint('Checking transaction status URL: ${statusUrl.toString()}');
+
       try {
-        debugPrint('Trying to get QR code from endpoint: $endpoint');
-        final response = await _apiService.get(endpoint, withAuth: true);
+        final statusResponse = await http.get(
+          statusUrl,
+          headers: {
+            'Authorization': 'Basic $authString',
+            'Accept': 'application/json',
+          },
+        );
 
-        if (response['success'] == true && response['data'] != null) {
-          debugPrint('Successfully got QR code from: $endpoint');
-          return response['data'];
+        // If transaction exists in Midtrans
+        if (statusResponse.statusCode == 200) {
+          final transactionData = jsonDecode(statusResponse.body);
+
+          // Create payment record in your backend API
+          final backendPayment = await _createPaymentRecord(
+              orderId: orderId,
+              amount: amount,
+              paymentMethod: paymentMethod,
+              qrCodeUrl: qrCodeUrl,
+              qrCodeData: qrCodeData,
+              transactionId: transactionData['transaction_id'],
+              status: transactionData['transaction_status'] ?? 'pending');
+
+          return {
+            'success': true,
+            'payment_id': backendPayment['id'] ?? orderId,
+            'status': transactionData['transaction_status'] ?? 'pending',
+            'qr_url': qrCodeUrl,
+            'qr_data': qrCodeData,
+            'transaction_time': transactionData['transaction_time'],
+            'expiry_time': transactionData['expiry_time'],
+          };
         }
       } catch (e) {
-        debugPrint('Error with endpoint $endpoint: $e');
-        lastException = Exception(e.toString());
-        // Continue to the next endpoint
+        debugPrint('Error checking existing transaction: $e');
+        // Continue to create new transaction
       }
-    }
 
-    // If ApiService failed, try direct HTTP requests
-    debugPrint('ApiService failed, trying direct HTTP requests...');
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
+      // If payment method is QRIS but we don't have QR data, create a new QRIS transaction
+      if (paymentMethod.toLowerCase() == 'qris' &&
+          (qrCodeData == null || qrCodeData.isEmpty)) {
+        // Create a QRIS transaction in Midtrans
+        final qrisResponse = await http.post(
+          Uri.parse('$coreApiUrl/charge'),
+          headers: {
+            'Authorization': 'Basic $authString',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode({
+            'payment_type': 'qris',
+            'transaction_details': {
+              'order_id': orderId,
+              'gross_amount': amount.toInt(),
+            },
+            'qris': {'acquirer': 'gopay'}
+          }),
+        );
+
+        debugPrint(
+            'QRIS transaction URL: ${Uri.parse('$coreApiUrl/charge').toString()}');
+
+        if (qrisResponse.statusCode == 200 || qrisResponse.statusCode == 201) {
+          final qrisData = jsonDecode(qrisResponse.body);
+
+          final updatedQrCodeUrl = qrisData['actions']?.firstWhere(
+                (action) => action['name'] == 'generate-qr-code',
+                orElse: () => {'url': ''},
+              )['url'] ??
+              '';
+
+          final updatedQrCodeData =
+              qrisData['qris_data'] ?? qrisData['payment_code'] ?? '';
+
+          // Create payment record in your backend API
+          final backendPayment = await _createPaymentRecord(
+              orderId: orderId,
+              amount: amount,
+              paymentMethod: 'QRIS',
+              qrCodeUrl: updatedQrCodeUrl,
+              qrCodeData: updatedQrCodeData,
+              transactionId: qrisData['transaction_id'],
+              status: qrisData['transaction_status'] ?? 'pending');
+
+          return {
+            'success': true,
+            'payment_id': backendPayment['id'] ?? orderId,
+            'status': qrisData['transaction_status'] ?? 'pending',
+            'qr_url': updatedQrCodeUrl,
+            'qr_data': updatedQrCodeData,
+            'transaction_time': qrisData['transaction_time'],
+            'expiry_time': qrisData['expiry_time'],
+          };
+        }
+      }
+
+      // For non-QRIS or if QRIS creation failed, create generic payment record
+      final backendPayment = await _createPaymentRecord(
+          orderId: orderId,
+          amount: amount,
+          paymentMethod: paymentMethod,
+          qrCodeUrl: qrCodeUrl,
+          qrCodeData: qrCodeData,
+          status: 'pending');
+
+      return {
+        'success': true,
+        'payment_id': backendPayment['id'] ?? orderId,
+        'status': 'pending',
+        'qr_url': qrCodeUrl,
+        'qr_data': qrCodeData,
+      };
+    } catch (e) {
+      debugPrint('Error processing payment: $e');
+      // Return basic information on error
+      return {
+        'success': true, // Still return success to continue flow
+        'payment_id': orderId,
+        'status': 'pending',
+        'qr_url': qrCodeUrl,
+        'qr_data': qrCodeData,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Helper method to create payment record in your backend
+  Future<Map<String, dynamic>> _createPaymentRecord({
+    required String orderId,
+    required double amount,
+    required String paymentMethod,
+    String? qrCodeUrl,
+    String? qrCodeData,
+    String? transactionId,
+    required String status,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        return {'id': orderId, 'status': status};
+      }
+
+      final url = Uri.parse('$apiUrl/payments/process');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      };
+
+      final body = {
+        'order_id': orderId,
+        'amount': amount,
+        'payment_method': paymentMethod,
+        'qr_code_url': qrCodeUrl,
+        'qr_code_data': qrCodeData,
+        'transaction_id': transactionId,
+        'status': status,
+      };
+
+      final response = await http.post(
+        url,
+        headers: headers,
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('API error creating payment record: ${response.body}');
+        return {'id': orderId, 'status': status};
+      }
+    } catch (e) {
+      debugPrint('Error creating payment record: $e');
+      return {'id': orderId, 'status': status};
+    }
+  }
+
+  // Method to ping Midtrans API and verify connectivity
+  Future<bool> pingMidtransAPI() async {
+    try {
+      debugPrint('Pinging Midtrans API to verify connectivity...');
+
+      // Use a simple request to test connectivity
+      final String authString = base64.encode(utf8.encode('$serverKey:'));
+
+      // Try Core API first
+      final coreResponse = await http.get(
+        Uri.parse('$coreApiUrl/ping'),
+        headers: {
+          'Authorization': 'Basic $authString',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 5));
+
+      debugPrint('Core API ping response: ${coreResponse.statusCode}');
+
+      if (coreResponse.statusCode < 500) {
+        // Even if it's 404, it means we can reach the server
+        return true;
+      }
+
+      // Try SNAP API
+      final snapResponse = await http.get(
+        Uri.parse('$snapUrl/ping'),
+        headers: {
+          'Authorization': 'Basic $authString',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 5));
+
+      debugPrint('SNAP API ping response: ${snapResponse.statusCode}');
+
+      return snapResponse.statusCode < 500;
+    } catch (e) {
+      debugPrint('Error pinging Midtrans API: $e');
+      return false;
+    }
+  }
+
+  // Check payment status
+  Future<Map<String, dynamic>> checkTransactionStatus(String orderId) async {
+    final String authString = base64.encode(utf8.encode('$serverKey:'));
+    final url = Uri.parse('$coreApiUrl/$orderId/status');
+
     final headers = {
       'Accept': 'application/json',
-      'Content-Type': 'application/json',
+      'Authorization': 'Basic $authString',
     };
 
-    if (token != null) {
-      headers['Authorization'] = 'Bearer $token';
-    }
+    try {
+      debugPrint('Checking transaction status for order: $orderId');
+      debugPrint('Status check URL: ${url.toString()}');
+      final response = await http.get(url, headers: headers);
 
-    final urls = [
-      'http://10.0.2.2:8000/api/v1/payments/$orderId/qr-code',
-      'http://10.0.2.2:8000/api/payments/$orderId/qr-code',
-      'http://localhost:8000/api/v1/payments/$orderId/qr-code',
-      'http://localhost:8000/api/payments/$orderId/qr-code',
-    ];
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        debugPrint('Transaction status: ${responseData['transaction_status']}');
 
-    for (String url in urls) {
-      try {
-        debugPrint('Trying direct HTTP request to: $url');
-        final response = await http.get(Uri.parse(url), headers: headers);
-
-        if (response.statusCode == 200) {
-          final Map<String, dynamic> data = json.decode(response.body);
-          if (data['success'] == true && data['data'] != null) {
-            debugPrint('Successfully got QR code from direct HTTP: $url');
-            return data['data'];
-          }
-        } else {
-          debugPrint(
-              'Direct HTTP request failed: ${response.statusCode} ${response.body}');
+        // Update order status in your backend if needed
+        try {
+          await _updateOrderStatus(
+            orderId: orderId,
+            status: responseData['transaction_status'] ?? 'pending',
+            paymentType: responseData['payment_type'] ?? '',
+          );
+        } catch (e) {
+          debugPrint('Error updating order status: $e');
+          // Continue even if update fails
         }
-      } catch (e) {
-        debugPrint('Error with direct HTTP to $url: $e');
-      }
-    }
 
-    // If we get here, all endpoints failed
-    // Create a fallback QR code data
-    debugPrint('All QR code requests failed, returning fallback QR data');
-    return {
-      'qr_code_data':
-          'QRIS.ID|ORDER.$orderId|AMOUNT.0|TIME.${DateTime.now().millisecondsSinceEpoch}',
-      'qr_code_url': null,
-      'order_id': orderId,
-      'amount': 0,
-      'expires_at':
-          DateTime.now().add(const Duration(hours: 24)).toIso8601String(),
-    };
+        return responseData;
+      } else {
+        debugPrint('Failed to check transaction status: ${response.body}');
+
+        // Check if this might be a QRIS transaction with different ID
+        if (orderId.startsWith('ORDER-')) {
+          final qrisOrderId = 'QRIS-$orderId';
+          final qrisUrl = Uri.parse('$coreApiUrl/$qrisOrderId/status');
+
+          try {
+            final qrisResponse = await http.get(qrisUrl, headers: headers);
+
+            if (qrisResponse.statusCode == 200) {
+              final qrisData = jsonDecode(qrisResponse.body);
+              debugPrint(
+                  'Found QRIS transaction: ${qrisData['transaction_status']}');
+              return qrisData;
+            }
+          } catch (e) {
+            debugPrint('Error checking QRIS transaction: $e');
+          }
+        }
+
+        throw Exception(
+            'Failed to check transaction status: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error checking transaction status: $e');
+      // Return a basic response so the UI doesn't crash
+      return {
+        'transaction_status': 'pending',
+        'status_code': '404',
+        'status_message': 'Error checking status: $e',
+      };
+    }
+  }
+
+  // Update order status in your backend
+  Future<void> _updateOrderStatus({
+    required String orderId,
+    required String status,
+    required String paymentType,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        return;
+      }
+
+      final url = Uri.parse('$apiUrl/orders/update-status');
+      await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'order_id': orderId,
+          'status': status,
+          'payment_type': paymentType,
+        }),
+      );
+    } catch (e) {
+      debugPrint('Error updating order status in backend: $e');
+    }
   }
 }

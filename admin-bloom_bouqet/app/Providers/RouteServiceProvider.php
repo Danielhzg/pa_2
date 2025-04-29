@@ -34,6 +34,10 @@ class RouteServiceProvider extends ServiceProvider
             Route::middleware('web')
                 ->group(base_path('routes/web.php'));
         });
+        
+        // Add explicit route model bindings
+        Route::model('order', \App\Models\Order::class);
+        Route::model('customer', \App\Models\User::class);
     }
 
     /**

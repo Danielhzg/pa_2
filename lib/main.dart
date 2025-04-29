@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'services/auth_service.dart';
+import 'services/payment_service.dart'; // Import PaymentService
 import 'screens/splash_screen.dart';
 import 'login_page.dart';
 import 'register.dart';
@@ -13,7 +14,7 @@ import 'screens/profile_page.dart';
 import 'providers/cart_provider.dart'; // Import CartProvider
 import 'providers/delivery_provider.dart'; // Import DeliveryProvider
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   SystemChrome.setPreferredOrientations([
@@ -29,6 +30,13 @@ void main() {
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
+
+  // Initialize payment service
+  try {
+    await PaymentService().initialize();
+  } catch (e) {
+    debugPrint('Error initializing payment service: $e');
+  }
 
   runApp(const MyApp());
 }

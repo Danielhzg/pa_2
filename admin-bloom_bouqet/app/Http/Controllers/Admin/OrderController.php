@@ -4,87 +4,145 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class OrderController extends Controller
 {
-    public function index()
+    /**
+     * Display a listing of the orders.
+     *
+     * @param Request $request
+     * @return \Illuminate\View\View
+     */
+    public function index(Request $request)
     {
         try {
-            $orders = DB::table('orders')
-                ->leftJoin('users', 'orders.user_id', '=', 'users.id')
-                ->select('orders.*', 'users.name as user_name', 'users.email as user_email')
-                ->orderBy('orders.created_at', 'desc')
-                ->get();
-
-            // Get order items for each order
-            foreach ($orders as $order) {
-                $order->items = DB::table('order_items')
-                    ->where('order_id', $order->id)
-                    ->get();
+            $query = Order::with('user');
+            
+            // Filter by status
+            if ($request->has('status') && $request->status !== '') {
+                $query->where('status', $request->status);
             }
-
-            return view('admin.orders.index', compact('orders'));
+            
+            // Filter by date range
+            if ($request->has('start_date') && $request->start_date) {
+                $startDate = Carbon::parse($request->start_date)->startOfDay();
+                $query->where('created_at', '>=', $startDate);
+            }
+            
+            if ($request->has('end_date') && $request->end_date) {
+                $endDate = Carbon::parse($request->end_date)->endOfDay();
+                $query->where('created_at', '<=', $endDate);
+            }
+            
+            // Get status counts for summary stats
+            $pendingCount = Order::where('status', 'pending')->count();
+            $processingCount = Order::where('status', 'processing')->count();
+            $completedCount = Order::where('status', 'completed')->count();
+            $cancelledCount = Order::where('status', 'cancelled')->count();
+            
+            // Get orders with pagination
+            $orders = $query->orderBy('created_at', 'desc')->paginate(10);
+            
+            return view('admin.orders.index', compact(
+                'orders', 
+                'pendingCount', 
+                'processingCount', 
+                'completedCount', 
+                'cancelledCount'
+            ));
         } catch (\Exception $e) {
-            Log::error('Error fetching orders: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Failed to fetch orders. Please try again.');
+            Log::error('Error in OrderController@index: ' . $e->getMessage());
+            return back()->with('error', 'Terjadi kesalahan saat memuat daftar pesanan.');
         }
     }
 
-    public function show($id)
+    /**
+     * Display the specified order.
+     *
+     * @param Order $order
+     * @return \Illuminate\View\View
+     */
+    public function show(Order $order)
     {
         try {
-            $order = DB::table('orders')
-                ->leftJoin('users', 'orders.user_id', '=', 'users.id')
-                ->select('orders.*', 'users.name as user_name', 'users.email as user_email')
-                ->where('orders.id', $id)
-                ->first();
-
-            if (!$order) {
-                return redirect()->route('admin.orders.index')->with('error', 'Order not found.');
-            }
-
-            $order->items = DB::table('order_items')
-                ->where('order_id', $order->id)
-                ->get();
-
+            // Load order with relationships
+            $order->load(['user', 'items.product']);
+            
             return view('admin.orders.show', compact('order'));
         } catch (\Exception $e) {
-            Log::error('Error fetching order details: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Failed to fetch order details. Please try again.');
+            Log::error('Error in OrderController@show: ' . $e->getMessage());
+            return back()->with('error', 'Terjadi kesalahan saat memuat detail pesanan.');
         }
     }
 
-    public function updateStatus(Request $request, $id)
+    /**
+     * Update the status of the specified order.
+     *
+     * @param Request $request
+     * @param Order $order
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updateStatus(Request $request, Order $order)
     {
         try {
-            $validator = validator($request->all(), [
-                'status' => 'required|string|in:pending,processing,completed,cancelled',
-                'payment_status' => 'required|string|in:pending,success,failed,expired',
+            // Validate the request
+            $request->validate([
+                'status' => 'required|in:pending,processing,completed,cancelled'
             ]);
-
-            if ($validator->fails()) {
-                return redirect()->back()->with('error', 'Invalid status values.');
-            }
-
-            $updated = DB::table('orders')
-                ->where('id', $id)
-                ->update([
-                    'status' => $request->status,
-                    'payment_status' => $request->payment_status,
-                    'updated_at' => now(),
-                ]);
-
-            if (!$updated) {
-                return redirect()->back()->with('error', 'Order not found.');
-            }
-
-            return redirect()->route('admin.orders.show', $id)
-                ->with('success', 'Order status updated successfully.');
+            
+            // Update the order status
+            $order->status = $request->status;
+            $order->save();
+            
+            // Placeholder for sending push notification to the Flutter app
+            // TODO: Implement notification to mobile device
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Status pesanan berhasil diperbarui'
+            ]);
         } catch (\Exception $e) {
-            Log::error('Error updating order status: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Failed to update order status. Please try again.');
+            Log::error('Error in OrderController@updateStatus: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan saat memperbarui status pesanan'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get order statistics for dashboard.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getOrderStats()
+    {
+        try {
+            $stats = [
+                'total_orders' => Order::count(),
+                'pending_orders' => Order::where('status', 'pending')->count(),
+                'processing_orders' => Order::where('status', 'processing')->count(),
+                'completed_orders' => Order::where('status', 'completed')->count(),
+                'cancelled_orders' => Order::where('status', 'cancelled')->count(),
+                'total_revenue' => Order::where('status', '!=', 'cancelled')->sum('total_amount'),
+                'recent_orders' => Order::with('user')
+                    ->orderBy('created_at', 'desc')
+                    ->limit(5)
+                    ->get()
+            ];
+            
+            return response()->json($stats);
+        } catch (\Exception $e) {
+            Log::error('Error in OrderController@getOrderStats: ' . $e->getMessage());
+            return response()->json([
+                'error' => 'Terjadi kesalahan saat mengambil statistik pesanan'
+            ], 500);
         }
     }
 } 

@@ -80,7 +80,16 @@ class _QRPaymentScreenState extends State<QRPaymentScreen> {
       );
 
       setState(() {
-        _payment = payment;
+        _payment = Payment(
+          id: payment['payment_id'] ?? '',
+          orderId: widget.orderId,
+          amount: widget.amount,
+          status: payment['status'] ?? 'pending',
+          paymentMethod: 'QRIS',
+          qrCodeUrl: payment['qr_url'],
+          qrCodeData: payment['qr_data'],
+          createdAt: DateTime.now(),
+        );
       });
 
       // Start checking payment status periodically
@@ -109,7 +118,16 @@ class _QRPaymentScreenState extends State<QRPaymentScreen> {
         );
 
         setState(() {
-          _payment = payment;
+          _payment = Payment(
+            id: payment['payment_id'] ?? '',
+            orderId: widget.orderId,
+            amount: widget.amount,
+            status: payment['status'] ?? 'pending',
+            paymentMethod: 'QRIS',
+            qrCodeUrl: payment['qr_url'],
+            qrCodeData: payment['qr_data'],
+            createdAt: DateTime.now(),
+          );
         });
 
         // Start checking payment status even with fallback QR
