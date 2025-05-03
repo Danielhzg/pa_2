@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
@@ -11,9 +11,23 @@ class ProductController extends Controller
     /**
      * Return a list of products in JSON format.
      */
-    public function index()
+    public function index(Request $request)
     {
         $products = Product::with('category')->get();
+        $user = $request->user();
+        
+        // Process each product to add image URLs
+        $products->transform(function ($product) use ($user) {
+            // Add imageUrl for all products
+            $product->imageUrl = $this->getProductImageUrl($product);
+            
+            // Add favorite status if user is authenticated
+            if ($user) {
+                $product->is_favorited = $user->hasFavorited($product->id);
+            }
+            
+            return $product;
+        });
 
         return response()->json([
             'success' => true,
@@ -21,9 +35,10 @@ class ProductController extends Controller
         ]);
     }
 
-    public function show($id)
+    public function show(Request $request, $id)
     {
-        $product = Product::with(['category', 'images'])->find($id);
+        $product = Product::with('category')->find($id);
+        $user = $request->user();
         
         if (!$product) {
             return response()->json([
@@ -32,25 +47,12 @@ class ProductController extends Controller
             ], 404);
         }
         
-        // Transform the product to ensure image URLs are complete
-        if ($product->images && $product->images->count() > 0) {
-            $product->images->transform(function ($image) {
-                $image->url = url('storage/' . $image->path);
-                return $image;
-            });
-            // Add a main_image field for convenience
-            $product->main_image = $product->images->first()->url ?? null;
-        }
+        // Process image data for the product
+        $product = $this->processProductImages($product);
         
-        // Set the imageUrl property for client compatibility
-        if ($product->main_image) {
-            $product->imageUrl = $product->main_image;
-        } elseif ($product->image) {
-            // If product has an image field but no images relationship
-            $product->imageUrl = url('storage/' . $product->image);
-        } else {
-            // Fallback to a default image
-            $product->imageUrl = url('storage/products/default-product.png');
+        // Add favorite status if user is authenticated
+        if ($user) {
+            $product->is_favorited = $user->hasFavorited($product->id);
         }
         
         return response()->json([
@@ -63,11 +65,25 @@ class ProductController extends Controller
     public function search(Request $request)
     {
         $query = $request->get('query');
+        $user = $request->user();
         $products = Product::with('category')
             ->where('name', 'like', "%{$query}%")
             ->orWhere('description', 'like', "%{$query}%")
             ->latest()
             ->get();
+            
+        // Process each product to add image URLs
+        $products->transform(function ($product) use ($user) {
+            // Add imageUrl for all products
+            $product->imageUrl = $this->getProductImageUrl($product);
+            
+            // Add favorite status if user is authenticated
+            if ($user) {
+                $product->is_favorited = $user->hasFavorited($product->id);
+            }
+            
+            return $product;
+        });
 
         return response()->json([
             'success' => true,
@@ -79,26 +95,29 @@ class ProductController extends Controller
     /**
      * Get products filtered by category ID.
      *
+     * @param Request $request
      * @param int $category
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getByCategory($category)
+    public function getByCategory(Request $request, $category)
     {
         try {
-            // Load products with category relationship only (removing images relationship for now)
             $products = Product::with('category')
                 ->where('category_id', $category)
                 ->get();
             
-            // Transform the products to ensure image URLs are complete
-            $products = $products->map(function ($product) {
-                // If the product has an image field directly, use it
-                if ($product->image) {
-                    $product->imageUrl = url('storage/' . $product->image);
-                } else {
-                    // Fallback to a default image
-                    $product->imageUrl = url('storage/products/default-product.png');
+            $user = $request->user();
+            
+            // Process each product to add image URLs
+            $products->transform(function ($product) use ($user) {
+                // Add imageUrl for all products
+                $product->imageUrl = $this->getProductImageUrl($product);
+                
+                // Add favorite status if user is authenticated
+                if ($user) {
+                    $product->is_favorited = $user->hasFavorited($product->id);
                 }
+                
                 return $product;
             });
             
@@ -113,5 +132,49 @@ class ProductController extends Controller
                 'message' => 'Failed to retrieve products: ' . $e->getMessage()
             ], 500);
         }
+    }
+    
+    /**
+     * Process product images to generate URLs for front-end consumption
+     * 
+     * @param Product $product
+     * @return Product
+     */
+    private function processProductImages(Product $product)
+    {
+        // Get all images as an array
+        $allImages = $product->getAllImages();
+        
+        // Create array of image URLs for the front-end
+        $imageUrls = [];
+        foreach ($allImages as $image) {
+            $imageUrls[] = url('storage/' . $image);
+        }
+        
+        // Add image URLs to the product
+        $product->image_urls = $imageUrls;
+        
+        // Set the primary image URL
+        $product->imageUrl = $this->getProductImageUrl($product);
+        
+        return $product;
+    }
+    
+    /**
+     * Get the primary image URL for a product
+     * 
+     * @param Product $product
+     * @return string
+     */
+    private function getProductImageUrl(Product $product)
+    {
+        $primaryImage = $product->getPrimaryImage();
+        
+        if ($primaryImage) {
+            return url('storage/' . $primaryImage);
+        }
+        
+        // Fallback to a default image
+        return url('storage/products/default-product.png');
     }
 }

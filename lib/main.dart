@@ -11,8 +11,10 @@ import 'screens/product_detail_page.dart';
 import 'screens/cart_page.dart';
 import 'screens/chat_page.dart';
 import 'screens/profile_page.dart';
+import 'screens/favorites_page.dart'; // Import favorites page
 import 'providers/cart_provider.dart'; // Import CartProvider
 import 'providers/delivery_provider.dart'; // Import DeliveryProvider
+import 'providers/favorite_provider.dart'; // Import FavoriteProvider
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -92,6 +94,8 @@ class MyApp extends StatelessWidget {
           '/cart': (context) => const CartPage(),
           '/chat': (context) => const ChatPage(),
           '/profile': (context) => const ProfilePage(),
+          '/favorites': (context) =>
+              const FavoritesPage(), // Add favorites route
         },
         onGenerateRoute: (settings) {
           if (settings.name == '/product-detail') {
@@ -157,6 +161,11 @@ class ProviderConfig extends StatelessWidget {
         ),
         ChangeNotifierProvider<DeliveryProvider>(
           create: (_) => DeliveryProvider(),
+        ),
+        ChangeNotifierProxyProvider<AuthService, FavoriteProvider>(
+          create: (context) => FavoriteProvider(context.read<AuthService>()),
+          update: (context, authService, previous) =>
+              previous ?? FavoriteProvider(authService),
         ),
       ],
       child: child,

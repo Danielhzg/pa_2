@@ -13,6 +13,7 @@ class Product {
   final bool isOnSale;
   final int discount;
   final int stock; // Tambahkan properti stock
+  bool isFavorited; // Add favorited state
 
   Product({
     required this.id,
@@ -27,6 +28,7 @@ class Product {
     required this.isOnSale,
     required this.discount,
     this.stock = 0, // Default nilai stock adalah 0
+    this.isFavorited = false, // Default to not favorited
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -52,6 +54,7 @@ class Product {
       isOnSale: json['is_on_sale'] == 1 || json['is_on_sale'] == true,
       discount: json['discount'] ?? 0,
       stock: json['stock'] ?? 0, // Parse stock dari JSON
+      isFavorited: json['is_favorited'] == true, // Parse favorite status
     );
   }
 }

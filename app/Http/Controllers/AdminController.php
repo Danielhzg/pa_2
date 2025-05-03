@@ -1,6 +1,9 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\Category;
+use App\Models\Product;
+use Illuminate\Support\Str;
 
 class AdminController extends Controller
 {
@@ -17,8 +20,19 @@ class AdminController extends Controller
             'name' => 'required|string|max:255|unique:categories,name',
         ]);
 
+        // Generate slug from name
+        $slug = Str::slug($request->name);
+        
+        // Make sure the slug is unique
+        $count = 1;
+        $originalSlug = $slug;
+        while (Category::where('slug', $slug)->exists()) {
+            $slug = $originalSlug . '-' . $count++;
+        }
+
         Category::create([
             'name' => $request->name,
+            'slug' => $slug,
         ]);
 
         return redirect()->route('admin.categories.index')->with('success', 'Category added successfully!');

@@ -78,6 +78,120 @@
             margin-top: 70px;
         }
 
+        /* Dynamic Notification Styles */
+        #dynamicNotification {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            max-width: 400px;
+            z-index: 9999;
+            transform: translateX(0);
+            animation: slideIn 0.3s ease forwards;
+        }
+        
+        .notification-alert {
+            padding: 16px 20px;
+            margin-bottom: 15px;
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+        }
+        
+        .notification-alert:hover {
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            transform: translateY(-3px);
+        }
+        
+        .notification-alert::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            width: 100%;
+            background: rgba(255,255,255,0.4);
+            animation: countdown 5s linear forwards;
+            border-radius: 0 0 2px 2px;
+        }
+        
+        .notification-success {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            border-left: 5px solid #1e7e34;
+        }
+        
+        .notification-danger {
+            background: linear-gradient(135deg, #dc3545, #e15361);
+            color: white;
+            border-left: 5px solid #bd2130;
+        }
+        
+        .notification-warning {
+            background: linear-gradient(135deg, #ffc107, #fd7e14);
+            color: #212529;
+            border-left: 5px solid #d39e00;
+        }
+        
+        .notification-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            margin-right: 15px;
+            font-size: 20px;
+        }
+        
+        .notification-content {
+            flex-grow: 1;
+            font-weight: 500;
+            font-size: 15px;
+            line-height: 1.4;
+        }
+        
+        .notification-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: transparent;
+            border: none;
+            color: inherit;
+            opacity: 0.7;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            font-size: 14px;
+        }
+        
+        .notification-close:hover {
+            opacity: 1;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(120%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes countdown {
+            from {
+                width: 100%;
+            }
+            to {
+                width: 0%;
+            }
+        }
+
         .card {
             background: var(--dark-secondary);
             border: none;
@@ -443,7 +557,7 @@
                     <i class="fas fa-user"></i>
                 </div>
                 <ul class="dropdown-menu dropdown-menu-end p-2">
-                    <li><a class="dropdown-item rounded" href="#"><i class="fas fa-user me-2"></i> Profil</a></li>
+                    <li><a class="dropdown-item rounded" href="{{ route('admin.profile') }}"><i class="fas fa-user me-2"></i> Profil</a></li>
                     <li><a class="dropdown-item rounded" href="#"><i class="fas fa-cog me-2"></i> Pengaturan</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li>
@@ -461,20 +575,8 @@
 
     <!-- Main Content -->
     <div class="main-content">
-        <!-- Alert Messages -->
-        @if(session('success'))
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                {{ session('success') }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        @endif
-
-        @if(session('error'))
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                {{ session('error') }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        @endif
+        <!-- Dynamic Notification Container -->
+        <div id="dynamicNotification"></div>
         
         @yield('content')
     </div>
@@ -568,6 +670,99 @@
             // Tampilkan pesan terbaru saat dropdown dibuka
             const messageDropdown = document.querySelector('.dropdown');
             messageDropdown.addEventListener('show.bs.dropdown', fetchRecentMessages);
+        });
+    </script>
+    
+    <script>
+        // Function to decode HTML entities
+        function decodeHtmlEntities(text) {
+            const textArea = document.createElement('textarea');
+            textArea.innerHTML = text;
+            return textArea.value;
+        }
+        
+        // Notification functions
+        function showNotification(message, type = 'success') {
+            // Create elements
+            const container = document.getElementById('dynamicNotification');
+            const alert = document.createElement('div');
+            const icon = document.createElement('div');
+            const content = document.createElement('div');
+            const closeBtn = document.createElement('button');
+            
+            // Set classes and content
+            alert.className = `notification-alert notification-${type}`;
+            icon.className = 'notification-icon';
+            content.className = 'notification-content';
+            closeBtn.className = 'notification-close';
+            closeBtn.innerHTML = '<i class="fas fa-times"></i>';
+            
+            // Set icon based on notification type
+            if (type === 'success') {
+                icon.innerHTML = '<i class="fas fa-check-circle"></i>';
+            } else if (type === 'danger') {
+                icon.innerHTML = '<i class="fas fa-times-circle"></i>';
+            } else if (type === 'warning') {
+                icon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
+            }
+            
+            // Decode HTML entities before setting the content
+            content.textContent = decodeHtmlEntities(message);
+            
+            // Add event listener to close button
+            closeBtn.addEventListener('click', function() {
+                removeNotification(alert);
+            });
+            
+            // Append elements
+            alert.appendChild(icon);
+            alert.appendChild(content);
+            alert.appendChild(closeBtn);
+            container.appendChild(alert);
+            
+            // Apply animation on entry
+            alert.style.opacity = '0';
+            alert.style.transform = 'translateX(20px)';
+            setTimeout(() => {
+                alert.style.opacity = '1';
+                alert.style.transform = 'translateX(0)';
+                alert.style.transition = 'opacity 0.3s, transform 0.3s';
+            }, 10);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(function() {
+                removeNotification(alert);
+            }, 5000);
+            
+            return alert;
+        }
+        
+        function removeNotification(alert) {
+            alert.style.opacity = '0';
+            alert.style.transform = 'translateX(120%)';
+            alert.style.transition = 'opacity 0.3s, transform 0.5s';
+            
+            setTimeout(function() {
+                if (alert.parentNode) {
+                    alert.parentNode.removeChild(alert);
+                }
+            }, 500);
+        }
+        
+        // Check for flash messages and display them
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle PHP session flash messages
+            @if(session('success'))
+                showNotification("{!! session('success') !!}", 'success');
+            @endif
+            
+            @if(session('error'))
+                showNotification("{!! session('error') !!}", 'danger');
+            @endif
+            
+            @if(session('warning'))
+                showNotification("{!! session('warning') !!}", 'warning');
+            @endif
         });
     </script>
     

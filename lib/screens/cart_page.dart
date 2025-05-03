@@ -23,6 +23,11 @@ class _CartPageState extends State<CartPage>
   static const Color accentColor = Color(0xFFFFE5EE);
   static const Color darkTextColor = Color(0xFF333333);
 
+  // Format price to match product detail format
+  String formatPrice(double price) {
+    return 'Rp${price.toInt().toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]}.')}';
+  }
+
   // Helper method to get full image URL
   String getFullImageUrl(String imageUrl) {
     return ImageUrlHelper.buildImageUrl(imageUrl);
@@ -231,7 +236,7 @@ class _CartPageState extends State<CartPage>
                         ),
                       ),
                       Text(
-                        'Rp ${cartProvider.totalAmount.toInt()}',
+                        formatPrice(cartProvider.totalAmount),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -435,12 +440,12 @@ class _CartPageState extends State<CartPage>
             _buildSummaryRow('Total Items', '$totalItems items'),
             const Divider(),
             _buildSummaryRow(
-                'Subtotal', 'Rp ${_calculateSubtotal(cartItems).toInt()}'),
+                'Subtotal', formatPrice(_calculateSubtotal(cartItems))),
             _buildSummaryRow('Shipping', 'Free'),
             const Divider(),
             _buildSummaryRow(
               'Total',
-              'Rp ${_calculateTotal(cartItems).toInt()}',
+              formatPrice(_calculateTotal(cartItems)),
               isTotal: true,
             ),
           ],
@@ -550,7 +555,7 @@ class _CartPageState extends State<CartPage>
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Rp ${item.price.toInt()}',
+                    formatPrice(item.price),
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,

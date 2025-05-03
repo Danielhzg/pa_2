@@ -8,7 +8,7 @@ import '../models/product.dart';
 import '../services/auth_service.dart';
 import '../widgets/product_search.dart';
 import '../utils/image_url_helper.dart'; // Tambahkan import untuk ImageUrlHelper
-import '../providers/favorites_provider.dart'; // Import FavoritesProvider
+import '../providers/favorite_provider.dart'; // Updated from favorites_provider
 import 'cart_page.dart'; // Add this import for CartPage
 import 'chat_page.dart';
 import 'profile_page.dart';
@@ -16,6 +16,9 @@ import 'dart:async';
 import '../services/api_service.dart';
 import '../utils/database_helper.dart';
 import '../providers/cart_provider.dart'; // Tambahkan import untuk CartProvider
+import 'favorites_page.dart'; // Import favorites page
+import '../widgets/favorite_popup.dart'; // Import the new favorite popup widget
+import '../widgets/loading_overlay.dart'; // Import the new loading overlay widget
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -96,6 +99,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               .addAll(products.map((p) => Product.fromJson(p)).toList());
           _isLoading = false;
         });
+
+        // Check favorite status for all products if user is logged in
+        _updateFavoriteStatus();
       }
     } catch (e) {
       print('Error fetching products: $e');
@@ -220,6 +226,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           _filteredProducts.addAll(products);
           _isLoading = false;
         });
+
+        // Check favorite status for products
+        _updateFavoriteStatus();
       }
     } catch (e) {
       print('Error loading products by category: $e');
@@ -277,6 +286,23 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       print('Error fetching categories: $e');
       setState(() => _loadingCategories = false);
       // Tetap gunakan kategori 'All' jika gagal mengambil dari API
+    }
+  }
+
+  // Update favorite status for all products
+  void _updateFavoriteStatus() {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    if (!authService.isLoggedIn) return;
+
+    final favoriteProvider =
+        Provider.of<FavoriteProvider>(context, listen: false);
+
+    for (var product in _filteredProducts) {
+      product.isFavorited = favoriteProvider.isFavorite(product.id);
+    }
+
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -481,32 +507,135 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 ),
               ),
               const SizedBox(width: 10),
-              Container(
-                height: 36,
-                width: 36,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
+              Stack(
+                children: [
+                  Container(
+                    height: 36,
+                    width: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: IconButton(
-                  icon: const Icon(
-                    LineIcons.heart,
-                    color: primaryColor,
-                    size: 16,
+                    child: IconButton(
+                      icon: Consumer<FavoriteProvider>(
+                        builder: (context, favoriteProvider, _) {
+                          final hasFavorites =
+                              favoriteProvider.favorites.isNotEmpty;
+                          return Icon(
+                            hasFavorites
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: primaryColor,
+                            size: 16,
+                          );
+                        },
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () {
+                        final authService =
+                            Provider.of<AuthService>(context, listen: false);
+                        if (!authService.isLoggedIn) {
+                          // Show login prompt if user is not logged in
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content:
+                                  const Text('Please login to view favorites'),
+                              action: SnackBarAction(
+                                label: 'LOGIN',
+                                onPressed: () =>
+                                    Navigator.pushNamed(context, '/login'),
+                              ),
+                              behavior: SnackBarBehavior.floating,
+                              margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                          return;
+                        }
+
+                        // Load latest favorites before showing popup
+                        final favoriteProvider = Provider.of<FavoriteProvider>(
+                            context,
+                            listen: false);
+                        favoriteProvider.loadFavorites();
+
+                        // Show favorite popup
+                        showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return const FavoritePopup();
+                          },
+                        );
+                      },
+                    ),
                   ),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: () {
-                    Navigator.pushNamed(context, '/favorites');
-                  },
-                ),
+
+                  // Display badge with favorite count if there are favorites
+                  Consumer<FavoriteProvider>(
+                    builder: (context, favoriteProvider, _) {
+                      final count = favoriteProvider.favorites.length;
+                      final isLoggedIn =
+                          Provider.of<AuthService>(context).isLoggedIn;
+
+                      if (!isLoggedIn || count == 0) {
+                        return const SizedBox.shrink();
+                      }
+
+                      return Positioned(
+                        right: -1,
+                        top: -1,
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.5, end: 1.0),
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.elasticOut,
+                          builder: (context, value, child) {
+                            return Transform.scale(
+                              scale: value,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.1),
+                                      blurRadius: 2,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 14,
+                                  minHeight: 14,
+                                ),
+                                child: Text(
+                                  count.toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ],
           ),
@@ -882,7 +1011,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Rp.${finalPrice.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
+                          'Rp${finalPrice.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
@@ -991,25 +1120,101 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               Positioned(
                 top: 10,
                 right: 10,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.8),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
+                child: GestureDetector(
+                  onTap: () async {
+                    final authService =
+                        Provider.of<AuthService>(context, listen: false);
+
+                    if (!authService.isLoggedIn) {
+                      // Show login prompt
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Please login to add favorites'),
+                          action: SnackBarAction(
+                            label: 'LOGIN',
+                            onPressed: () =>
+                                Navigator.pushNamed(context, '/login'),
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                      return;
+                    }
+
+                    try {
+                      // Show loading indicator
+                      final loadingOverlay = LoadingOverlay.of(context);
+                      loadingOverlay.show();
+
+                      final favoriteProvider =
+                          Provider.of<FavoriteProvider>(context, listen: false);
+
+                      // Toggle favorite and wait for the result
+                      final isFavorited =
+                          await favoriteProvider.toggleFavorite(product);
+
+                      // Hide loading overlay
+                      loadingOverlay.hide();
+
+                      // Update the product's isFavorited status
+                      setState(() {
+                        product.isFavorited = isFavorited;
+                      });
+
+                      // Refresh favorites list after toggling
+                      favoriteProvider.loadFavorites();
+
+                      // Show feedback to user
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(isFavorited
+                              ? 'Added to favorites'
+                              : 'Removed from favorites'),
+                          backgroundColor: const Color(0xFFFF87B2),
+                          behavior: SnackBarBehavior.floating,
+                          margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    } catch (e) {
+                      // Hide loading overlay if there was an error
+                      LoadingOverlay.of(context).hide();
+
+                      // Show error message
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error updating favorites: $e'),
+                          backgroundColor: Colors.red,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.8),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Icon(
+                        product.isFavorited
+                            ? Icons.favorite
+                            : Icons.favorite_border,
+                        size: 20,
+                        color: product.isFavorited ? primaryColor : Colors.grey,
                       ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      LineIcons.heartAlt,
-                      size: 20,
-                      color: primaryColor,
                     ),
                   ),
                 ),

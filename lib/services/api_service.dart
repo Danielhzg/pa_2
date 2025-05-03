@@ -453,4 +453,142 @@ class ApiService {
 
     return headers;
   }
+
+  // Get favorite products for the current user
+  Future<List<dynamic>> getFavoriteProducts() async {
+    try {
+      print('Calling API endpoint: v1/favorites');
+
+      // Check if token exists
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null || token.isEmpty) {
+        print('ERROR: No auth token found when trying to get favorites');
+        return [];
+      }
+
+      print(
+          'Auth token found when getting favorites: ${token.substring(0, min(10, token.length))}...');
+
+      // Use a direct HTTP call instead of the get method to better control the response handling
+      final response = await http.get(
+        Uri.parse('$baseUrl/v1/favorites'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('API response status code: ${response.statusCode}');
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        try {
+          // Parse the response body safely
+          final jsonData = json.decode(response.body);
+          print('API response parsed successfully');
+
+          if (jsonData['success'] == true && jsonData['data'] is List) {
+            final data = jsonData['data'] as List;
+            print('Retrieved ${data.length} favorite products');
+            return data;
+          } else {
+            print(
+                'Response format unexpected: ${jsonData.toString().substring(0, min(100, jsonData.toString().length))}...');
+            return [];
+          }
+        } catch (e) {
+          print('JSON parsing error: $e');
+          print(
+              'Raw response body: ${response.body.substring(0, min(100, response.body.length))}...');
+          return [];
+        }
+      } else {
+        print('HTTP error status: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching favorite products: $e');
+      return [];
+    }
+  }
+
+  // Toggle favorite status (add/remove from favorites)
+  Future<bool> toggleFavorite(int productId) async {
+    try {
+      print('Toggling favorite for product ID: $productId');
+
+      // Check if token exists
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null || token.isEmpty) {
+        print('ERROR: No auth token found when trying to toggle favorite');
+        return false;
+      }
+
+      print(
+          'Auth token found: ${token.substring(0, min(10, token.length))}...');
+
+      try {
+        final result = await post(
+            'v1/favorites/toggle', {'product_id': productId},
+            withAuth: true);
+        print(
+            'Toggle response: ${result.toString().substring(0, min(100, result.toString().length))}...');
+
+        if (result.containsKey('is_favorited')) {
+          final isFavorited = result['is_favorited'] as bool;
+          print('Product $productId is now favorited: $isFavorited');
+          return isFavorited;
+        }
+
+        print('No is_favorited field in response');
+        return false;
+      } catch (requestError) {
+        print('API request error: $requestError');
+
+        // Before giving up, check if product is currently favorited
+        try {
+          final statusResult =
+              await get('v1/favorites/check/$productId', withAuth: true);
+          if (statusResult.containsKey('is_favorited')) {
+            final currentStatus = statusResult['is_favorited'] as bool;
+            print(
+                'Current favorite status for product $productId is: $currentStatus');
+            return currentStatus;
+          }
+        } catch (checkError) {
+          print('Also failed to check favorite status: $checkError');
+        }
+
+        rethrow;
+      }
+    } catch (e) {
+      print('Error toggling favorite status: $e');
+      return false;
+    }
+  }
+
+  // Check if a product is favorited
+  Future<bool> checkFavoriteStatus(int productId) async {
+    try {
+      print('Checking favorite status for product ID: $productId');
+      final result = await get('v1/favorites/check/$productId', withAuth: true);
+      print(
+          'Check favorite status response: ${result.toString().substring(0, min(100, result.toString().length))}...');
+
+      if (result.containsKey('is_favorited')) {
+        final isFavorited = result['is_favorited'];
+        print('Product $productId favorited status: $isFavorited');
+        return isFavorited;
+      }
+      print('No is_favorited field in response');
+      return false;
+    } catch (e) {
+      print('Error checking favorite status: $e');
+      return false;
+    }
+  }
 }

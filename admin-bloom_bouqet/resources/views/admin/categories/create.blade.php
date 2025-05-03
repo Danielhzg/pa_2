@@ -38,15 +38,6 @@
                             <small class="form-text text-muted">Nama kategori harus unik dan mudah diingat</small>
                         </div>
                         
-                        <div class="mb-4">
-                            <label class="form-label">Status Kategori</label>
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="status" name="status" value="1" checked>
-                                <label class="form-check-label" for="status">Aktif</label>
-                            </div>
-                            <small class="form-text text-muted">Kategori aktif akan ditampilkan kepada pelanggan</small>
-                        </div>
-                        
                         <div class="form-actions">
                             <button type="submit" class="btn save-btn">
                                 <i class="fas fa-save me-2"></i>Simpan Kategori

@@ -7,67 +7,146 @@ use App\Models\User;
 use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 class CustomerController extends Controller
 {
+    /**
+     * Base API URL
+     * @var string
+     */
+    protected $apiBaseUrl;
+
+    /**
+     * Constructor
+     */
+    public function __construct()
+    {
+        $this->apiBaseUrl = config('app.url') . '/api/v1';
+    }
+
     /**
      * Display a listing of customers
      */
     public function index(Request $request)
     {
         try {
-            $query = User::query()->where('role', 'customer');
-            
-            // Search by name or email
+            // Prepare API request parameters
+            $queryParams = [];
             if ($request->has('search')) {
-                $search = $request->search;
-                $query->where(function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%");
-                });
+                $queryParams['search'] = $request->search;
             }
             
-            $customers = $query->withCount('orders')
-                              ->withSum('orders', 'total_amount')
-                              ->orderBy('created_at', 'desc')
-                              ->paginate(10);
+            // Call the API endpoint
+            $response = Http::get($this->apiBaseUrl . '/customers', $queryParams);
             
-            return view('admin.customers.index', compact('customers'));
+            if (!$response->successful()) {
+                Log::error('API request failed: ' . $response->body());
+                return back()->with('error', 'Terjadi kesalahan saat memuat data pelanggan. Silakan coba lagi nanti.');
+            }
+            
+            $data = $response->json();
+            
+            if (!isset($data['data']) || !isset($data['success']) || $data['success'] !== true) {
+                Log::error('API response format invalid: ' . json_encode($data));
+                return back()->with('error', 'Format respons API tidak valid.');
+            }
+            
+            $customers = $data['data'];
+            
+            // Wrap response data in paginator for compatibility with the view
+            $customers = new \Illuminate\Pagination\LengthAwarePaginator(
+                $customers['data'],
+                $customers['total'],
+                $customers['per_page'],
+                $customers['current_page'],
+                ['path' => $request->url(), 'query' => $request->query()]
+            );
+            
+            // Get customer statistics for dashboard widgets
+            $statsResponse = Http::get($this->apiBaseUrl . '/customers-stats');
+            $statistics = null;
+            
+            if ($statsResponse->successful()) {
+                $statsData = $statsResponse->json();
+                if (isset($statsData['success']) && $statsData['success'] === true && isset($statsData['data'])) {
+                    $statistics = $statsData['data'];
+                } else {
+                    Log::warning('Invalid stats response format: ' . json_encode($statsData));
+                }
+            } else {
+                Log::warning('Failed to retrieve customer statistics: ' . $statsResponse->body());
+            }
+            
+            return view('admin.customers.index', compact('customers', 'statistics'));
         } catch (\Exception $e) {
             Log::error('Error in CustomerController@index: ' . $e->getMessage());
-            return back()->with('error', 'Terjadi kesalahan saat memuat data pelanggan.');
+            return back()->with('error', 'Terjadi kesalahan saat memuat data pelanggan: ' . $e->getMessage());
         }
     }
 
     /**
      * Display customer details
      */
-    public function show(User $customer)
+    public function show($id)
     {
         try {
-            // Ensure this is a customer
-            if ($customer->role !== 'customer') {
-                return redirect()->route('admin.customers.index')
-                    ->with('error', 'User bukan merupakan pelanggan.');
+            // Call the API endpoint to get customer details
+            $response = Http::get($this->apiBaseUrl . '/customers/' . $id);
+            
+            if (!$response->successful()) {
+                Log::error('API request failed: ' . $response->body());
+                return back()->with('error', 'Terjadi kesalahan saat memuat detail pelanggan. Silakan coba lagi nanti.');
             }
             
-            // Get customer's orders with pagination
-            $orders = Order::where('user_id', $customer->id)
-                          ->orderBy('created_at', 'desc')
-                          ->paginate(5);
+            $responseData = $response->json();
             
-            // Get customer statistics
-            $stats = [
-                'total_orders' => Order::where('user_id', $customer->id)->count(),
-                'total_spent' => Order::where('user_id', $customer->id)->sum('total_amount'),
-                'last_order' => Order::where('user_id', $customer->id)->latest()->first(),
-                'avg_order_value' => Order::where('user_id', $customer->id)->avg('total_amount') ?? 0,
-            ];
+            if (!isset($responseData['data']) || !isset($responseData['success']) || $responseData['success'] !== true) {
+                Log::error('API response format invalid: ' . json_encode($responseData));
+                return back()->with('error', 'Format respons API tidak valid.');
+            }
             
-            return view('admin.customers.show', compact('customer', 'orders', 'stats'));
+            $data = $responseData['data'];
+            
+            if (!isset($data['customer']) || !isset($data['stats']) || !isset($data['orders'])) {
+                Log::error('Customer data is incomplete: ' . json_encode($data));
+                return back()->with('error', 'Data pelanggan tidak lengkap.');
+            }
+            
+            $customer = $data['customer'];
+            $stats = $data['stats'];
+            
+            // Wrap orders in paginator for compatibility with the view
+            $orders = new \Illuminate\Pagination\LengthAwarePaginator(
+                $data['orders']['data'],
+                $data['orders']['total'],
+                $data['orders']['per_page'],
+                $data['orders']['current_page'],
+                ['path' => request()->url(), 'query' => request()->query()]
+            );
+            
+            $monthlyStats = $data['monthly_stats'] ?? [];
+            
+            return view('admin.customers.show', compact('customer', 'orders', 'stats', 'monthlyStats'));
         } catch (\Exception $e) {
             Log::error('Error in CustomerController@show: ' . $e->getMessage());
-            return back()->with('error', 'Terjadi kesalahan saat memuat detail pelanggan.');
+            return back()->with('error', 'Terjadi kesalahan saat memuat detail pelanggan: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Export customers data
+     */
+    public function export(Request $request)
+    {
+        try {
+            // To be implemented - export customer data to CSV/Excel
+            return redirect()->route('admin.customers.index')
+                ->with('error', 'Fitur export data pelanggan belum tersedia.');
+        } catch (\Exception $e) {
+            Log::error('Error in CustomerController@export: ' . $e->getMessage());
+            return back()->with('error', 'Terjadi kesalahan saat mengekspor data pelanggan.');
         }
     }
 } 

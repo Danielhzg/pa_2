@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
@@ -38,25 +39,45 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'stock' => 'required|integer|min:0',
-            'category_id' => 'nullable|exists:categories,id',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'category_id' => 'required|exists:categories,id',
+            'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'discount' => 'nullable|integer|min:0|max:100',
         ]);
 
-        $data = $request->except('image');
+        // Generate a slug from the name
+        $slug = Str::slug($request->name);
         
-        // Handle image upload
-        if ($request->hasFile('image')) {
-            $imagePath = $request->file('image')->store('products', 'public');
-            $data['image'] = $imagePath;
+        // Make sure the slug is unique
+        $count = 1;
+        $originalSlug = $slug;
+        while (Product::where('slug', $slug)->exists()) {
+            $slug = $originalSlug . '-' . $count++;
         }
 
-        // Make sure category_id is properly handled
-        $data['category_id'] = $request->category_id ? $request->category_id : null;
+        // Handle primary image
+        $imagePath = null;
+        if ($request->hasFile('image')) {
+            $imagePath = $request->file('image')->store('products', 'public');
+        }
 
-        Product::create($data);
+        // Create the product
+        Product::create([
+            'name' => $request->name,
+            'slug' => $slug,
+            'description' => $request->description,
+            'price' => $request->price,
+            'stock' => $request->stock,
+            'category_id' => $request->category_id,
+            'image' => $imagePath,
+            'images' => [$imagePath], // Store single image in images array for model compatibility
+            'is_active' => $request->has('is_active'),
+            'is_on_sale' => $request->has('is_on_sale'),
+            'discount' => $request->discount ?? 0,
+            'admin_id' => auth()->check() ? auth()->id() : null,
+        ]);
 
         return redirect()->route('admin.products.index')
-            ->with('success', 'Product created successfully.');
+            ->with('success', 'Produk "'.$request->name.'" berhasil ditambahkan');
     }
 
     /**
@@ -86,13 +107,31 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'stock' => 'required|integer|min:0',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => 'required|exists:categories,id',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'discount' => 'nullable|integer|min:0|max:100',
         ]);
 
-        $data = $request->except('image');
+        $oldName = $product->name;
+
+        // Update slug if name changed
+        if ($request->name !== $product->name) {
+            $slug = Str::slug($request->name);
+            
+            // Make sure the slug is unique
+            $count = 1;
+            $originalSlug = $slug;
+            while (Product::where('slug', $slug)->where('id', '!=', $product->id)->exists()) {
+                $slug = $originalSlug . '-' . $count++;
+            }
+            
+            $product->slug = $slug;
+        }
         
-        // Handle image upload
+        // Handle image
+        $imagePath = $product->image;
+        
+        // Handle primary image upload
         if ($request->hasFile('image')) {
             // Delete old image if exists
             if ($product->image && Storage::disk('public')->exists($product->image)) {
@@ -100,16 +139,24 @@ class ProductController extends Controller
             }
             
             $imagePath = $request->file('image')->store('products', 'public');
-            $data['image'] = $imagePath;
         }
 
-        // Make sure category_id is properly handled
-        $data['category_id'] = $request->category_id ? $request->category_id : null;
-
-        $product->update($data);
+        // Update the product
+        $product->update([
+            'name' => $request->name,
+            'description' => $request->description,
+            'price' => $request->price,
+            'stock' => $request->stock,
+            'category_id' => $request->category_id,
+            'image' => $imagePath,
+            'images' => [$imagePath], // Update images array with single image
+            'is_active' => $request->has('is_active'),
+            'is_on_sale' => $request->has('is_on_sale'),
+            'discount' => $request->discount ?? 0,
+        ]);
 
         return redirect()->route('admin.products.index')
-            ->with('success', 'Product updated successfully.');
+            ->with('success', 'Produk "'.$oldName.'" berhasil diperbarui menjadi "'.$request->name.'"');
     }
 
     /**
@@ -122,9 +169,10 @@ class ProductController extends Controller
             Storage::disk('public')->delete($product->image);
         }
         
+        $productName = $product->name;
         $product->delete();
 
         return redirect()->route('admin.products.index')
-            ->with('success', 'Product deleted successfully.');
+            ->with('success', 'Produk "'.$productName.'" berhasil dihapus');
     }
 }

@@ -19,8 +19,11 @@ class OrderItem extends Model
         'order_id',
         'product_id',
         'name',
+        'description',
         'price',
         'quantity',
+        'image_url',
+        'options',
     ];
 
     /**
@@ -31,6 +34,7 @@ class OrderItem extends Model
     protected $casts = [
         'price' => 'decimal:2',
         'subtotal' => 'decimal:2',
+        'options' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -44,10 +48,20 @@ class OrderItem extends Model
     }
 
     /**
-     * Get the subtotal for the item.
+     * Get the product associated with this order item.
+     */
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    /**
+     * Get the subtotal for the item if not using the stored computed column.
      */
     public function getSubtotalAttribute(): float
     {
-        return $this->price * $this->quantity;
+        // If the field is already populated by the database computed column, 
+        // it will be returned directly. Otherwise, calculate it.
+        return $this->attributes['subtotal'] ?? $this->price * $this->quantity;
     }
 } 

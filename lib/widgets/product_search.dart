@@ -4,6 +4,8 @@ import 'package:line_icons/line_icons.dart'; // Add this import for LineIcons
 import '../models/product.dart';
 import '../services/api_service.dart';
 import '../utils/image_url_helper.dart'; // Import ImageUrlHelper
+import 'package:provider/provider.dart';
+import '../providers/favorite_provider.dart';
 
 class ProductSearch extends SearchDelegate<Product?> {
   final ApiService _apiService = ApiService();
@@ -16,7 +18,7 @@ class ProductSearch extends SearchDelegate<Product?> {
   static const Color lightTextColor = Color(0xFF717171);
 
   String formatPrice(double price) {
-    return 'Rp ${price.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]}.')}';
+    return 'Rp${price.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]}.')}';
   }
 
   @override
@@ -151,6 +153,7 @@ class ProductSearch extends SearchDelegate<Product?> {
     return GestureDetector(
       onTap: () {
         close(context, product);
+
         Navigator.pushNamed(
           context,
           '/product-detail',
@@ -366,11 +369,13 @@ class ProductSearch extends SearchDelegate<Product?> {
                       ),
                     ],
                   ),
-                  child: const Center(
+                  child: Center(
                     child: Icon(
-                      LineIcons.heartAlt,
+                      product.isFavorited
+                          ? Icons.favorite
+                          : Icons.favorite_border,
                       size: 20,
-                      color: primaryColor,
+                      color: product.isFavorited ? primaryColor : Colors.grey,
                     ),
                   ),
                 ),

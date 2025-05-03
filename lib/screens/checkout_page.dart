@@ -37,6 +37,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final PaymentService _paymentService = PaymentService();
   final OrderService _orderService = OrderService();
 
+  // Custom currency formatter
+  final formatCurrency = (double amount) {
+    return 'Rp${amount.toInt().toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]}.')}';
+  };
+
   @override
   void initState() {
     super.initState();
@@ -123,12 +128,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   @override
   Widget build(BuildContext context) {
-    final currencyFormatter = NumberFormat.currency(
-      locale: 'id',
-      symbol: 'Rp',
-      decimalDigits: 0,
-    );
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Checkout'),
@@ -244,7 +243,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                                       ),
                                                       const SizedBox(height: 4),
                                                       Text(
-                                                        '${item.quantity} x ${currencyFormatter.format(item.price)}',
+                                                        '${item.quantity} x ${formatCurrency(item.price)}',
                                                         style: TextStyle(
                                                           color:
                                                               Colors.grey[600],
@@ -256,9 +255,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                                 ),
                                                 // Item total
                                                 Text(
-                                                  currencyFormatter.format(
-                                                      item.price *
-                                                          item.quantity),
+                                                  formatCurrency(item.price *
+                                                      item.quantity),
                                                   style: const TextStyle(
                                                     fontWeight: FontWeight.bold,
                                                   ),
@@ -273,14 +271,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                   // Subtotal
                                   _buildPriceRow(
                                     'Subtotal',
-                                    currencyFormatter.format(subtotal),
+                                    formatCurrency(subtotal),
                                   ),
                                   const SizedBox(height: 8),
 
                                   // Shipping cost
                                   _buildPriceRow(
                                     'Shipping',
-                                    currencyFormatter.format(shippingCost),
+                                    formatCurrency(shippingCost),
                                   ),
                                   const SizedBox(height: 8),
 
@@ -289,7 +287,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                   // Total
                                   _buildPriceRow(
                                     'Total',
-                                    currencyFormatter.format(total),
+                                    formatCurrency(total),
                                     isTotal: true,
                                   ),
                                 ],
@@ -364,7 +362,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       context,
                       cartProvider,
                       deliveryProvider,
-                      currencyFormatter.format(total),
+                      formatCurrency(total),
                     ),
                   ],
                 );
@@ -706,6 +704,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
     String total,
   ) {
     final selectedAddress = deliveryProvider.selectedAddress;
+    // Calculate the total (we already have the formatted string, but for consistency we'll reformat it)
+    final subtotal = cartProvider.totalAmount;
+    final shippingCost = deliveryProvider.shippingCost;
+    final totalAmount = subtotal + shippingCost;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -737,7 +739,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    total,
+                    formatCurrency(totalAmount),
                     style: const TextStyle(
                       color: primaryColor,
                       fontWeight: FontWeight.bold,
@@ -998,11 +1000,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         children: [
                           const Text('Total'),
                           Text(
-                            NumberFormat.currency(
-                              locale: 'id',
-                              symbol: 'Rp',
-                              decimalDigits: 0,
-                            ).format(total),
+                            formatCurrency(total),
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               color: primaryColor,

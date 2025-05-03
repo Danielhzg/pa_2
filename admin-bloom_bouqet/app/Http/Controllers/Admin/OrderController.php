@@ -97,11 +97,17 @@ class OrderController extends Controller
             ]);
             
             // Update the order status
+            $oldStatus = $order->status;
             $order->status = $request->status;
             $order->save();
             
-            // Placeholder for sending push notification to the Flutter app
-            // TODO: Implement notification to mobile device
+            // Send notification to the Flutter app
+            $paymentController = new \App\Http\Controllers\API\PaymentController();
+            $paymentController->sendOrderStatusUpdate(
+                $order->order_id, 
+                $request->status, 
+                "Status pesanan Anda telah berubah dari {$oldStatus} menjadi {$request->status}."
+            );
             
             return response()->json([
                 'success' => true,

@@ -140,8 +140,8 @@
                                 <tr>
                                     <td>{{ $index + 1 }}</td>
                                     <td>
-                                        @if($product->image)
-                                            <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" 
+                                        @if($product->getPrimaryImage())
+                                            <img src="{{ asset('storage/' . $product->getPrimaryImage()) }}" alt="{{ $product->name }}" 
                                                 class="img-thumbnail" style="max-height: 50px;">
                                         @else
                                             <div class="bg-light text-center p-2 rounded">

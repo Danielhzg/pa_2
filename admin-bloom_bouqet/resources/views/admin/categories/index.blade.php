@@ -14,16 +14,6 @@
         </div>
     </div>
     
-    @if (session('success'))
-        <div class="alert custom-alert alert-success fade show" role="alert">
-            <div class="d-flex align-items-center">
-                <i class="fas fa-check-circle me-2"></i>
-                <div>{{ session('success') }}</div>
-            </div>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    @endif
-    
     <div class="card table-card">
         <div class="card-header">
             <div class="row align-items-center">
@@ -62,39 +52,33 @@
                                         <span>{{ $category->name }}</span>
                                     </div>
                                 </td>
-                                <td>{{ $category->products->count() ?? 0 }}</td>
+                                <td>
+                                    @if($category->products->count() > 0)
+                                        <span class="badge product-count-badge">{{ $category->products->count() }}</span>
+                                    @else
+                                        <span>{{ $category->products->count() }}</span>
+                                    @endif
+                                </td>
                                 <td>
                                     <div class="action-buttons">
                                         <a href="{{ route('admin.categories.edit', $category) }}" class="btn action-btn edit-btn" title="Edit">
                                             <i class="fas fa-edit"></i>
                                         </a>
-                                        <button type="button" class="btn action-btn delete-btn" data-bs-toggle="modal" data-bs-target="#deleteModal{{ $category->id }}" title="Delete">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </div>
-                                    
-                                    <!-- Delete Modal -->
-                                    <div class="modal fade" id="deleteModal{{ $category->id }}" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
-                                        <div class="modal-dialog modal-dialog-centered">
-                                            <div class="modal-content">
-                                                <div class="modal-header">
-                                                    <h5 class="modal-title" id="deleteModalLabel">Konfirmasi Hapus</h5>
-                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                                </div>
-                                                <div class="modal-body">
-                                                    <p>Apakah Anda yakin ingin menghapus kategori <strong>{{ $category->name }}</strong>?</p>
-                                                    <p class="text-danger"><small>Tindakan ini tidak dapat dibatalkan dan mungkin mempengaruhi produk yang terkait.</small></p>
-                                                </div>
-                                                <div class="modal-footer">
-                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                                                    <form action="{{ route('admin.categories.delete', $category) }}" method="POST">
-                                                        @csrf
-                                                        @method('DELETE')
-                                                        <button type="submit" class="btn btn-danger">Hapus</button>
-                                                    </form>
-                                                </div>
-                                            </div>
-                                        </div>
+                                        
+                                        @if($category->products->count() > 0)
+                                            <button type="button" class="btn action-btn delete-btn-disabled" 
+                                                    data-bs-toggle="tooltip" 
+                                                    data-bs-placement="top" 
+                                                    title="Kategori ini memiliki {{ $category->products->count() }} produk terkait. Pindahkan produk terlebih dahulu.">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        @else
+                                            <button type="button" class="btn action-btn delete-btn" 
+                                                   onclick="openDeleteModal('{{ $category->id }}', '{{ $category->name }}')"
+                                                   title="Delete">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        @endif
                                     </div>
                                 </td>
                             </tr>
@@ -114,6 +98,30 @@
                 </a>
             </div>
             @endif
+        </div>
+    </div>
+</div>
+
+<!-- Global Delete Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">Konfirmasi Hapus</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Apakah Anda yakin ingin menghapus kategori <strong id="categoryName"></strong>?</p>
+                <p class="text-danger"><small>Tindakan ini tidak dapat dibatalkan.</small></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <form id="deleteForm" action="" method="POST">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="btn btn-danger">Hapus</button>
+                </form>
+            </div>
         </div>
     </div>
 </div>
@@ -144,18 +152,6 @@
         transform: translateY(-2px);
         color: white;
         box-shadow: 0 6px 12px rgba(255,105,180,0.4);
-    }
-    
-    .custom-alert {
-        border-radius: 10px;
-        border: none;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-        padding: 1rem;
-    }
-    
-    .alert-success {
-        background-color: rgba(40, 167, 69, 0.1);
-        color: #28a745;
     }
     
     .table-card {
@@ -268,6 +264,39 @@
         color: white;
     }
     
+    .delete-btn-disabled {
+        background-color: rgba(108, 117, 125, 0.1);
+        color: #9aa0a5;
+        border: none;
+        cursor: not-allowed;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .delete-btn-disabled:hover {
+        background-color: rgba(108, 117, 125, 0.2);
+        color: #6c757d;
+    }
+    
+    .delete-btn-disabled::after {
+        content: '';
+        position: absolute;
+        width: 100%;
+        height: 2px;
+        background-color: rgba(108, 117, 125, 0.3);
+        bottom: 0;
+        left: 0;
+        transform: rotate(-45deg) translateY(11px);
+    }
+    
+    .product-count-badge {
+        background-color: #fd7e14;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 10px;
+        font-size: 0.75rem;
+    }
+    
     .empty-state-icon {
         font-size: 3rem;
         color: rgba(255,105,180,0.3);
@@ -303,10 +332,30 @@
             flex-wrap: nowrap;
         }
     }
+    
+    .move-btn {
+        background-color: rgba(0, 123, 255, 0.1);
+        color: #0d6efd;
+        border: none;
+    }
+    
+    .move-btn:hover {
+        background-color: #0d6efd;
+        color: white;
+    }
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+    });
+    
+    // Initialize the delete modal
+    window.deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    
     // Search functionality
     const searchInput = document.getElementById('searchInput');
     const categoryItems = document.querySelectorAll('.category-item');
@@ -324,15 +373,18 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-    
-    // Autofade alerts
-    const alerts = document.querySelectorAll('.custom-alert');
-    alerts.forEach(alert => {
-        setTimeout(() => {
-            const bsAlert = new bootstrap.Alert(alert);
-            bsAlert.close();
-        }, 5000);
-    });
 });
+
+// Function to open delete modal
+function openDeleteModal(categoryId, categoryName) {
+    // Set the category name in the modal
+    document.getElementById('categoryName').textContent = categoryName;
+    
+    // Set the form action
+    document.getElementById('deleteForm').action = `{{ url('admin/categories') }}/${categoryId}`;
+    
+    // Show the modal immediately
+    window.deleteModal.show();
+}
 </script>
 @endsection

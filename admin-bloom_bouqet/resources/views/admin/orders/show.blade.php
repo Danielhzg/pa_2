@@ -94,8 +94,8 @@
                                 @foreach($order->items as $item)
                                     <tr>
                                         <td>
-                                            @if($item->product && $item->product->image)
-                                                <img src="{{ asset('storage/' . $item->product->image) }}" 
+                                            @if($item->product && $item->product->getPrimaryImage())
+                                                <img src="{{ asset('storage/' . $item->product->getPrimaryImage()) }}" 
                                                     alt="{{ $item->product->name }}" class="img-thumbnail" style="max-height: 50px;">
                                             @else
                                                 <div class="bg-light text-center p-2 rounded">

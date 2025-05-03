@@ -8,21 +8,13 @@
                 <h3 class="page-title">Produk</h3>
                 <p class="text-muted">Kelola produk toko Anda</p>
             </div>
-            <a href="{{ route('admin.products.create') }}" class="btn add-new-btn">
-                <i class="fas fa-plus me-2"></i> Tambah Produk Baru
-            </a>
+            <div>
+                <a href="{{ route('admin.products.create') }}" class="btn add-new-btn">
+                    <i class="fas fa-plus me-2"></i> Tambah Produk Baru
+                </a>
+            </div>
         </div>
     </div>
-    
-    @if (session('success'))
-        <div class="alert custom-alert alert-success fade show" role="alert">
-            <div class="d-flex align-items-center">
-                <i class="fas fa-check-circle me-2"></i>
-                <div>{{ session('success') }}</div>
-            </div>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    @endif
     
     <div class="card table-card">
         <div class="card-header">
@@ -51,6 +43,7 @@
                             <th>Category</th>
                             <th>Price</th>
                             <th>Stock</th>
+                            <th>Status</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -64,10 +57,20 @@
                                          style="width: 50px; height: 50px; object-fit: cover;">
                                 </td>
                                 <td>{{ $product->name }}</td>
-                                <td>{{ $product->description }}</td>
+                                <td>{{ Str::limit($product->description, 50) }}</td>
                                 <td>{{ $product->category->name ?? 'Uncategorized' }}</td>
                                 <td>Rp{{ number_format($product->price, 0, ',', '.') }}</td>
                                 <td>{{ $product->stock }}</td>
+                                <td>
+                                    <div class="status-indicators">
+                                        <span class="status-badge {{ $product->is_active ? 'status-active' : 'status-inactive' }}">
+                                            {{ $product->is_active ? 'Aktif' : 'Nonaktif' }}
+                                        </span>
+                                        @if($product->is_on_sale)
+                                            <span class="status-badge status-sale">Diskon {{ $product->discount }}%</span>
+                                        @endif
+                                    </div>
+                                </td>
                                 <td>
                                     <div class="action-buttons">
                                         <a href="{{ route('admin.products.edit', $product) }}" class="btn action-btn edit-btn" title="Edit">
@@ -76,7 +79,7 @@
                                         <form action="{{ route('admin.products.delete', $product) }}" method="POST" style="display:inline;">
                                             @csrf
                                             @method('DELETE')
-                                            <button type="submit" class="btn action-btn delete-btn" title="Delete" onclick="return confirm('Are you sure?')">
+                                            <button type="submit" class="btn action-btn delete-btn" title="Delete" onclick="return confirm('Apakah Anda yakin ingin menghapus produk \"{{ $product->name }}\"? Tindakan ini tidak dapat dibatalkan.')">
                                                 <i class="fas fa-trash"></i>
                                             </button>
                                         </form>
@@ -287,6 +290,40 @@
         .action-buttons {
             flex-wrap: nowrap;
         }
+    }
+    
+    /* Status Indicators */
+    .status-indicators {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+    
+    .status-badge {
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 0.25rem 0.5rem;
+        border-radius: 12px;
+        display: inline-block;
+        text-align: center;
+    }
+    
+    .status-active {
+        background-color: rgba(40, 167, 69, 0.15);
+        color: #28a745;
+        border: 1px solid rgba(40, 167, 69, 0.3);
+    }
+    
+    .status-inactive {
+        background-color: rgba(108, 117, 125, 0.15);
+        color: #6c757d;
+        border: 1px solid rgba(108, 117, 125, 0.3);
+    }
+    
+    .status-sale {
+        background-color: rgba(253, 126, 20, 0.15);
+        color: #fd7e14;
+        border: 1px solid rgba(253, 126, 20, 0.3);
     }
 </style>
 

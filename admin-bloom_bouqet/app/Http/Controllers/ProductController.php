@@ -41,21 +41,34 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
-        
         $validated = $request->validate([
             'name' => 'required',
             'description' => 'required',
             'price' => 'required|numeric',
             'stock' => 'required|integer',
-            'category_id' => 'required|exists:categories,id', // Changed from category to category_id
-            'image' => 'required|image|mimes:jpeg,png,jpg|max:2048'
+            'category_id' => 'required|exists:categories,id',
+            'image' => 'required|image|mimes:jpeg,png,jpg|max:2048',
+            'additional_images.*' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
         ]);
 
+        // Handle primary image
         if ($request->hasFile('image')) {
             $image = $request->file('image');
             $imageName = time() . '.' . $image->getClientOriginalExtension();
             $image->storeAs('public/products', $imageName);
             $validated['image'] = 'products/' . $imageName;
+            $validated['is_primary_image'] = true;
+        }
+
+        // Handle additional images
+        $additionalImages = [];
+        if ($request->hasFile('additional_images')) {
+            foreach ($request->file('additional_images') as $image) {
+                $imageName = time() . '_' . rand(1000, 9999) . '.' . $image->getClientOriginalExtension();
+                $image->storeAs('public/products', $imageName);
+                $additionalImages[] = 'products/' . $imageName;
+            }
+            $validated['additional_images'] = $additionalImages;
         }
 
         $product = Product::create($validated);
@@ -80,6 +93,9 @@ class ProductController extends Controller
         $product = Product::findOrFail($id);
 
         if ($request->wantsJson()) {
+            // Add a formatted version of all images for the API
+            $product->all_images = $product->getAllImages();
+            
             return response()->json([
                 'success' => true,
                 'data' => $product
@@ -111,10 +127,13 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'stock' => 'required|integer|min:0',
-            'category_id' => 'required|exists:categories,id', // Ensure category_id is valid
+            'category_id' => 'required|exists:categories,id',
             'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            'additional_images.*' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            'remove_images' => 'nullable|array',
         ]);
 
+        // Handle primary image upload
         if ($request->hasFile('image')) {
             if ($product->image) {
                 Storage::delete('public/' . $product->image);
@@ -124,9 +143,48 @@ class ProductController extends Controller
             $imageName = time() . '.' . $image->getClientOriginalExtension();
             $image->storeAs('public/products', $imageName);
             $validated['image'] = 'products/' . $imageName;
+            $validated['is_primary_image'] = true;
+        }
+
+        // Handle removing images from additional_images
+        if ($request->has('remove_images') && is_array($request->remove_images)) {
+            $currentAdditionalImages = $product->additional_images ?? [];
+            $newAdditionalImages = [];
+            
+            foreach ($currentAdditionalImages as $imagePath) {
+                if (!in_array($imagePath, $request->remove_images)) {
+                    $newAdditionalImages[] = $imagePath;
+                } else {
+                    // Delete the removed image file
+                    Storage::delete('public/' . $imagePath);
+                }
+            }
+            
+            $validated['additional_images'] = $newAdditionalImages;
+        }
+
+        // Handle additional images upload
+        if ($request->hasFile('additional_images')) {
+            $currentAdditionalImages = $validated['additional_images'] ?? $product->additional_images ?? [];
+            
+            foreach ($request->file('additional_images') as $image) {
+                $imageName = time() . '_' . rand(1000, 9999) . '.' . $image->getClientOriginalExtension();
+                $image->storeAs('public/products', $imageName);
+                $currentAdditionalImages[] = 'products/' . $imageName;
+            }
+            
+            $validated['additional_images'] = $currentAdditionalImages;
         }
 
         $product->update($validated);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Product updated successfully',
+                'data' => $product
+            ]);
+        }
 
         return redirect()->route('products.index')->with('success', 'Product updated successfully');
     }
@@ -138,8 +196,16 @@ class ProductController extends Controller
     {
         $product = Product::findOrFail($id);
         
+        // Delete primary image if exists
         if ($product->image) {
             Storage::delete('public/' . $product->image);
+        }
+        
+        // Delete additional images if they exist
+        if (!empty($product->additional_images) && is_array($product->additional_images)) {
+            foreach ($product->additional_images as $imagePath) {
+                Storage::delete('public/' . $imagePath);
+            }
         }
         
         $product->delete();

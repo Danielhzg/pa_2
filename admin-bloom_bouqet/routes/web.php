@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\CarouselController;
+use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ReportController;
@@ -23,6 +24,11 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('/', [AdminController::class, 'index'])->name('home');
     Route::get('/dashboard', [AdminController::class, 'index'])->name('dashboard');
+    
+    // Profile Routes
+    Route::get('/profile', [AdminController::class, 'profile'])->name('profile');
+    Route::post('/profile', [AdminController::class, 'updateProfile'])->name('profile.update');
+    
     Route::get('/products', [ProductController::class, 'index'])->name('products.index');
     Route::get('/products/create', [ProductController::class, 'create'])->name('products.create');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
@@ -31,6 +37,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::delete('/products/{product}', [ProductController::class, 'destroy'])->name('products.destroy');
     Route::post('/categories/store', [AdminController::class, 'storeCategory'])->name('categories.store');
     Route::resource('carousels', CarouselController::class);
+    Route::patch('/carousels/{carousel}/toggle-active', [CarouselController::class, 'toggleActive'])->name('carousels.toggle-active');
 
     // Order Routes
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
@@ -45,6 +52,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
     // Customer Routes
     Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
     Route::get('/customers/{customer}', [CustomerController::class, 'show'])->name('customers.show');
+    Route::get('/customers/export', [CustomerController::class, 'export'])->name('customers.export');
     
     // Chat Routes
     Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:line_icons/line_icons.dart';
 import '../models/product.dart';
 import '../utils/image_url_helper.dart';
 import '../providers/cart_provider.dart';
+import '../services/auth_service.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
@@ -15,6 +17,11 @@ class ProductDetailPage extends StatefulWidget {
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
   int quantity = 1;
+
+  @override
+  void initState() {
+    super.initState();
+  }
 
   void _incrementQuantity() {
     setState(() {
@@ -96,7 +103,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
   String formatPrice(int price) {
-    return 'Rp ${price.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]}.')}';
+    return 'Rp${price.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]}.')}';
   }
 
   @override
@@ -113,7 +120,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         title: Text(widget.product.name),
         actions: [
           IconButton(
-            icon: const Icon(Icons.shopping_cart),
+            icon: const Icon(LineIcons.shoppingBag),
             onPressed: () => Navigator.pushNamed(context, '/cart'),
           ),
         ],

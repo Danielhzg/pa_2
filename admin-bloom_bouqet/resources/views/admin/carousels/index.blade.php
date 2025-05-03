@@ -24,8 +24,7 @@
                     <th>Title</th>
                     <th>Description</th>
                     <th>Image</th>
-                    <th>Order</th>
-                    <th>Active</th>
+                    <th>Status</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -33,18 +32,22 @@
                 @foreach ($carousels as $carousel)
                 <tr class="category-item">
                     <td>{{ $carousel->title }}</td>
-                    <td>{{ $carousel->description }}</td>
+                    <td>{{ Str::limit($carousel->description, 50) }}</td>
                     <td>
                         <img src="{{ asset('storage/' . $carousel->image) }}" alt="{{ $carousel->title }}" class="img-thumbnail" style="width: 100px; height: auto;">
                     </td>
-                    <td>{{ $carousel->order }}</td>
-                    <td>{{ $carousel->active ? 'Yes' : 'No' }}</td>
+                    <td>
+                        <span class="badge {{ $carousel->is_active ? 'bg-success' : 'bg-danger' }}">
+                            {{ $carousel->is_active ? 'Active' : 'Inactive' }}
+                        </span>
+                    </td>
                     <td>
                         <div class="action-buttons">
                             <a href="{{ route('admin.carousels.edit', $carousel) }}" class="btn action-btn edit-btn" title="Edit">
                                 <i class="fas fa-edit"></i>
                             </a>
-                            <form action="{{ route('admin.carousels.destroy', $carousel) }}" method="POST" style="display:inline;">
+                            
+                            <form action="{{ route('admin.carousels.destroy', $carousel) }}" method="POST" style="display:inline;" onsubmit="return confirm('Apakah Anda yakin ingin menghapus carousel \"{{ $carousel->title }}\"? Tindakan ini tidak dapat dibatalkan.');">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="btn action-btn delete-btn" title="Delete">
@@ -162,17 +165,6 @@
         background-color: rgba(255,105,180,0.03);
     }
     
-    .category-icon-container {
-        width: 30px;
-        height: 30px;
-        border-radius: 8px;
-        background-color: rgba(255,105,180,0.1);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--pink-primary);
-    }
-    
     .action-buttons {
         display: flex;
         gap: 8px;
@@ -209,42 +201,6 @@
     .delete-btn:hover {
         background-color: #dc3545;
         color: white;
-    }
-    
-    .empty-state-icon {
-        font-size: 3rem;
-        color: rgba(255,105,180,0.3);
-    }
-    
-    .modal-content {
-        border-radius: 15px;
-        border: none;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-    }
-    
-    .modal-header {
-        background-color: rgba(255,105,180,0.05);
-        border-bottom: 1px solid rgba(255,105,180,0.1);
-    }
-    
-    .modal-title {
-        color: var(--pink-dark);
-    }
-    
-    @media (max-width: 768px) {
-        .content-header .d-flex {
-            flex-direction: column;
-            gap: 1rem;
-        }
-        
-        .card-header .row {
-            flex-direction: column;
-            gap: 1rem;
-        }
-        
-        .action-buttons {
-            flex-wrap: nowrap;
-        }
     }
 </style>
 

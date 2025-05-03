@@ -25,8 +25,6 @@ class OrderController extends Controller
                 'shippingCost' => 'required|numeric',
                 'total' => 'required|numeric',
                 'paymentMethod' => 'required|string',
-                'paymentStatus' => 'required|string',
-                'orderStatus' => 'required|string',
                 'qrCodeUrl' => 'nullable|string',
             ]);
 
@@ -42,7 +40,7 @@ class OrderController extends Controller
             $user = $request->user();
             $userId = $user ? $user->id : null;
 
-            // Store order in database
+            // Store order in database with fixed statuses
             $orderId = DB::table('orders')->insertGetId([
                 'order_id' => $request->id,
                 'user_id' => $userId,
@@ -51,8 +49,8 @@ class OrderController extends Controller
                 'total_amount' => $request->total,
                 'shipping_cost' => $request->shippingCost,
                 'payment_method' => $request->paymentMethod,
-                'status' => $request->orderStatus,
-                'payment_status' => $request->paymentStatus,
+                'status' => 'pending', // Always set to pending
+                'payment_status' => 'pending', // Always set to pending
                 'qr_code_url' => $request->qrCodeUrl,
                 'created_at' => now(),
                 'updated_at' => now(),

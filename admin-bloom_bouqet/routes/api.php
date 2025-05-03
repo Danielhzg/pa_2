@@ -7,7 +7,9 @@ use App\Http\Controllers\API\ProductController;
 use App\Http\Controllers\API\CategoryController;
 use App\Http\Controllers\API\PaymentController;
 use App\Http\Controllers\API\OrderController;
-use App\Http\Controllers\CarouselController;
+use App\Http\Controllers\API\CustomerController;
+use App\Http\Controllers\API\CarouselController;
+use App\Http\Controllers\API\FavoriteController;
 
 /*
 |--------------------------------------------------------------------------
@@ -33,6 +35,11 @@ Route::prefix('v1')->group(function () {
         Route::post('orders', [OrderController::class, 'createOrder']);
         Route::get('orders/{orderId}', [OrderController::class, 'getOrder']);
         Route::put('orders/{orderId}/status', [OrderController::class, 'updateStatus']);
+        
+        // Favorite products routes
+        Route::get('favorites', [FavoriteController::class, 'index']);
+        Route::post('favorites/toggle', [FavoriteController::class, 'toggle']);
+        Route::get('favorites/check/{productId}', [FavoriteController::class, 'check']);
     });
 
     // Product endpoints
@@ -41,11 +48,17 @@ Route::prefix('v1')->group(function () {
     Route::get('products/category/{category}', [ProductController::class, 'getByCategory']); // Get products by category
     Route::post('products', [ProductController::class, 'store']); // Add product
     
+    // Customer endpoints
+    Route::get('customers', [CustomerController::class, 'index']); // Get all customers
+    Route::get('customers/{id}', [CustomerController::class, 'show']); // Get customer details
+    Route::get('customers-stats', [CustomerController::class, 'getStatistics']); // Get customer statistics
+    
     // Category endpoints
     Route::get('categories', [CategoryController::class, 'index']); // Get all categories
 
-    // Carousel endpoint
+    // Carousel endpoints
     Route::get('carousels', [CarouselController::class, 'index']);
+    Route::get('carousels/{id}', [CarouselController::class, 'show']);
 
     // Fetch user by email
     Route::get('user/{email}', [AuthController::class, 'getUserByEmail'])->name('user.get');

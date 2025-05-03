@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Models\Order;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use Illuminate\Support\Facades\DB;
 
 class PaymentController extends Controller
 {
@@ -216,55 +217,101 @@ class PaymentController extends Controller
     }
 
     /**
-     * Handle notification from Midtrans
+     * Handle payment notification from the payment gateway.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\Response
      */
     public function notification(Request $request)
     {
         try {
             $notification = new \Midtrans\Notification();
             
-            $order_id = $notification->order_id;
-            $status_code = $notification->status_code;
-            $transaction_status = $notification->transaction_status;
-            $fraud_status = $notification->fraud_status;
+            $transactionStatus = $notification->transaction_status;
+            $orderId = $notification->order_id;
+            $paymentType = $notification->payment_type;
+            $fraudStatus = $notification->fraud_status;
             
-            Log::info('Midtrans Notification', [
-                'order_id' => $order_id,
-                'status_code' => $status_code,
-                'transaction_status' => $transaction_status,
-                'fraud_status' => $fraud_status,
+            Log::info('Payment Notification Received', [
+                'order_id' => $orderId,
+                'transaction_status' => $transactionStatus,
+                'payment_type' => $paymentType,
+                'fraud_status' => $fraudStatus
             ]);
             
-            // Handle different transaction status
-            $payment_status = 'pending';
+            // Get the order
+            $order = Order::where('order_id', $orderId)->first();
             
-            if ($transaction_status == 'capture') {
-                if ($fraud_status == 'challenge') {
-                    $payment_status = 'challenge';
-                } else if ($fraud_status == 'accept') {
-                    $payment_status = 'success';
-                }
-            } else if ($transaction_status == 'settlement') {
-                $payment_status = 'success';
-            } else if ($transaction_status == 'cancel' || 
-                      $transaction_status == 'deny' || 
-                      $transaction_status == 'expire') {
-                $payment_status = 'failed';
-            } else if ($transaction_status == 'pending') {
-                $payment_status = 'pending';
+            if (!$order) {
+                Log::error("Order {$orderId} not found for payment notification");
+                return response('Order not found', 404);
             }
             
-            // Update order status in your database
-            // DB::table('orders')->where('order_id', $order_id)->update(['payment_status' => $payment_status]);
+            // Update order payment status based on transaction status
+            $paymentStatus = 'pending';
+            $orderStatus = 'pending';
+            $message = '';
             
-            return response()->json(['success' => true]);
+            if ($transactionStatus == 'capture') {
+                // For credit card payment that has been captured
+                if ($fraudStatus == 'accept') {
+                    $paymentStatus = 'paid';
+                    $orderStatus = 'processing';
+                    $message = 'Pembayaran berhasil, pesanan Anda sedang diproses.';
+                }
+            } else if ($transactionStatus == 'settlement') {
+                // For bank transfer, GoTo payments, etc.
+                $paymentStatus = 'paid';
+                $orderStatus = 'processing';
+                $message = 'Pembayaran berhasil, pesanan Anda sedang diproses.';
+            } else if ($transactionStatus == 'pending') {
+                // Payment is pending
+                $paymentStatus = 'pending';
+                $message = 'Menunggu pembayaran Anda.';
+            } else if ($transactionStatus == 'deny') {
+                // Payment denied
+                $paymentStatus = 'failed';
+                $message = 'Pembayaran ditolak. Silakan coba lagi.';
+            } else if ($transactionStatus == 'expire') {
+                // Payment expired
+                $paymentStatus = 'expired';
+                $message = 'Waktu pembayaran telah habis. Silakan coba lagi.';
+            } else if ($transactionStatus == 'cancel') {
+                // Payment cancelled
+                $paymentStatus = 'failed';
+                $message = 'Pembayaran dibatalkan.';
+            }
+            
+            // Update order in database
+            $order->payment_status = $paymentStatus;
+            
+            // Only update order status if payment is successful
+            if ($paymentStatus == 'paid') {
+                $order->status = $orderStatus;
+                
+                // Record payment time
+                $order->paid_at = now();
+            }
+            
+            // Save payment details
+            $paymentDetails = json_decode($order->payment_details) ?: [];
+            $paymentDetails[] = [
+                'time' => now()->toIso8601String(),
+                'status' => $transactionStatus,
+                'type' => $paymentType,
+                'raw' => $request->all()
+            ];
+            
+            $order->payment_details = json_encode($paymentDetails);
+            $order->save();
+            
+            // Send notification to the Flutter app
+            $this->sendOrderStatusUpdate($orderId, $orderStatus, $message);
+            
+            return response('OK', 200);
         } catch (\Exception $e) {
-            Log::error('Notification Error: ' . $e->getMessage());
-            
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to process notification: ' . $e->getMessage(),
-            ], 500);
+            Log::error('Payment Notification Error: ' . $e->getMessage());
+            return response('Error: ' . $e->getMessage(), 500);
         }
     }
 
@@ -350,6 +397,115 @@ class PaymentController extends Controller
                 'success' => false,
                 'message' => 'Failed to generate QR code: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Send order status update notification to the Flutter app
+     * @param string $orderId
+     * @param string $status
+     * @param string $message
+     * @return void
+     */
+    public function sendOrderStatusUpdate($orderId, $status, $message = null)
+    {
+        try {
+            // Get order details
+            $order = DB::table('orders')->where('order_id', $orderId)->first();
+            
+            if (!$order) {
+                Log::error("Cannot send notification: Order {$orderId} not found");
+                return;
+            }
+            
+            // Get user details
+            $user = DB::table('users')->where('id', $order->user_id)->first();
+            
+            if (!$user) {
+                Log::error("Cannot send notification: User for order {$orderId} not found");
+                return;
+            }
+            
+            // Default message if not provided
+            if (!$message) {
+                switch ($status) {
+                    case 'pending':
+                        $message = 'Pesanan Anda sedang menunggu pembayaran.';
+                        break;
+                    case 'processing':
+                        $message = 'Pesanan Anda sedang diproses.';
+                        break;
+                    case 'shipped':
+                        $message = 'Pesanan Anda telah dikirim.';
+                        break;
+                    case 'completed':
+                        $message = 'Pesanan Anda telah selesai.';
+                        break;
+                    case 'cancelled':
+                        $message = 'Pesanan Anda telah dibatalkan.';
+                        break;
+                    default:
+                        $message = 'Status pesanan Anda telah diperbarui.';
+                }
+            }
+            
+            // Prepare notification data
+            $notificationData = [
+                'order_id' => $orderId,
+                'status' => $status,
+                'message' => $message,
+                'time' => now()->toIso8601String()
+            ];
+            
+            // Log notification for debugging
+            Log::info('Sending order status notification', $notificationData);
+            
+            /**
+             * In a real implementation, you would send this notification to the 
+             * Flutter app using Firebase FCM, a WebSocket, or another mechanism.
+             * 
+             * Example using Firebase Cloud Messaging (FCM):
+             * 
+             * $fcmToken = $user->fcm_token;
+             * 
+             * if ($fcmToken) {
+             *    $client = new \GuzzleHttp\Client();
+             *    $response = $client->post(
+             *        'https://fcm.googleapis.com/fcm/send',
+             *        [
+             *            'headers' => [
+             *                'Authorization' => 'key=YOUR_SERVER_KEY',
+             *                'Content-Type' => 'application/json',
+             *            ],
+             *            'json' => [
+             *                'to' => $fcmToken,
+             *                'notification' => [
+             *                    'title' => 'Status Pesanan Diperbarui',
+             *                    'body' => $message,
+             *                ],
+             *                'data' => $notificationData,
+             *            ],
+             *        ]
+             *    );
+             *    
+             *    Log::info('FCM Response: ' . $response->getBody());
+             * }
+             */
+            
+            // For now, we'll just log the notification
+            Log::info('Order status notification would be sent', $notificationData);
+            
+            // Store notification in database for in-app notifications
+            DB::table('notifications')->insert([
+                'user_id' => $order->user_id,
+                'type' => 'order_status',
+                'data' => json_encode($notificationData),
+                'read' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error sending order status notification: ' . $e->getMessage());
         }
     }
 } 

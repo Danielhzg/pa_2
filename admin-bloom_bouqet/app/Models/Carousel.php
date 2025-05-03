@@ -13,7 +13,44 @@ class Carousel extends Model
         'title',
         'description',
         'image',
-        'active',
-        'order',
+        'is_active',
+        'admin_id',
     ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+    ];
+    
+    /**
+     * Get full image URL for API responses
+     */
+    protected $appends = ['image_url'];
+    
+    /**
+     * Get the full URL for the image
+     */
+    public function getImageUrlAttribute()
+    {
+        if (!$this->image) {
+            return null;
+        }
+        
+        return url('storage/' . $this->image);
+    }
+
+    /**
+     * Scope a query to only include active carousels.
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+    
+    /**
+     * Get the admin that created this carousel.
+     */
+    public function admin()
+    {
+        return $this->belongsTo(Admin::class);
+    }
 }

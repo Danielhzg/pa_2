@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Order extends Model
 {
@@ -19,17 +20,26 @@ class Order extends Model
     protected $fillable = [
         'order_id',
         'user_id',
+        'admin_id',
         'shipping_address',
         'phone_number',
-        'total_amount',
+        'subtotal',
         'shipping_cost',
-        'payment_method',
+        'total_amount',
         'status',
         'payment_status',
+        'payment_method',
         'midtrans_token',
         'midtrans_redirect_url',
+        'payment_details',
         'qr_code_data',
         'qr_code_url',
+        'notes',
+        'order_items',
+        'paid_at',
+        'shipped_at',
+        'delivered_at',
+        'cancelled_at',
     ];
 
     /**
@@ -38,8 +48,14 @@ class Order extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'total_amount' => 'decimal:2',
+        'subtotal' => 'decimal:2',
         'shipping_cost' => 'decimal:2',
+        'total_amount' => 'decimal:2',
+        'payment_details' => 'array',
+        'paid_at' => 'datetime',
+        'shipped_at' => 'datetime',
+        'delivered_at' => 'datetime',
+        'cancelled_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -53,19 +69,45 @@ class Order extends Model
     }
 
     /**
+     * Get the admin who processed the order.
+     */
+    public function admin(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class);
+    }
+
+    /**
      * Get the items for the order.
      */
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
     }
+    
+    /**
+     * Get the products in this order.
+     */
+    public function products(): BelongsToMany
+    {
+        return $this->belongsToMany(Product::class, 'order_items')
+                    ->withPivot('name', 'price', 'quantity')
+                    ->withTimestamps();
+    }
+    
+    /**
+     * Get the reports associated with this order.
+     */
+    public function reports(): HasMany
+    {
+        return $this->hasMany(Report::class);
+    }
 
     /**
-     * Calculate the subtotal for the order.
+     * Get the delivery tracking for this order.
      */
-    public function getSubtotalAttribute(): float
+    public function deliveryTracking(): HasMany
     {
-        return $this->total_amount - $this->shipping_cost;
+        return $this->hasMany(DeliveryTracking::class);
     }
 
     /**
@@ -117,11 +159,19 @@ class Order extends Model
     }
 
     /**
-     * Check if order is completed.
+     * Check if order is shipped.
      */
-    public function isCompleted(): bool
+    public function isShipped(): bool
     {
-        return $this->status === 'completed';
+        return $this->status === 'shipped';
+    }
+
+    /**
+     * Check if order is delivered.
+     */
+    public function isDelivered(): bool
+    {
+        return $this->status === 'delivered';
     }
 
     /**
@@ -133,6 +183,14 @@ class Order extends Model
     }
 
     /**
+     * Check if order is refunded.
+     */
+    public function isRefunded(): bool
+    {
+        return $this->status === 'refunded';
+    }
+
+    /**
      * Check if payment is pending.
      */
     public function isPaymentPending(): bool
@@ -141,11 +199,11 @@ class Order extends Model
     }
 
     /**
-     * Check if payment is successful.
+     * Check if payment is paid.
      */
-    public function isPaymentSuccess(): bool
+    public function isPaymentPaid(): bool
     {
-        return $this->payment_status === 'success';
+        return $this->payment_status === 'paid';
     }
 
     /**
@@ -162,5 +220,67 @@ class Order extends Model
     public function isPaymentExpired(): bool
     {
         return $this->payment_status === 'expired';
+    }
+
+    /**
+     * Check if payment is refunded.
+     */
+    public function isPaymentRefunded(): bool
+    {
+        return $this->payment_status === 'refunded';
+    }
+
+    /**
+     * Generate a sales report for this order.
+     */
+    public function generateSalesReport($title = null, $description = null)
+    {
+        $reportNumber = Report::generateReportNumber();
+        $reportTitle = $title ?? 'Sales Report for Order #' . $this->order_id;
+        $reportDescription = $description ?? 'Automatically generated sales report for order ' . $this->order_id;
+        
+        // Get item details for the report
+        $items = $this->items()->with('product')->get();
+        $itemDetails = $items->map(function($item) {
+            return [
+                'product_id' => $item->product_id,
+                'product_name' => $item->name,
+                'quantity' => $item->quantity,
+                'price' => $item->price,
+                'subtotal' => $item->subtotal,
+            ];
+        })->toArray();
+        
+        // Create report details
+        $details = [
+            'order_date' => $this->created_at->format('Y-m-d H:i:s'),
+            'customer' => [
+                'id' => $this->user_id,
+                'name' => $this->user ? $this->user->full_name : 'Guest',
+                'address' => $this->shipping_address,
+                'phone' => $this->phone_number,
+            ],
+            'payment' => [
+                'method' => $this->payment_method,
+                'status' => $this->payment_status,
+            ],
+            'items' => $itemDetails,
+        ];
+        
+        // Create the report
+        return Report::create([
+            'order_id' => $this->id,
+            'report_number' => $reportNumber,
+            'type' => 'sales',
+            'title' => $reportTitle,
+            'description' => $reportDescription,
+            'details' => $details,
+            'period_start' => $this->created_at->startOfDay(),
+            'period_end' => $this->created_at->endOfDay(),
+            'total_amount' => $this->total_amount,
+            'total_items' => $items->sum('quantity'),
+            'status' => 'generated',
+            'created_by' => auth()->guard('admin')->id(), // If an admin is creating the report
+        ]);
     }
 }
