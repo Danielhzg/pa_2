@@ -9,7 +9,7 @@
                 <p class="text-muted">Kelola kategori produk toko Anda</p>
             </div>
             <a href="{{ route('admin.categories.create') }}" class="btn add-new-btn">
-                <i class="fas fa-plus me-2"></i> Tambah Kategori Baru
+                <i class="fas fa-plus me-2"></i> <span class="text-emphasis">Tambah Kategori Baru</span>
             </a>
         </div>
     </div>
@@ -94,7 +94,7 @@
                 <h5>Tidak ada kategori yang tersedia</h5>
                 <p class="text-muted">Mulai dengan menambahkan kategori baru untuk produk Anda</p>
                 <a href="{{ route('admin.categories.create') }}" class="btn add-new-btn mt-3">
-                    <i class="fas fa-plus me-2"></i> Tambah Kategori Baru
+                    <i class="fas fa-plus me-2"></i> <span class="text-emphasis">Tambah Kategori Baru</span>
                 </a>
             </div>
             @endif
@@ -137,18 +137,45 @@
         margin-bottom: 0.25rem;
     }
     
+    /* Text emphasis for the "Tambah Kategori" button */
+    .text-emphasis {
+        color: #ffffff;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        position: relative;
+        transition: all 0.3s ease;
+    }
+    
+    /* Add a subtle underline animation on hover */
+    .text-emphasis::after {
+        content: '';
+        position: absolute;
+        width: 0;
+        height: 2px;
+        bottom: -2px;
+        left: 0;
+        background-color: #FFE5EE;
+        transition: width 0.3s ease;
+    }
+    
+    .add-new-btn:hover .text-emphasis::after {
+        width: 100%;
+    }
+    
     .add-new-btn {
-        background: linear-gradient(45deg, var(--pink-primary), var(--pink-dark));
+        background: linear-gradient(45deg, #FF87B2, #D46A9F);
         color: white;
         border-radius: 10px;
         padding: 0.6rem 1.2rem;
         border: none;
         box-shadow: 0 4px 8px rgba(255,105,180,0.3);
         transition: all 0.3s;
+        font-size: 1.05rem;
     }
     
     .add-new-btn:hover {
-        background: linear-gradient(45deg, var(--pink-dark), var(--pink-primary));
+        background: linear-gradient(45deg, #D46A9F, #FF87B2);
         transform: translateY(-2px);
         color: white;
         box-shadow: 0 6px 12px rgba(255,105,180,0.4);

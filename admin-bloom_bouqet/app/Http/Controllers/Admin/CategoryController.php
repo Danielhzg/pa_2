@@ -196,7 +196,7 @@ class CategoryController extends Controller
             
             // Delete the category
             $categoryName = $category->name;
-            $category->delete();
+        $category->delete();
             
             DB::commit();
             
@@ -205,7 +205,7 @@ class CategoryController extends Controller
                 
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->route('admin.categories.index')
+        return redirect()->route('admin.categories.index')
                 ->with('error', 'Terjadi kesalahan saat menghapus kategori dan memindahkan produk. Silakan coba lagi.');
         }
     }

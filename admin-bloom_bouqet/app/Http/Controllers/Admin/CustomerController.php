@@ -8,76 +8,54 @@ use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 
 class CustomerController extends Controller
 {
-    /**
-     * Base API URL
-     * @var string
-     */
-    protected $apiBaseUrl;
-
-    /**
-     * Constructor
-     */
-    public function __construct()
-    {
-        $this->apiBaseUrl = config('app.url') . '/api/v1';
-    }
-
     /**
      * Display a listing of customers
      */
     public function index(Request $request)
     {
         try {
-            // Prepare API request parameters
-            $queryParams = [];
-            if ($request->has('search')) {
-                $queryParams['search'] = $request->search;
+            $query = User::query()->where('role', 'customer');
+            
+            // Apply search filter if provided
+            if ($request->has('search') && !empty($request->search)) {
+                $search = $request->search;
+                $query->where(function($q) use ($search) {
+                    $q->where('full_name', 'like', "%{$search}%")
+                      ->orWhere('username', 'like', "%{$search}%")
+                      ->orWhere('email', 'like', "%{$search}%")
+                      ->orWhere('phone', 'like', "%{$search}%");
+                });
             }
             
-            // Call the API endpoint
-            $response = Http::get($this->apiBaseUrl . '/customers', $queryParams);
+            // Get customer data with order counts and total spending
+            $customers = $query->withCount('orders')
+                ->withSum('orders as orders_sum_total_amount', 'total_amount')
+                ->latest()
+                ->paginate(10);
             
-            if (!$response->successful()) {
-                Log::error('API request failed: ' . $response->body());
-                return back()->with('error', 'Terjadi kesalahan saat memuat data pelanggan. Silakan coba lagi nanti.');
-            }
-            
-            $data = $response->json();
-            
-            if (!isset($data['data']) || !isset($data['success']) || $data['success'] !== true) {
-                Log::error('API response format invalid: ' . json_encode($data));
-                return back()->with('error', 'Format respons API tidak valid.');
-            }
-            
-            $customers = $data['data'];
-            
-            // Wrap response data in paginator for compatibility with the view
-            $customers = new \Illuminate\Pagination\LengthAwarePaginator(
-                $customers['data'],
-                $customers['total'],
-                $customers['per_page'],
-                $customers['current_page'],
-                ['path' => $request->url(), 'query' => $request->query()]
-            );
-            
-            // Get customer statistics for dashboard widgets
-            $statsResponse = Http::get($this->apiBaseUrl . '/customers-stats');
-            $statistics = null;
-            
-            if ($statsResponse->successful()) {
-                $statsData = $statsResponse->json();
-                if (isset($statsData['success']) && $statsData['success'] === true && isset($statsData['data'])) {
-                    $statistics = $statsData['data'];
-                } else {
-                    Log::warning('Invalid stats response format: ' . json_encode($statsData));
-                }
-            } else {
-                Log::warning('Failed to retrieve customer statistics: ' . $statsResponse->body());
-            }
+            // Get statistics for dashboard widgets
+            $statistics = [
+                'total_customers' => User::where('role', 'customer')->count(),
+                'new_customers_this_month' => User::where('role', 'customer')
+                    ->whereMonth('created_at', now()->month)
+                    ->whereYear('created_at', now()->year)
+                    ->count(),
+                'top_spending_customers' => User::where('role', 'customer')
+                    ->withSum('orders as orders_sum_total_amount', 'total_amount')
+                    ->withCount('orders')
+                    ->orderBy('orders_sum_total_amount', 'desc')
+                    ->limit(5)
+                    ->get(),
+                'most_active_customers' => User::where('role', 'customer')
+                    ->withCount('orders')
+                    ->withSum('orders as orders_sum_total_amount', 'total_amount')
+                    ->orderBy('orders_count', 'desc')
+                    ->limit(5)
+                    ->get()
+            ];
             
             return view('admin.customers.index', compact('customers', 'statistics'));
         } catch (\Exception $e) {
@@ -92,41 +70,33 @@ class CustomerController extends Controller
     public function show($id)
     {
         try {
-            // Call the API endpoint to get customer details
-            $response = Http::get($this->apiBaseUrl . '/customers/' . $id);
+            $customer = User::where('role', 'customer')->findOrFail($id);
             
-            if (!$response->successful()) {
-                Log::error('API request failed: ' . $response->body());
-                return back()->with('error', 'Terjadi kesalahan saat memuat detail pelanggan. Silakan coba lagi nanti.');
-            }
+            // Get customer orders
+            $orders = $customer->orders()->with('items')->latest()->paginate(10);
             
-            $responseData = $response->json();
+            // Calculate customer statistics
+            $totalSpent = $customer->orders()->sum('total_amount');
+            $totalOrders = $customer->orders()->count();
+            $avgOrderValue = $totalOrders > 0 ? $totalSpent / $totalOrders : 0;
+            $lastOrderDate = $customer->orders()->latest()->value('created_at');
             
-            if (!isset($responseData['data']) || !isset($responseData['success']) || $responseData['success'] !== true) {
-                Log::error('API response format invalid: ' . json_encode($responseData));
-                return back()->with('error', 'Format respons API tidak valid.');
-            }
+            $stats = [
+                'total_orders' => $totalOrders,
+                'total_spent' => $totalSpent,
+                'avg_order_value' => $avgOrderValue,
+                'last_order_date' => $lastOrderDate,
+            ];
             
-            $data = $responseData['data'];
-            
-            if (!isset($data['customer']) || !isset($data['stats']) || !isset($data['orders'])) {
-                Log::error('Customer data is incomplete: ' . json_encode($data));
-                return back()->with('error', 'Data pelanggan tidak lengkap.');
-            }
-            
-            $customer = $data['customer'];
-            $stats = $data['stats'];
-            
-            // Wrap orders in paginator for compatibility with the view
-            $orders = new \Illuminate\Pagination\LengthAwarePaginator(
-                $data['orders']['data'],
-                $data['orders']['total'],
-                $data['orders']['per_page'],
-                $data['orders']['current_page'],
-                ['path' => request()->url(), 'query' => request()->query()]
-            );
-            
-            $monthlyStats = $data['monthly_stats'] ?? [];
+            // Get monthly order data for chart
+            $monthlyStats = DB::table('orders')
+                ->select(DB::raw('MONTH(created_at) as month, YEAR(created_at) as year, COUNT(*) as order_count, SUM(total_amount) as total_amount'))
+                ->where('user_id', $customer->id)
+                ->whereYear('created_at', '>=', now()->subYear()->year)
+                ->groupBy('year', 'month')
+                ->orderBy('year')
+                ->orderBy('month')
+                ->get();
             
             return view('admin.customers.show', compact('customer', 'orders', 'stats', 'monthlyStats'));
         } catch (\Exception $e) {

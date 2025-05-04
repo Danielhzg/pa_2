@@ -4,768 +4,633 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Florist Admin</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>@yield('title', 'Admin Panel') - Bloom Bouquet</title>
+    
+    <!-- Fonts and Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
     <style>
         :root {
-            --dark-bg: #FF6B9E;
-            --dark-secondary: #ffffff;
-            --accent: #7e57c2;
-            --gradient-1: linear-gradient(135deg,  #FF87B2,  #FF87B2);
-            --gradient-2: linear-gradient(135deg, #FF87B2 ,  #FF87B2);
-            --text: #2d3436;
-            --text-secondary: #636e72;
-            --shadow: rgba(126, 87, 194, 0.1);
-            --card-hover: rgba(126, 87, 194, 0.05);
-            --pink-primary:#ffffff;
-            --pink-dark:rgb(241, 133, 171);
-            --pink-light: #FFA8C7;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #FFDEE2;
-            color: #333;
-        }
-
-        #sidebar {
-            background: var(--gradient-1);
-            min-height: 100vh;
-            width: 280px;
-            position: fixed;
-            left: 0;
-            top: 0;
-            padding: 2rem;
-            box-shadow: 4px 0 15px var(--shadow);
-        }
-
-        .nav-link {
-            color: rgba(255, 255, 255, 0.8);
-            padding: 1rem 1.5rem;
-            border-radius: 12px;
-            margin: 0.8rem 0;
-            transition: all 0.3s ease;
-            font-weight: 500;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
-        }
-
-        .nav-link:hover {
-            transform: translateX(5px);
-            background-color: var(--pink-dark);
-            color: white;
-        }
-
-        .nav-link.active {
-            background: var(--pink-light);
-            color: var(--pink-primary);
-            box-shadow: 0 5px 15px rgba(255, 105, 180, 0.3);
-            border-left: 5px solid var(--pink-dark);
-            transition: all 0.3s ease;
-        }
-
-        .nav-link.active i {
-            color: var(--pink-dark);
-        }
-
-        .main-content {
-            margin-left: 280px;
-            padding: 2.5rem;
-            margin-top: 70px;
-        }
-
-        /* Dynamic Notification Styles */
-        #dynamicNotification {
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            max-width: 400px;
-            z-index: 9999;
-            transform: translateX(0);
-            animation: slideIn 0.3s ease forwards;
+            --primary-color: #FF87B2;
+            --primary-light: #FFB6C1;
+            --primary-dark: #D46A9F;
+            --secondary-color: #FFC0D9;
+            --accent-color: #FFE5EE;
+            --dark-text: #333333;
+            --light-text: #717171;
+            --sidebar-width: 260px;
+            --white: #FFFFFF;
+            --light-bg: #F9F9F9;
+            --card-shadow: 0 5px 15px rgba(255, 135, 178, 0.1);
+            --hover-shadow: 0 8px 25px rgba(255, 135, 178, 0.2);
         }
         
-        .notification-alert {
-            padding: 16px 20px;
-            margin-bottom: 15px;
-            border: none;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+        
+        body {
+            background-color: var(--light-bg);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        /* Sidebar styles */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s;
+            z-index: 1000;
+            overflow-y: auto;
+        }
+        
+        .sidebar-header {
+            padding: 20px;
+            text-align: center;
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .sidebar-header h3 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 600;
+        }
+        
+        .sidebar-header .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+        
+        .sidebar-menu {
+            padding: 15px 0;
+        }
+        
+        .menu-heading {
+            padding: 10px 20px;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.6);
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+        
+        .nav-item {
+            margin: 4px 10px;
+        }
+        
+        .nav-link {
+            color: rgba(255, 255, 255, 0.85);
+            padding: 10px 15px;
             border-radius: 12px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.25);
             display: flex;
             align-items: center;
-            position: relative;
-            overflow: hidden;
-            backdrop-filter: blur(5px);
-            transition: all 0.3s ease;
+            transition: all 0.3s;
         }
         
-        .notification-alert:hover {
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-            transform: translateY(-3px);
+        .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.15);
+            color: white;
         }
         
-        .notification-alert::before {
-            content: '';
+        .nav-link.active {
+            background-color: white;
+            color: var(--primary-color);
+            font-weight: 500;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .nav-link i {
+            margin-right: 10px;
+            width: 20px;
+            text-align: center;
+            font-size: 18px;
+        }
+        
+        .sidebar-footer {
+            padding: 15px 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
             position: absolute;
             bottom: 0;
-            left: 0;
-            height: 4px;
             width: 100%;
-            background: rgba(255,255,255,0.4);
-            animation: countdown 5s linear forwards;
-            border-radius: 0 0 2px 2px;
+            background: rgba(255, 255, 255, 0.05);
         }
         
-        .notification-success {
-            background: linear-gradient(135deg, #28a745, #20c997);
-            color: white;
-            border-left: 5px solid #1e7e34;
+        .content-wrapper {
+            margin-left: var(--sidebar-width);
+            padding: 20px 30px;
+            min-height: 100vh;
+            transition: all 0.3s;
+            background: var(--light-bg);
         }
         
-        .notification-danger {
-            background: linear-gradient(135deg, #dc3545, #e15361);
-            color: white;
-            border-left: 5px solid #bd2130;
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 15px 20px;
+            border-radius: 15px;
+            background: var(--white);
+            box-shadow: var(--card-shadow);
         }
         
-        .notification-warning {
-            background: linear-gradient(135deg, #ffc107, #fd7e14);
-            color: #212529;
-            border-left: 5px solid #d39e00;
+        .page-title {
+            color: var(--primary-dark);
+            font-weight: 600;
+            margin: 0;
+            font-size: 1.5rem;
         }
         
-        .notification-icon {
+        .user-dropdown {
+            position: relative;
+        }
+        
+        .user-dropdown button {
+            background: var(--primary-light);
+            border: none;
             display: flex;
             align-items: center;
-            justify-content: center;
-            width: 28px;
-            height: 28px;
-            margin-right: 15px;
-            font-size: 20px;
-        }
-        
-        .notification-content {
-            flex-grow: 1;
+            color: white;
             font-weight: 500;
-            font-size: 15px;
-            line-height: 1.4;
+            cursor: pointer;
+            padding: 8px 15px;
+            border-radius: 30px;
+            transition: all 0.3s;
         }
         
-        .notification-close {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            background: transparent;
+        .user-dropdown button:hover {
+            background: var(--primary-dark);
+        }
+        
+        .user-dropdown img {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            margin-right: 10px;
+            border: 2px solid white;
+        }
+        
+        .dropdown-menu {
             border: none;
-            color: inherit;
-            opacity: 0.7;
-            cursor: pointer;
-            transition: opacity 0.2s;
+            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+        }
+        
+        .dropdown-item {
+            padding: 10px 20px;
             font-size: 14px;
         }
         
-        .notification-close:hover {
-            opacity: 1;
+        .dropdown-item i {
+            margin-right: 10px;
+            color: var(--primary-color);
         }
         
-        @keyframes slideIn {
-            from {
-                transform: translateX(120%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-        
-        @keyframes countdown {
-            from {
-                width: 100%;
-            }
-            to {
-                width: 0%;
-            }
-        }
-
         .card {
-            background: var(--dark-secondary);
             border: none;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            border-radius: 16px;
+            border-radius: 15px;
+            box-shadow: var(--card-shadow);
+            margin-bottom: 25px;
+            transition: transform 0.2s, box-shadow 0.2s;
             overflow: hidden;
-            transition: all 0.3s ease;
         }
-
+        
         .card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 12px 20px var(--shadow);
+            box-shadow: var(--hover-shadow);
         }
-
-        .stat-card {
-            position: relative;
-            transition: all 0.3s ease;
-            background: white;
-            border: 1px solid rgba(126, 87, 194, 0.1);
-        }
-
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 5px;
-            background: var(--gradient-1);
-        }
-
-        .stat-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 12px 20px rgba(255,105,180,0.2);
-        }
-
-        .stat-icon {
-            background: var(--gradient-2);
-            padding: 1rem;
-            border-radius: 14px;
-            box-shadow: 0 5px 15px rgba(126, 87, 194, 0.2);
-        }
-
-        h4.brand {
+        
+        .card-header {
+            background: linear-gradient(to right, var(--primary-light), var(--primary-color));
             color: white;
             font-weight: 600;
-            font-size: 1.5rem;
-            -webkit-background-clip: initial;
-            -webkit-text-fill-color: initial;
+            padding: 15px 20px;
+            border-bottom: none;
         }
-
-        .text-secondary {
-            color: var(--text-secondary) !important;
+        
+        .card-body {
+            padding: 20px;
+            background-color: var(--white);
         }
-
-        canvas {
-            color: var(--text) !important;
-        }
-
-        select.form-select {
-            border-color: var(--accent);
-            color: var(--text);
-        }
-
-        h2, h3, h4, h5, h6 {
-            color: var(--text);
-        }
-
-        .top-navbar {
-            position: fixed;
-            right: 0;
-            top: 0;
-            left: 280px;
-            height: 70px;
-            background-color: var(--pink-primary);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            z-index: 100;
-            padding: 0 2rem;
-            backdrop-filter: blur(10px);
-        }
-
-        .navbar-brand, .nav-link {
-            color: #fff !important;
-        }
-
-        .notification-badge {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            background: #ff6b6b;
-            color: white;
-            border-radius: 50%;
-            min-width: 18px;
-            height: 18px;
-            font-size: 11px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .dropdown-menu {
-            border: none;
-            box-shadow: 0 4px 12px var(--shadow);
-            border-radius: 12px;
-            border: 1px solid rgba(126, 87, 194, 0.1);
-        }
-
-        .dropdown-item:hover {
-            background: var(--card-hover);
-            color: var(--accent);
-        }
-
-        .nav-icon {
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 10px;
-            position: relative;
-            transition: all 0.3s;
-            color: var(--text);
-        }
-
-        .nav-icon:hover {
-            background: var(--card-hover);
-            color: var(--accent);
-        }
-
-        .form-select, .form-control {
-            border-color: rgba(126, 87, 194, 0.2);
-        }
-
-        .form-select:focus, .form-control:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 0.25rem rgba(126, 87, 194, 0.25);
-        }
-
+        
         .btn-primary {
-            background-color: var(--pink-primary);
-            border-color: var(--pink-primary);
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: 500;
+            transition: all 0.3s;
         }
-
+        
         .btn-primary:hover {
-            background-color: var(--pink-dark);
-            border-color: var(--pink-dark);
+            background-color: var(--primary-dark);
+            border-color: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(212, 106, 159, 0.3);
         }
-
+        
+        .btn-outline-primary {
+            color: var(--primary-color);
+            border-color: var(--primary-color);
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .btn-outline-primary:hover {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 135, 178, 0.3);
+        }
+        
         .alert {
-            animation: fadeIn 0.5s ease-in-out, fadeOut 0.5s ease-in-out 3s forwards;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes fadeOut {
-            from {
-                opacity: 1;
-                transform: translateY(0);
-            }
-            to {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-        }
-
-        .notification {
-            background-color: var(--pink-primary);
-            color: #fff;
-        }
-
-        .toast-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1050;
-        }
-
-        .toast {
-            background-color: var(--pink-primary);
-            color: #fff;
-        }
-
-        /* Sidebar styles */
-        .main-sidebar {
-            background-color: #fff;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-        }
-
-        .nav-sidebar .nav-item .nav-link {
-            color: #666;
-        }
-
-        .nav-sidebar .nav-item .nav-link:hover,
-        .nav-sidebar .nav-item .nav-link.active {
-            background-color: var(--pink-light);
-            color: var(--pink-primary);
-        }
-
-        .nav-sidebar .nav-item .nav-link.active i {
-            color: var(--pink-primary);
-        }
-
-       
-        .table thead th {
-            background-color: var(--pink-primary);
-            color: white;
+            border-radius: 12px;
+            padding: 15px 20px;
             border: none;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
         }
-
-        .table-hover tbody tr:hover {
-            background-color: #fff5f8;
+        
+        .alert-success {
+            background-color: #E8F5E9;
+            color: #2E7D32;
         }
-
-        /* Pagination styles */
-        .page-item.active .page-link {
-            background-color: var(--pink-primary);
-            border-color: var(--pink-primary);
+        
+        .alert-danger {
+            background-color: #FFEBEE;
+            color: #C62828;
         }
-
+        
+        /* Stats Cards */
+        .stats-card {
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: var(--card-shadow);
+            background-color: var(--white);
+            transition: transform 0.3s, box-shadow 0.3s;
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .stats-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--hover-shadow);
+        }
+        
+        .stats-icon {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            margin-right: 15px;
+            font-size: 24px;
+            color: white;
+            background: linear-gradient(45deg, var(--primary-color), var(--primary-dark));
+        }
+        
+        .stats-info h3 {
+            font-size: 24px;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: var(--dark-text);
+        }
+        
+        .stats-info p {
+            color: var(--light-text);
+            margin: 0;
+            font-size: 14px;
+        }
+        
+        .stats-decoration {
+            position: absolute;
+            right: -15px;
+            bottom: -15px;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, transparent, rgba(255, 182, 193, 0.1));
+            z-index: 0;
+        }
+        
+        /* Forms */
+        .form-control, .form-select {
+            border: 1px solid #E0E0E0;
+            border-radius: 10px;
+            padding: 12px 15px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(255, 135, 178, 0.2);
+        }
+        
+        .form-label {
+            font-weight: 500;
+            color: var(--dark-text);
+            margin-bottom: 8px;
+        }
+        
+        /* Tables */
+        .table {
+            width: 100%;
+            box-shadow: var(--card-shadow);
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        
+        .table thead th {
+            background-color: var(--primary-light);
+            color: white;
+            font-weight: 500;
+            border: none;
+            padding: 15px;
+        }
+        
+        .table tbody tr:nth-child(even) {
+            background-color: rgba(255, 230, 238, 0.2);
+        }
+        
+        .table tbody td {
+            border-color: #F0F0F0;
+            padding: 12px 15px;
+            vertical-align: middle;
+        }
+        
+        /* Badges */
+        .badge {
+            padding: 6px 10px;
+            border-radius: 30px;
+            font-weight: 500;
+            font-size: 12px;
+        }
+        
+        .badge-primary {
+            background-color: var(--primary-light);
+            color: white;
+        }
+        
+        .badge-success {
+            background-color: #66BB6A;
+            color: white;
+        }
+        
+        .badge-warning {
+            background-color: #FFA726;
+            color: white;
+        }
+        
+        .badge-danger {
+            background-color: #EF5350;
+            color: white;
+        }
+        
+        /* Hamburger menu for mobile */
+        .hamburger {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--primary-color);
+        }
+        
+        /* Mobile responsiveness */
+        @media (max-width: 991px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.active {
+                transform: translateX(0);
+            }
+            
+            .content-wrapper {
+                margin-left: 0;
+            }
+            
+            .hamburger {
+                display: block;
+            }
+        }
+        
+        /* Custom Animation Effects */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .animated-fade {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        
+        /* Pagination */
+        .pagination {
+            justify-content: center;
+            margin-top: 20px;
+        }
+        
+        .page-item:not(:first-child) .page-link {
+            margin-left: 5px;
+        }
+        
         .page-link {
-            color: var(--pink-primary);
+            border: none;
+            color: var(--primary-color);
+            border-radius: 8px;
+            padding: 10px 15px;
         }
-
+        
+        .page-item.active .page-link {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
         .page-link:hover {
-            color: var(--pink-dark);
+            background-color: var(--accent-color);
+            color: var(--primary-dark);
         }
-
-        /* Form styles */
-        .form-control:focus {
-            border-color: var(--pink-light);
-            box-shadow: 0 0 0 0.2rem rgba(255, 135, 178, 0.25);
+        
+        /* Text color utilities */
+        .text-pink {
+            color: var(--primary-color) !important;
+            font-weight: 600;
         }
-
-        /* Select2 customization */
-        .select2-container--default .select2-results__option--highlighted[aria-selected] {
-            background-color: var(--pink-primary);
-        }
-
-        /* Custom checkbox and radio */
-        .custom-control-input:checked ~ .custom-control-label::before {
-            background-color: var(--pink-primary);
-            border-color: var(--pink-primary);
-        }
-
-        /* Progress bar */
-        .progress-bar {
-            background-color: var(--pink-primary);
-        }
-
-        /* Card header */
-        .card-header {
-            background-color: #fff;
-            border-bottom: 2px solid var(--pink-light);
-        }
-
-        /* Footer */
-        .main-footer {
-            background-color: #fff;
-            border-top: 1px solid var(--pink-light);
+        
+        .text-pink:hover {
+            color: var(--primary-dark) !important;
+            transition: color 0.3s;
         }
     </style>
-    @stack('styles')
+    
+    @yield('styles')
 </head>
 <body>
     <!-- Sidebar -->
-    <div id="sidebar">
-        <h4 class="brand mb-4"> Bloom Bouqet</h4>
-        <nav class="nav flex-column">
-            <a class="nav-link {{ Request::is('admin') || Request::is('admin/dashboard') ? 'active' : '' }}" href="{{ route('admin.home') }}">
-                <i class="fas fa-home"></i> Dashboard 
-            </a>
-            <a class="nav-link {{ Request::is('admin/categories*') ? 'active' : '' }}" href="{{ route('admin.categories.index') }}">
-                <i class="fas fa-tags"></i> Kategori
-            </a>
-            <a class="nav-link {{ Request::is('admin/products*') ? 'active' : '' }}" href="{{ route('admin.products.index') }}">
-                <i class="fas fa-seedling"></i> Produk
-            </a>
-            <a class="nav-link {{ Request::is('admin/carousels*') ? 'active' : '' }}" href="{{ route('admin.carousels.index') }}">
-                <i class="fas fa-images"></i> Carousel
-            </a>
-            <a class="nav-link {{ Request::is('admin/orders*') ? 'active' : '' }}" href="{{ route('admin.orders.index') }}">
-                <i class="fas fa-shopping-bag"></i> Pesanan
-            </a>
-            <a class="nav-link {{ Request::is('admin/customers*') ? 'active' : '' }}" href="{{ route('admin.customers.index') }}">
-                <i class="fas fa-users"></i> Pelanggan
-            </a>
-            <a class="nav-link {{ Request::is('admin/reports*') ? 'active' : '' }}" href="{{ route('admin.reports.index') }}">
-                <i class="fas fa-chart-bar"></i> Laporan
-            </a>
-            <a class="nav-link {{ Request::is('admin/chats*') ? 'active' : '' }}" href="{{ route('admin.chats.index') }}">
-                <i class="fas fa-comments"></i> Chat <span id="unread-chat-badge" class="badge bg-danger ms-2" style="display: none;">0</span>
-            </a>
-        </nav>
-    </div>
-
-    <!-- Top Navbar -->
-    <div class="top-navbar d-flex align-items-center justify-content-between">
-        <div class="d-flex align-items-center">
-            <h5 class="mb-0">Dashboard</h5>
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h3>Bloom Bouquet</h3>
+            <div class="subtitle">Admin Dashboard</div>
         </div>
-        <div class="d-flex align-items-center gap-3">
-            <!-- Notifications -->
-            <div class="dropdown">
-                <div class="nav-icon" role="button" data-bs-toggle="dropdown">
-                    <i class="fas fa-bell"></i>
-                    <div class="notification-badge">3</div>
-                </div>
-                <ul class="dropdown-menu dropdown-menu-end p-2" style="width: 300px;">
-                    <li><h6 class="dropdown-header">Notifikasi</h6></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li>
-                        <a class="dropdown-item p-2 rounded" href="#">
-                            <div class="d-flex gap-3">
-                                <i class="fas fa-shopping-bag mt-1"></i>
-                                <div>
-                                    <p class="mb-0">Pesanan Baru #123</p>
-                                    <small class="text-secondary">2 menit yang lalu</small>
-                                </div>
-                            </div>
-                        </a>
-                    </li>
-                </ul>
+        
+        <div class="sidebar-menu">
+            <div class="menu-heading">Main Menu</div>
+            <ul class="nav flex-column">
+                <li class="nav-item">
+                    <a class="nav-link {{ Request::is('admin') || Request::is('admin/dashboard') ? 'active' : '' }}" href="{{ route('admin.dashboard') }}">
+                        <i class="fas fa-home"></i> Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ Request::is('admin/products*') ? 'active' : '' }}" href="{{ route('admin.products.index') }}">
+                        <i class="fas fa-spa"></i> Products
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ Request::is('admin/categories*') ? 'active' : '' }}" href="{{ route('admin.categories.index') }}">
+                        <i class="fas fa-tags"></i> Categories
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ Request::is('admin/carousels*') ? 'active' : '' }}" href="{{ route('admin.carousels.index') }}">
+                        <i class="fas fa-images"></i> Carousels
+                    </a>
+                </li>
+            </ul>
+            
+            <div class="menu-heading">Orders & Customers</div>
+            <ul class="nav flex-column">
+                <li class="nav-item">
+                    <a class="nav-link {{ Request::is('admin/orders*') ? 'active' : '' }}" href="{{ route('admin.orders.index') }}">
+                        <i class="fas fa-shopping-cart"></i> Orders
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ Request::is('admin/customers*') ? 'active' : '' }}" href="{{ route('admin.customers.index') }}">
+                        <i class="fas fa-users"></i> Customers
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ Request::is('admin/chats*') ? 'active' : '' }}" href="{{ route('admin.chats.index') }}">
+                        <i class="fas fa-comments"></i> Chats
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ Request::is('admin/reports*') ? 'active' : '' }}" href="{{ route('admin.reports.index') }}">
+                        <i class="fas fa-chart-bar"></i> Reports
+                    </a>
+                </li>
+            </ul>
+            
+            <div class="menu-heading">Settings</div>
+            <ul class="nav flex-column">
+                <li class="nav-item">
+                    <a class="nav-link {{ Request::is('admin/profile*') ? 'active' : '' }}" href="{{ route('admin.profile') }}">
+                        <i class="fas fa-user-cog"></i> My Profile
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-footer">
+            <form action="{{ route('logout') }}" method="POST">
+                @csrf
+                <button type="submit" class="btn btn-light btn-sm w-100">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Content Area -->
+    <div class="content-wrapper">
+        <div class="topbar">
+            <div class="d-flex align-items-center">
+                <button class="hamburger me-3" id="sidebarToggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h4 class="page-title">@yield('page-title', 'Dashboard')</h4>
             </div>
-
-            <!-- Messages -->
-            <div class="dropdown">
-                <div class="nav-icon" role="button" data-bs-toggle="dropdown">
-                    <i class="fas fa-envelope"></i>
-                    <div class="notification-badge" id="header-unread-count" style="display: none;">0</div>
-                </div>
-                <ul class="dropdown-menu dropdown-menu-end p-2" style="width: 300px;">
-                    <li><h6 class="dropdown-header">Pesan</h6></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li id="message-list">
-                        <div class="text-center py-3">
-                            <div class="spinner-border spinner-border-sm text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mb-0 mt-2 small">Memuat pesan...</p>
-                        </div>
-                    </li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li>
-                        <a class="dropdown-item text-primary text-center" href="{{ route('admin.chats.index') }}">
-                            Lihat Semua Pesan <i class="fas fa-arrow-right ms-1"></i>
-                        </a>
-                    </li>
-                </ul>
-            </div>
-
-            <!-- Profile & Logout -->
-            <div class="dropdown">
-                <div class="nav-icon" role="button" data-bs-toggle="dropdown">
-                    <i class="fas fa-user"></i>
-                </div>
-                <ul class="dropdown-menu dropdown-menu-end p-2">
-                    <li><a class="dropdown-item rounded" href="{{ route('admin.profile') }}"><i class="fas fa-user me-2"></i> Profil</a></li>
-                    <li><a class="dropdown-item rounded" href="#"><i class="fas fa-cog me-2"></i> Pengaturan</a></li>
+            
+            <div class="user-dropdown">
+                <button class="dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <img src="https://ui-avatars.com/api/?name=Admin&background=FF87B2&color=fff" alt="Admin">
+                    <span>Admin</span>
+                    <i class="fas fa-chevron-down ms-2"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="{{ route('admin.profile') }}"><i class="fas fa-user-cog"></i> My Profile</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li>
                         <form action="{{ route('logout') }}" method="POST">
                             @csrf
-                            <button type="submit" class="dropdown-item rounded text-danger">
-                                <i class="fas fa-sign-out-alt me-2"></i> Logout
-                            </button>
+                            <button type="submit" class="dropdown-item"><i class="fas fa-sign-out-alt"></i> Logout</button>
                         </form>
                     </li>
                 </ul>
             </div>
         </div>
-    </div>
-
-    <!-- Main Content -->
-    <div class="main-content">
-        <!-- Dynamic Notification Container -->
-        <div id="dynamicNotification"></div>
         
-        @yield('content')
+        @if(session('success'))
+            <div class="alert alert-success alert-dismissible fade show animated-fade" role="alert">
+                <i class="fas fa-check-circle me-2"></i> {{ session('success') }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        @endif
+        
+        @if(session('error'))
+            <div class="alert alert-danger alert-dismissible fade show animated-fade" role="alert">
+                <i class="fas fa-exclamation-circle me-2"></i> {{ session('error') }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        @endif
+        
+        <div class="animated-fade">
+            @yield('content')
+        </div>
     </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Bootstrap and jQuery JS -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     
+    <!-- Custom JS -->
     <script>
-        // Fungsi untuk menampilkan notifikasi pesan yang belum dibaca
-        function fetchUnreadCount() {
-            fetch('{{ route("admin.chats.unread") }}')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success && data.unread_count > 0) {
-                        const badge = document.getElementById('unread-chat-badge');
-                        badge.textContent = data.unread_count;
-                        badge.style.display = 'inline-block';
-                        
-                        // Update juga di header
-                        const headerBadge = document.getElementById('header-unread-count');
-                        headerBadge.textContent = data.unread_count;
-                        headerBadge.style.display = 'flex';
-                    }
-                })
-                .catch(error => console.error('Error fetching unread count:', error));
-        }
+        // Toggle sidebar on mobile
+        document.getElementById('sidebarToggle').addEventListener('click', function() {
+            document.getElementById('sidebar').classList.toggle('active');
+        });
         
-        // Fungsi untuk menampilkan pesan terbaru di dropdown
-        function fetchRecentMessages() {
-            const messageList = document.getElementById('message-list');
-            
-            fetch('{{ route("admin.chats.index") }}', {
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.chats && data.chats.length > 0) {
-                    let html = '';
-                    // Ambil maksimal 3 pesan terbaru
-                    const recentChats = data.chats.slice(0, 3);
-                    
-                    recentChats.forEach(chat => {
-                        const unreadClass = chat.unread_count > 0 ? 'fw-bold' : '';
-                        html += `
-                            <a class="dropdown-item p-2 rounded" href="{{ url('admin/chats') }}/${chat.id}">
-                                <div class="d-flex gap-3">
-                                    <div class="rounded-circle bg-light d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
-                                        <i class="fas fa-user text-secondary"></i>
-                                    </div>
-                                    <div>
-                                        <p class="mb-0 ${unreadClass}">${chat.user ? chat.user.name : 'Pengguna'}</p>
-                                        <small class="text-secondary">${chat.last_message ? chat.last_message.substring(0, 30) + '...' : 'Tidak ada pesan'}</small>
-                                    </div>
-                                </div>
-                            </a>
-                        `;
-                    });
-                    
-                    messageList.innerHTML = html;
-                } else {
-                    messageList.innerHTML = `
-                        <div class="text-center py-3">
-                            <i class="fas fa-inbox text-muted mb-2" style="font-size: 1.5rem;"></i>
-                            <p class="mb-0 small">Belum ada pesan</p>
-                        </div>
-                    `;
-                }
-            })
-            .catch(error => {
-                console.error('Error fetching recent messages:', error);
-                messageList.innerHTML = `
-                    <div class="text-center py-3">
-                        <i class="fas fa-exclamation-circle text-danger mb-2" style="font-size: 1.5rem;"></i>
-                        <p class="mb-0 small">Gagal memuat pesan</p>
-                    </div>
-                `;
-            });
-        }
-        
-        // Cek pesan baru setiap 30 detik
-        document.addEventListener('DOMContentLoaded', function() {
-            fetchUnreadCount();
-            fetchRecentMessages();
-            
-            setInterval(fetchUnreadCount, 30000);
-            setInterval(fetchRecentMessages, 60000);
-            
-            // Tampilkan pesan terbaru saat dropdown dibuka
-            const messageDropdown = document.querySelector('.dropdown');
-            messageDropdown.addEventListener('show.bs.dropdown', fetchRecentMessages);
+        // Initialize Bootstrap tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
         });
     </script>
     
-    <script>
-        // Function to decode HTML entities
-        function decodeHtmlEntities(text) {
-            const textArea = document.createElement('textarea');
-            textArea.innerHTML = text;
-            return textArea.value;
-        }
-        
-        // Notification functions
-        function showNotification(message, type = 'success') {
-            // Create elements
-            const container = document.getElementById('dynamicNotification');
-            const alert = document.createElement('div');
-            const icon = document.createElement('div');
-            const content = document.createElement('div');
-            const closeBtn = document.createElement('button');
-            
-            // Set classes and content
-            alert.className = `notification-alert notification-${type}`;
-            icon.className = 'notification-icon';
-            content.className = 'notification-content';
-            closeBtn.className = 'notification-close';
-            closeBtn.innerHTML = '<i class="fas fa-times"></i>';
-            
-            // Set icon based on notification type
-            if (type === 'success') {
-                icon.innerHTML = '<i class="fas fa-check-circle"></i>';
-            } else if (type === 'danger') {
-                icon.innerHTML = '<i class="fas fa-times-circle"></i>';
-            } else if (type === 'warning') {
-                icon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
-            }
-            
-            // Decode HTML entities before setting the content
-            content.textContent = decodeHtmlEntities(message);
-            
-            // Add event listener to close button
-            closeBtn.addEventListener('click', function() {
-                removeNotification(alert);
-            });
-            
-            // Append elements
-            alert.appendChild(icon);
-            alert.appendChild(content);
-            alert.appendChild(closeBtn);
-            container.appendChild(alert);
-            
-            // Apply animation on entry
-            alert.style.opacity = '0';
-            alert.style.transform = 'translateX(20px)';
-            setTimeout(() => {
-                alert.style.opacity = '1';
-                alert.style.transform = 'translateX(0)';
-                alert.style.transition = 'opacity 0.3s, transform 0.3s';
-            }, 10);
-            
-            // Auto-remove after 5 seconds
-            setTimeout(function() {
-                removeNotification(alert);
-            }, 5000);
-            
-            return alert;
-        }
-        
-        function removeNotification(alert) {
-            alert.style.opacity = '0';
-            alert.style.transform = 'translateX(120%)';
-            alert.style.transition = 'opacity 0.3s, transform 0.5s';
-            
-            setTimeout(function() {
-                if (alert.parentNode) {
-                    alert.parentNode.removeChild(alert);
-                }
-            }, 500);
-        }
-        
-        // Check for flash messages and display them
-        document.addEventListener('DOMContentLoaded', function() {
-            // Handle PHP session flash messages
-            @if(session('success'))
-                showNotification("{!! session('success') !!}", 'success');
-            @endif
-            
-            @if(session('error'))
-                showNotification("{!! session('error') !!}", 'danger');
-            @endif
-            
-            @if(session('warning'))
-                showNotification("{!! session('warning') !!}", 'warning');
-            @endif
-        });
-    </script>
-    
-    @stack('scripts')
+    @yield('scripts')
 </body>
 </html>

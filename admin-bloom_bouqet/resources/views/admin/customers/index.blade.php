@@ -5,7 +5,7 @@
     <div class="content-header">
         <div class="d-flex justify-content-between align-items-center">
             <div>
-                <h3 class="page-title">Daftar Pelanggan</h3>
+                <h3 class="page-title"><span class="text-pink">Daftar Pelanggan</span></h3>
                 <p class="text-muted">Kelola data pelanggan Bloom Bouquet</p>
             </div>
             <div class="d-flex">
@@ -154,15 +154,15 @@
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <div class="category-icon-container me-2 bg-success">
-                                                <span class="text-white">{{ substr($topCustomer['full_name'] ?? $topCustomer['username'] ?? 'U', 0, 1) }}</span>
+                                                <span class="text-white">{{ substr($topCustomer->full_name ?? $topCustomer->username ?? 'U', 0, 1) }}</span>
                                             </div>
-                                            <span>{{ $topCustomer['full_name'] ?? $topCustomer['username'] }}</span>
+                                            <span>{{ $topCustomer->full_name ?? $topCustomer->username }}</span>
                                         </div>
                                     </td>
-                                    <td>{{ $topCustomer['email'] }}</td>
-                                    <td>Rp{{ number_format($topCustomer['orders_sum_total_amount'] ?? 0, 0, ',', '.') }}</td>
+                                    <td>{{ $topCustomer->email }}</td>
+                                    <td>Rp{{ number_format($topCustomer->orders_sum_total_amount ?? 0, 0, ',', '.') }}</td>
                                     <td>
-                                        <a href="{{ route('admin.customers.show', $topCustomer['id']) }}" class="btn action-btn info-btn">
+                                        <a href="{{ route('admin.customers.show', $topCustomer->id) }}" class="btn action-btn info-btn">
                                             <i class="fas fa-eye"></i>
                                         </a>
                                     </td>
@@ -198,17 +198,17 @@
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <div class="category-icon-container me-2 bg-info">
-                                                <span class="text-white">{{ substr($activeCustomer['full_name'] ?? $activeCustomer['username'] ?? 'U', 0, 1) }}</span>
+                                                <span class="text-white">{{ substr($activeCustomer->full_name ?? $activeCustomer->username ?? 'U', 0, 1) }}</span>
                                             </div>
-                                            <span>{{ $activeCustomer['full_name'] ?? $activeCustomer['username'] }}</span>
+                                            <span>{{ $activeCustomer->full_name ?? $activeCustomer->username }}</span>
                                         </div>
                                     </td>
-                                    <td>{{ $activeCustomer['email'] }}</td>
+                                    <td>{{ $activeCustomer->email }}</td>
                                     <td>
-                                        <span class="badge product-count-badge">{{ $activeCustomer['orders_count'] ?? 0 }}</span>
+                                        <span class="badge product-count-badge">{{ $activeCustomer->orders_count ?? 0 }}</span>
                                     </td>
                                     <td>
-                                        <a href="{{ route('admin.customers.show', $activeCustomer['id']) }}" class="btn action-btn info-btn">
+                                        <a href="{{ route('admin.customers.show', $activeCustomer->id) }}" class="btn action-btn info-btn">
                                             <i class="fas fa-eye"></i>
                                         </a>
                                     </td>
@@ -225,6 +225,31 @@
 </div>
 
 <style>
+    .text-pink {
+        color: #FF87B2 !important;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    
+    .add-new-btn {
+        background: linear-gradient(45deg, #FF87B2, #D46A9F);
+        color: white;
+        border-radius: 8px;
+        padding: 0.6rem 1.2rem;
+        font-weight: 500;
+        border: none;
+        box-shadow: 0 4px 8px rgba(255,105,180,0.3);
+        transition: all 0.3s;
+    }
+    
+    .add-new-btn:hover {
+        background: linear-gradient(45deg, #D46A9F, #FF87B2);
+        transform: translateY(-2px);
+        color: white;
+        box-shadow: 0 6px 12px rgba(255,105,180,0.4);
+    }
+    
     .info-btn {
         background-color: rgba(0, 123, 255, 0.1);
         color: #0d6efd;
@@ -247,23 +272,103 @@
     }
     
     .stat-icon {
-        display: flex;
-        align-items: center;
-        justify-content: center;
         width: 48px;
         height: 48px;
         border-radius: 12px;
-        background: var(--gradient-1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        background: linear-gradient(45deg, #FF87B2, #D46A9F);
         color: white;
-        font-size: 1.3rem;
+    }
+    
+    .stat-card {
+        border-radius: 15px;
+        border: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        overflow: hidden;
+        transition: transform 0.3s ease;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .table-card {
+        border-radius: 15px;
+        border: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        overflow: hidden;
+    }
+    
+    .card-header {
+        background-color: #f8f9fa;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+        padding: 1rem 1.5rem;
+    }
+    
+    .card-title {
+        color: #555;
+        font-weight: 600;
+    }
+    
+    .category-table {
+        margin-bottom: 0;
+    }
+    
+    .category-table th {
+        font-weight: 600;
+        color: #555;
+        border-top: none;
+        border-bottom: 2px solid #f0f0f0;
+        padding: 1rem;
+    }
+    
+    .category-item td {
+        vertical-align: middle;
+        padding: 1rem;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .action-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s;
     }
     
     .product-count-badge {
-        background-color: #e9ecef;
-        color: #495057;
-        padding: 5px 10px;
-        border-radius: 20px;
+        background-color: #FF87B2;
+        color: white;
+        padding: 0.5rem 0.8rem;
+        border-radius: 6px;
         font-weight: 500;
+    }
+    
+    .empty-state {
+        padding: 3rem 0;
+    }
+    
+    .empty-state-icon {
+        width: 80px;
+        height: 80px;
+        background-color: rgba(255,135,178,0.1);
+        color: #FF87B2;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        margin: 0 auto;
     }
 </style>
 @endsection 

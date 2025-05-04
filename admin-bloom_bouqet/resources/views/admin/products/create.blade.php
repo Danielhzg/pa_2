@@ -5,7 +5,7 @@
     <div class="content-header">
         <div class="d-flex justify-content-between align-items-center">
             <div>
-                <h3 class="page-title">Tambah Produk Baru</h3>
+                <h3 class="page-title"><span class="text-pink">Tambah Produk Baru</span></h3>
                 <p class="text-muted">Buat produk baru untuk dijual di toko Anda</p>
             </div>
         </div>
@@ -180,7 +180,7 @@
 
                 <div class="form-actions mt-4">
                     <button type="submit" class="btn save-btn">
-                        <i class="fas fa-save me-2"></i>Simpan Produk
+                        <i class="fas fa-save me-2"></i><span class="text-emphasis">Simpan Produk</span>
                     </button>
                     <a href="{{ route('admin.products.index') }}" class="btn cancel-btn ms-2">
                         <i class="fas fa-times me-2"></i>Batal
@@ -243,7 +243,7 @@
     }
     
     .save-btn {
-        background: linear-gradient(45deg, var(--pink-primary), var(--pink-dark));
+        background: linear-gradient(45deg, #FF87B2, #D46A9F);
         color: white;
         border-radius: 10px;
         padding: 0.6rem 1.5rem;
@@ -254,7 +254,7 @@
     }
     
     .save-btn:hover {
-        background: linear-gradient(45deg, var(--pink-dark), var(--pink-primary));
+        background: linear-gradient(45deg, #D46A9F, #FF87B2);
         transform: translateY(-2px);
         color: white;
         box-shadow: 0 6px 12px rgba(255,105,180,0.4);
@@ -359,6 +359,40 @@
     .form-check-label {
         font-weight: 500;
         padding-left: 0.5rem;
+    }
+    
+    /* Pink text styling */
+    .text-pink {
+        color: #FF87B2 !important;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* Button text emphasis */
+    .text-emphasis {
+        color: #ffffff !important;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        position: relative;
+        transition: all 0.3s ease;
+    }
+    
+    /* Add a subtle underline animation on hover */
+    .text-emphasis::after {
+        content: '';
+        position: absolute;
+        width: 0;
+        height: 2px;
+        bottom: -2px;
+        left: 0;
+        background-color: #FFE5EE;
+        transition: width 0.3s ease;
+    }
+    
+    .save-btn:hover .text-emphasis::after {
+        width: 100%;
     }
 </style>
 
