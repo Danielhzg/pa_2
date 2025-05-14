@@ -222,364 +222,295 @@ class _FavoritesPageState extends State<FavoritesPage>
 
   Widget _buildFavoritesList(
       List<Product> favorites, FavoriteProvider favoriteProvider) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: CustomScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              // Grid view when in portrait mode or larger screens
-              SliverGrid(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount:
-                      MediaQuery.of(context).size.width > 600 ? 3 : 2,
-                  childAspectRatio: 0.8,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final product = favorites[index];
-                    // Apply fade-in animation based on index
-                    final animation = CurvedAnimation(
-                      parent: _controller,
-                      curve: Interval(
-                        (index / favorites.length) * 0.5,
-                        1.0,
-                        curve: Curves.easeOut,
-                      ),
-                    );
-
-                    return FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, 0.2),
-                          end: Offset.zero,
-                        ).animate(animation),
-                        child: _buildProductCard(product, favoriteProvider),
-                      ),
-                    );
-                  },
-                  childCount: favorites.length,
-                ),
-              ),
-              // Add extra space at the bottom
-              const SliverToBoxAdapter(
-                child: SizedBox(height: 80),
-              ),
-            ],
+    return AnimatedList(
+      key: GlobalKey<AnimatedListState>(),
+      padding: const EdgeInsets.all(12),
+      initialItemCount: favorites.length,
+      physics: const AlwaysScrollableScrollPhysics(),
+      itemBuilder: (context, index, animation) {
+        final product = favorites[index];
+        return SlideTransition(
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOut,
+          )),
+          child: FadeTransition(
+            opacity: animation,
+            child: _buildFavoriteItem(context, product, favoriteProvider),
           ),
         );
       },
     );
   }
 
-  Widget _buildProductCard(Product product, FavoriteProvider favoriteProvider) {
+  Widget _buildFavoriteItem(BuildContext context, Product product,
+      FavoriteProvider favoriteProvider) {
+    // Calculate price
     final double finalPrice = product.isOnSale
-        ? (product.price * (100 - product.discount) / 100).toDouble()
-        : product.price.toDouble();
+        ? product.price * (100 - product.discount) / 100
+        : product.price;
 
-    return GestureDetector(
-      onTap: () {
-        Navigator.pushNamed(
-          context,
-          '/product-detail',
-          arguments: {'product': product},
-        );
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.15),
-              spreadRadius: 2,
-              blurRadius: 10,
-              offset: const Offset(0, 5),
-            ),
-          ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Dismissible(
+        key: Key('favorite_${product.id}'),
+        background: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          decoration: BoxDecoration(
+            color: Colors.red.shade400,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          alignment: Alignment.centerRight,
+          child: const Icon(
+            Icons.delete_outline,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        direction: DismissDirection.endToStart,
+        onDismissed: (direction) async {
+          // Show animation when removing from favorites
+          _showHeartAnimation(context, false);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${product.name} removed from favorites'),
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'UNDO',
+                onPressed: () {
+                  // Re-add to favorites
+                  favoriteProvider.toggleFavorite(product);
+
+                  // Show heart animation
+                  _showHeartAnimation(context, true);
+                },
+              ),
+            ),
+          );
+
+          // Remove from favorites
+          await favoriteProvider.toggleFavorite(product);
+        },
+        child: GestureDetector(
+          onTap: () {
+            Navigator.pushNamed(
+              context,
+              '/product_detail',
+              arguments: product,
+            );
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  spreadRadius: 1,
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Stack(
                 children: [
-                  // Product image
-                  SizedBox(
-                    height: 120,
-                    width: double.infinity,
-                    child: Hero(
-                      tag: 'favorite-${product.id}',
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                            ),
-                            child: Image.network(
-                              ImageUrlHelper.buildImageUrl(product.imageUrl),
-                              fit: BoxFit.cover,
-                              errorBuilder: (ctx, error, _) => Container(
-                                color: Colors.grey[200],
-                                child: const Icon(
-                                  LineIcons.imageAlt,
-                                  color: Colors.grey,
-                                  size: 40,
-                                ),
-                              ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Hero(
+                        tag: 'favorite-${product.id}',
+                        child: SizedBox(
+                          width: 120,
+                          height: 120,
+                          child: Image.network(
+                            ImageUrlHelper.buildImageUrl(product.imageUrl),
+                            fit: BoxFit.cover,
+                            errorBuilder: (ctx, _, __) => Container(
+                              color: Colors.grey[200],
+                              child: const Icon(Icons.image_not_supported,
+                                  color: Colors.grey),
                             ),
                           ),
-                          if (product.isOnSale)
-                            Positioned(
-                              top: 10,
-                              left: 10,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Colors.red,
-                                      Colors.redAccent,
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(10),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.red.withOpacity(0.3),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: const Text(
-                                  'SALE',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          Positioned(
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            child: ClipRRect(
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(
-                                  sigmaX: 10.0,
-                                  sigmaY: 10.0,
-                                ),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  color: Colors.black.withOpacity(0.3),
-                                  alignment: Alignment.centerLeft,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.pink.withOpacity(0.7),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      formatPrice(finalPrice),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // Product details
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          product.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 4),
-                        if (product.isOnSale)
-                          Row(
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                formatPrice(product.price),
+                                product.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  decoration: TextDecoration.lineThrough,
-                                  color: Colors.grey,
-                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
                                 ),
                               ),
-                              const SizedBox(width: 5),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 2,
+                              const SizedBox(height: 4),
+                              Text(
+                                formatPrice(finalPrice),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Color(0xFFFF87B2),
                                 ),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  "${product.discount.toInt()}% OFF",
-                                  style: const TextStyle(
-                                    color: Colors.red,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Icon(
+                                    LineIcons.tag,
+                                    size: 14,
+                                    color: Colors.grey[600],
                                   ),
-                                ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    product.categoryName,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                      ],
-                    ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              // Favorite button
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Material(
-                  color: Colors.white.withOpacity(0.8),
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: () async {
-                      try {
-                        // Show loading indicator
-                        final loadingOverlay = LoadingOverlay.of(context);
-                        loadingOverlay.show();
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween<double>(
+                        begin: 0.8,
+                        end: 1.0,
+                      ),
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.elasticOut,
+                      builder: (context, value, child) {
+                        return Transform.scale(
+                          scale: value,
+                          child: InkWell(
+                            onTap: () async {
+                              // Show heart animation
+                              _showHeartAnimation(context, false);
 
-                        // Toggle favorite and wait for result
-                        final isFavorited =
-                            await favoriteProvider.toggleFavorite(product);
-
-                        // Update the product's local state to match the server state
-                        product.isFavorited = isFavorited;
-
-                        // Hide loading overlay
-                        loadingOverlay.hide();
-
-                        // Show feedback
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(isFavorited
-                                ? 'Added ${product.name} to favorites'
-                                : 'Removed ${product.name} from favorites'),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: isFavorited
-                                ? const Color(0xFFFF87B2)
-                                : Colors.red.shade400,
-                            action: SnackBarAction(
-                              label: 'UNDO',
-                              textColor: Colors.white,
-                              onPressed: () {
-                                favoriteProvider.toggleFavorite(product);
-                              },
+                              // Toggle favorite
+                              await favoriteProvider.toggleFavorite(product);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.9),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.favorite,
+                                color: Color(0xFFFF87B2),
+                                size: 18,
+                              ),
                             ),
                           ),
                         );
-                      } catch (e) {
-                        // Handle error
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Error: $e'),
-                            backgroundColor: Colors.red,
+                      },
+                    ),
+                  ),
+                  if (product.isOnSale)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(16),
+                            bottomRight: Radius.circular(16),
                           ),
-                        );
-                      }
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Icon(
-                        product.isFavorited
-                            ? Icons.favorite
-                            : Icons.favorite_border,
-                        color: product.isFavorited
-                            ? const Color(0xFFFF87B2)
-                            : Colors.grey,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // View details button - now at bottom of card
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      Navigator.pushNamed(
-                        context,
-                        '/product-detail',
-                        arguments: {'product': product},
-                      );
-                    },
-                    child: Container(
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.05),
-                        borderRadius: const BorderRadius.only(
-                          bottomLeft: Radius.circular(22),
-                          bottomRight: Radius.circular(22),
                         ),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        'View Details',
-                        style: TextStyle(
-                          color: Color(0xFFFF87B2),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                        child: Text(
+                          '-${product.discount}%',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  // Show a heart animation when favoriting/unfavoriting
+  void _showHeartAnimation(BuildContext context, bool isAdding) {
+    OverlayState overlayState = Overlay.of(context);
+    final size = MediaQuery.of(context).size;
+
+    OverlayEntry? entry;
+    entry = OverlayEntry(
+      builder: (context) {
+        return Positioned(
+          left: size.width / 2 - 50,
+          top: size.height / 2 - 50,
+          child: Material(
+            color: Colors.transparent,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(
+                begin: 0.5,
+                end: isAdding
+                    ? 2.0
+                    : 0.0, // Grow when adding, shrink when removing
+              ),
+              curve: isAdding ? Curves.elasticOut : Curves.easeInBack,
+              duration: Duration(milliseconds: isAdding ? 800 : 500),
+              onEnd: () {
+                entry?.remove();
+              },
+              builder: (context, value, child) {
+                return Transform.scale(
+                  scale: value,
+                  child: Opacity(
+                    opacity: isAdding
+                        ? value.clamp(0.0, 1.0)
+                        : (1.0 - value).clamp(0.0, 1.0),
+                    child: Icon(
+                      isAdding ? Icons.favorite : Icons.favorite_border,
+                      color: const Color(0xFFFF87B2),
+                      size: 100,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+
+    overlayState.insert(entry);
   }
 }

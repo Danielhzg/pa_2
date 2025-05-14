@@ -8,6 +8,9 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'dart:math';
 import '../models/user.dart'; // Import for User model
+import 'package:image_picker/image_picker.dart'; // Import for image picker
+import 'package:path/path.dart' as path; // Import for path manipulation
+import 'chat_page.dart'; // Import for chat page
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -20,13 +23,20 @@ class _ProfilePageState extends State<ProfilePage>
     with SingleTickerProviderStateMixin {
   bool _isLoading = true;
   bool _isEditing = false;
+  bool _isCheckingUsername = false;
+  bool _isUsernameAvailable = true;
+  String? _usernameError;
+  Timer? _usernameDebounce;
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
   final _birthDateController = TextEditingController();
   DateTime? _selectedDate;
+  File? _profileImage;
+  final _imagePicker = ImagePicker();
 
   // Animation controllers
   late AnimationController _animationController;
@@ -46,12 +56,15 @@ class _ProfilePageState extends State<ProfilePage>
       curve: Curves.easeIn,
     );
 
+    // Setup username checker
+    _usernameController.addListener(_checkUsernameAvailability);
+
     _loadUserData().then((_) {
       _animationController.forward();
     });
   }
 
-  Future<void> _loadUserData() async {
+  Future<void> _loadUserData({int retryCount = 0}) async {
     if (!mounted) return;
 
     setState(() => _isLoading = true);
@@ -59,12 +72,12 @@ class _ProfilePageState extends State<ProfilePage>
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
 
-      // Jika sudah ada data user yang tersimpan, tampilkan sebagai fallback sementara loading
+      // If we already have user data stored, display it as a fallback while loading
       if (authService.currentUser != null) {
         _updateFormWithUserData(authService.currentUser!);
       }
 
-      // Mencoba mengambil data user terbaru dari API
+      // Try to get the latest user data from API
       final success = await authService.getUser();
 
       if (!mounted) return;
@@ -74,34 +87,66 @@ class _ProfilePageState extends State<ProfilePage>
 
         if (userData != null) {
           _updateFormWithUserData(userData);
-          print('Sukses memuat data user: ${userData.full_name}');
+          print('Successfully loaded user data: ${userData.full_name}');
         } else {
           _showErrorSnackbar(
-              'Data profil tersedia, tetapi format tidak sesuai');
+              'Profile data is available, but in an unexpected format');
           print('Error: User data is null after successful API call');
         }
       } else {
-        // Cek jika ada data lokal yang bisa digunakan
+        // Check if we can use locally stored data
         if (authService.currentUser != null) {
-          _showWarningSnackBar('Menggunakan data profil yang tersimpan');
+          _showWarningSnackBar('Using stored profile data');
         } else {
-          _showErrorSnackbar('Gagal memuat data profil. Periksa koneksi anda.');
+          _showErrorSnackbar(
+              'Failed to load profile data. Check your connection.');
+
+          // Try to retry automatically if this is not already a retry
+          if (retryCount < 2) {
+            print(
+                'Automatically retrying data load (attempt ${retryCount + 1})');
+            Future.delayed(Duration(seconds: 2 + retryCount), () {
+              if (mounted) {
+                _loadUserData(retryCount: retryCount + 1);
+              }
+            });
+          }
         }
       }
     } on SocketException catch (e) {
       if (mounted) {
-        _showErrorSnackbar('Tidak ada koneksi internet. Periksa koneksi anda.');
+        _showErrorSnackbar('No internet connection. Check your connection.');
         print('Socket exception: $e');
+
+        // Auto-retry on connection errors if not already a retry
+        if (retryCount < 2) {
+          print('Connection error, retrying in 3 seconds');
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              _loadUserData(retryCount: retryCount + 1);
+            }
+          });
+        }
       }
     } on TimeoutException catch (e) {
       if (mounted) {
-        _showErrorSnackbar('Koneksi timeout. Coba lagi nanti.');
+        _showErrorSnackbar('Connection timeout. Try again later.');
         print('Timeout exception: $e');
+
+        // Auto-retry on timeout if not already a retry
+        if (retryCount < 2) {
+          print('Timeout error, retrying in 3 seconds');
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              _loadUserData(retryCount: retryCount + 1);
+            }
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
         _showErrorSnackbar(
-            'Terjadi kesalahan: ${e.toString().substring(0, min(50, e.toString().length))}...');
+            'An error occurred: ${e.toString().substring(0, min(50, e.toString().length))}...');
         print('Error in _loadUserData: $e');
       }
     } finally {
@@ -115,6 +160,7 @@ class _ProfilePageState extends State<ProfilePage>
   void _updateFormWithUserData(User userData) {
     setState(() {
       _fullNameController.text = userData.full_name ?? userData.name ?? '';
+      _usernameController.text = userData.username ?? '';
       _emailController.text = userData.email ?? '';
       _phoneController.text = userData.phone ?? '';
       _addressController.text = userData.address ?? '';
@@ -200,99 +246,69 @@ class _ProfilePageState extends State<ProfilePage>
       setState(() => _isLoading = true);
 
       final authService = Provider.of<AuthService>(context, listen: false);
-      final token = authService.token;
 
-      if (token == null) {
-        throw Exception('Tidak terautentikasi');
+      // Check username availability one last time before submission
+      // Skip if username didn't change
+      final originalUsername = authService.currentUser?.username;
+      final newUsername = _usernameController.text.trim().replaceAll(' ', '');
+
+      if (newUsername != originalUsername) {
+        final isAvailable = await authService.isUsernameAvailable(newUsername);
+        if (!isAvailable) {
+          setState(() => _isLoading = false);
+          _showErrorSnackbar(
+              'Username sudah digunakan. Silakan pilih username lain.');
+          return;
+        }
       }
+
+      // Format username (remove any spaces)
+      final username = _usernameController.text.trim().replaceAll(' ', '');
 
       // Data yang akan dikirim ke API
       final Map<String, dynamic> profileData = {
         'full_name': _fullNameController.text.trim(),
+        'username': username,
         'email': _emailController.text.trim(),
         'phone': _phoneController.text.trim(),
         'address': _addressController.text.trim(),
         'birth_date': _birthDateController.text.trim(),
       };
 
-      print('Mengirim data profil: $profileData');
+      print('Updating profile with data: $profileData');
 
-      // Daftar endpoint yang akan dicoba
-      List<String> endpoints = [
-        'http://10.0.2.2:8000/api/v1/update-profile',
-        'http://10.0.2.2:8000/api/v1/profile', // Alternatif endpoint
-        'http://10.0.2.2:8000/api/user/profile' // Endpoint fallback
-      ];
-
-      bool updateSuccess = false;
-      String errorMessage =
-          'Gagal memperbarui profil. Silakan coba lagi nanti.';
-
-      // Mencoba endpoint satu per satu sampai berhasil
-      for (String endpoint in endpoints) {
-        try {
-          print('Mencoba memperbarui profil via endpoint: $endpoint');
-
-          final response = await http
-              .post(
-                Uri.parse(endpoint),
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json',
-                  'Authorization': 'Bearer $token',
-                },
-                body: json.encode(profileData),
-              )
-              .timeout(const Duration(seconds: 15));
-
-          print(
-              'Respons update profil: ${response.statusCode} - ${response.body}');
-
-          // Coba parse response jika ada
-          Map<String, dynamic> result = {};
-          try {
-            result = json.decode(response.body);
-            print('Response decoded: $result');
-          } catch (e) {
-            print('Error parsing response: $e');
-            continue; // Coba endpoint berikutnya
-          }
-
-          // Periksa response code
-          if (response.statusCode == 200 || response.statusCode == 201) {
-            updateSuccess = true;
-            break; // Berhasil, keluar dari loop
-          } else if (response.statusCode == 401) {
-            // Token tidak valid
-            errorMessage = 'Sesi anda telah berakhir. Silakan login kembali.';
-            break;
-          } else if (result['message'] != null) {
-            // Gunakan pesan error dari API jika ada
-            errorMessage = result['message'];
-          }
-        } on TimeoutException {
-          print('Connection timeout on endpoint: $endpoint');
-          errorMessage = 'Koneksi timeout. Periksa koneksi internet anda.';
-          continue;
-        } on SocketException {
-          print('Network error on endpoint: $endpoint');
-          errorMessage = 'Tidak ada koneksi internet.';
-          continue;
-        } catch (e) {
-          print('Error calling endpoint $endpoint: $e');
-          continue;
-        }
-      }
+      // Use the enhanced updateProfile method that returns detailed information
+      final result = await authService.updateProfile(profileData);
 
       if (!mounted) return;
 
-      if (updateSuccess) {
-        // Ambil kembali data user yang sudah diupdate
-        await authService.getUser();
-        _showSuccessSnackbar('Profil berhasil diperbarui');
+      if (result['success']) {
+        _showSuccessSnackbar(result['message'] ?? 'Profil berhasil diperbarui');
+
+        // Force UI refresh with the latest data
+        await _loadUserData();
+
         setState(() => _isEditing = false);
       } else {
-        _showErrorSnackbar(errorMessage);
+        // Handle different error cases with more detailed error information
+        if (result['statusCode'] == 401) {
+          _showErrorSnackbar('Sesi anda telah berakhir. Silakan login ulang.');
+          // Optional: Could navigate to login page here
+        } else if (result['statusCode'] == 422) {
+          _showErrorSnackbar('Data tidak valid. Periksa kembali input anda.');
+        } else if (newUsername != originalUsername) {
+          _showErrorSnackbar(
+              'Gagal memperbarui username. Coba username lain atau periksa koneksi internet Anda.');
+        } else {
+          _showErrorSnackbar(result['message'] ??
+              'Gagal memperbarui profil. Silakan coba lagi nanti.');
+        }
+
+        // Print detailed error information for debugging
+        print('Update profile failed: ${result['message']}');
+        if (result['error'] != null) {
+          print('Error details: ${result['error']}');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -403,21 +419,64 @@ class _ProfilePageState extends State<ProfilePage>
                                   const SizedBox(height: 20),
                                   Hero(
                                     tag: 'profile-avatar',
-                                    child: CircleAvatar(
-                                      radius: 50,
-                                      backgroundColor:
-                                          Colors.white.withOpacity(0.9),
-                                      child: Text(
-                                        (userData.username?.isNotEmpty == true)
-                                            ? userData.username![0]
-                                                .toUpperCase()
-                                            : '?',
-                                        style: const TextStyle(
-                                          fontSize: 44,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFFFF87B2),
+                                    child: Stack(
+                                      children: [
+                                        // Profile photo or avatar
+                                        GestureDetector(
+                                          onTap: _pickImage,
+                                          child: CircleAvatar(
+                                            radius: 50,
+                                            backgroundColor:
+                                                Colors.white.withOpacity(0.9),
+                                            backgroundImage:
+                                                userData.profile_photo != null
+                                                    ? NetworkImage(
+                                                        userData.profile_photo!)
+                                                    : null,
+                                            child: userData.profile_photo ==
+                                                    null
+                                                ? Text(
+                                                    (userData.username
+                                                                ?.isNotEmpty ==
+                                                            true)
+                                                        ? userData.username![0]
+                                                            .toUpperCase()
+                                                        : '?',
+                                                    style: const TextStyle(
+                                                      fontSize: 44,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Color(0xFFFF87B2),
+                                                    ),
+                                                  )
+                                                : null,
+                                          ),
                                         ),
-                                      ),
+                                        // Camera icon for photo upload
+                                        Positioned(
+                                          right: 0,
+                                          bottom: 0,
+                                          child: GestureDetector(
+                                            onTap: _pickImage,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(4),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFF87B2),
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: Colors.white,
+                                                  width: 2,
+                                                ),
+                                              ),
+                                              child: const Icon(
+                                                Icons.camera_alt,
+                                                color: Colors.white,
+                                                size: 20,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                   const SizedBox(height: 12),
@@ -468,6 +527,7 @@ class _ProfilePageState extends State<ProfilePage>
                             if (_isEditing) {
                               setState(() {
                                 _isEditing = false;
+                                _usernameDebounce?.cancel();
                                 _resetForm();
                               });
                             } else {
@@ -641,6 +701,90 @@ class _ProfilePageState extends State<ProfilePage>
                                     validator: (value) {
                                       if (value?.isEmpty ?? true)
                                         return 'Full name is required';
+                                      return null;
+                                    },
+                                  ),
+
+                                  const SizedBox(height: 16),
+
+                                  // Username field with availability check
+                                  TextFormField(
+                                    controller: _usernameController,
+                                    decoration: InputDecoration(
+                                      labelText: 'Username',
+                                      hintText: 'Enter your username',
+                                      filled: true,
+                                      fillColor: Colors.white,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 16, vertical: 16),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      prefixIcon: const Icon(
+                                          Icons.account_circle,
+                                          color: Color(0xFFFF87B2)),
+                                      suffixIcon: _isCheckingUsername
+                                          ? Container(
+                                              width: 20,
+                                              height: 20,
+                                              margin: const EdgeInsets.all(12),
+                                              child:
+                                                  const CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<
+                                                            Color>(
+                                                        Color(0xFFFF87B2)),
+                                              ),
+                                            )
+                                          : _usernameController.text.isNotEmpty
+                                              ? Icon(
+                                                  _isUsernameAvailable
+                                                      ? Icons.check_circle
+                                                      : Icons.error,
+                                                  color: _isUsernameAvailable
+                                                      ? Colors.green
+                                                      : Colors.red,
+                                                )
+                                              : null,
+                                      floatingLabelBehavior:
+                                          FloatingLabelBehavior.never,
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(
+                                            color: Color(0xFFFF87B2),
+                                            width: 1.5),
+                                      ),
+                                      errorBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(
+                                            color: Colors.red, width: 1),
+                                      ),
+                                      focusedErrorBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(
+                                            color: Colors.red, width: 1.5),
+                                      ),
+                                      errorText: _usernameError,
+                                    ),
+                                    validator: (value) {
+                                      if (value?.isEmpty ?? true)
+                                        return 'Username is required';
+                                      if (value!.contains(' '))
+                                        return 'Username cannot contain spaces';
+                                      if (!_isUsernameAvailable &&
+                                          _usernameController.text !=
+                                              Provider.of<AuthService>(context,
+                                                      listen: false)
+                                                  .currentUser
+                                                  ?.username)
+                                        return 'This username is not available';
                                       return null;
                                     },
                                   ),
@@ -1149,6 +1293,7 @@ class _ProfilePageState extends State<ProfilePage>
         Provider.of<AuthService>(context, listen: false).currentUser;
     if (userData != null) {
       _fullNameController.text = userData.full_name ?? userData.name ?? '';
+      _usernameController.text = userData.username ?? '';
       _emailController.text = userData.email ?? '';
       _phoneController.text = userData.phone ?? '';
       _addressController.text = userData.address ?? '';
@@ -1166,12 +1311,149 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   void dispose() {
     _fullNameController.dispose();
+    _usernameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
     _birthDateController.dispose();
     _animationController.dispose();
+    _usernameDebounce?.cancel();
     super.dispose();
+  }
+
+  // Image picker method
+  Future<void> _pickImage() async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+
+      if (pickedFile != null) {
+        setState(() {
+          _profileImage = File(pickedFile.path);
+        });
+
+        // Upload immediately
+        await _uploadProfilePhoto();
+      }
+    } catch (e) {
+      _showErrorSnackbar('Error picking image: $e');
+    }
+  }
+
+  // Upload profile photo
+  Future<void> _uploadProfilePhoto() async {
+    if (_profileImage == null) return;
+
+    try {
+      setState(() => _isLoading = true);
+
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final success = await authService.uploadProfilePhoto(_profileImage!);
+
+      if (success) {
+        _showSuccessSnackbar('Profile photo uploaded successfully');
+      } else {
+        _showErrorSnackbar('Failed to upload profile photo');
+      }
+    } catch (e) {
+      _showErrorSnackbar('Error uploading profile photo: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _checkUsernameAvailability() {
+    final username = _usernameController.text.trim();
+
+    // Cancel any previous debounce timer
+    if (_usernameDebounce?.isActive ?? false) {
+      _usernameDebounce!.cancel();
+    }
+
+    // Don't check if the username is the same as the current user's
+    final currentUsername =
+        Provider.of<AuthService>(context, listen: false).currentUser?.username;
+
+    // Reset validation state first
+    setState(() {
+      _isCheckingUsername = false;
+      _usernameError = null;
+    });
+
+    // Handle empty username
+    if (username.isEmpty) {
+      setState(() {
+        _isUsernameAvailable = false;
+        _usernameError = 'Username tidak boleh kosong';
+      });
+      return;
+    }
+
+    // If username is unchanged, it's available to the current user
+    if (username == currentUsername) {
+      setState(() {
+        _isUsernameAvailable = true;
+        _usernameError = null;
+      });
+      return;
+    }
+
+    // Check for spaces and special characters immediately
+    if (username.contains(' ')) {
+      setState(() {
+        _isUsernameAvailable = false;
+        _usernameError = 'Username tidak boleh mengandung spasi';
+      });
+      return;
+    }
+
+    if (RegExp(r'[^\w]').hasMatch(username)) {
+      setState(() {
+        _isUsernameAvailable = false;
+        _usernameError =
+            'Username hanya boleh mengandung huruf, angka, dan underscore';
+      });
+      return;
+    }
+
+    // Username too short
+    if (username.length < 3) {
+      setState(() {
+        _isUsernameAvailable = false;
+        _usernameError = 'Username minimal 3 karakter';
+      });
+      return;
+    }
+
+    // Set a debounce timer to avoid too many API calls
+    setState(() => _isCheckingUsername = true);
+    _usernameDebounce = Timer(const Duration(milliseconds: 800), () async {
+      // Check with the API if the username passes all local validations
+      try {
+        final authService = Provider.of<AuthService>(context, listen: false);
+        final isAvailable = await authService.isUsernameAvailable(username);
+
+        if (mounted) {
+          setState(() {
+            _isUsernameAvailable = isAvailable;
+            _usernameError = isAvailable ? null : 'Username sudah digunakan';
+            _isCheckingUsername = false;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          print('Error checking username availability: $e');
+          setState(() {
+            // Assume available on error but with a warning
+            _isUsernameAvailable = true;
+            _usernameError = 'Tidak dapat memeriksa ketersediaan username';
+            _isCheckingUsername = false;
+          });
+        }
+      }
+    });
   }
 }
 

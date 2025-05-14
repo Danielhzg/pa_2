@@ -52,6 +52,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   final ApiService _apiService = ApiService();
   Timer? _bannerTimer;
 
+  // Timer for favorites sync
+  Timer? _favoritesSyncTimer;
+
   void _startBannerAutoScroll() {
     if (_banners.isEmpty) {
       print('No banners available to auto-scroll.');
@@ -80,12 +83,29 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     _fetchBanners(); // Fetch banners from API
     _loadUsername();
 
+    // Check if there are pending chat messages and switch to chat tab if needed
+    if (ChatPage.pendingInitialMessage != null) {
+      // Switch to chat tab (index 2)
+      setState(() {
+        _selectedIndex = 2;
+      });
+    }
+
     // Auto-scroll banner - start after a short delay
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        _startBannerAutoScroll();
-      }
+    Future.delayed(const Duration(seconds: 1), () {
+      _startBannerAutoScroll();
     });
+
+    // Set up periodic check for favorites to ensure UI is consistent
+    _setupFavoritesSyncTimer();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _bannerTimer?.cancel();
+    _favoritesSyncTimer?.cancel(); // Cancel favorites timer on dispose
+    super.dispose();
   }
 
   Future<void> _fetchProducts() async {
@@ -154,13 +174,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     setState(() {
       _username = authService.currentUser?.username ?? 'Guest';
     });
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    _bannerTimer?.cancel();
-    super.dispose();
   }
 
   Future<void> _loadProductsByCategory(String categoryName) async {
@@ -291,18 +304,50 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   // Update favorite status for all products
   void _updateFavoriteStatus() {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    if (!authService.isLoggedIn) return;
+    if (!mounted) return;
 
-    final favoriteProvider =
-        Provider.of<FavoriteProvider>(context, listen: false);
+    try {
+      final favoriteProvider =
+          Provider.of<FavoriteProvider>(context, listen: false);
 
-    for (var product in _filteredProducts) {
-      product.isFavorited = favoriteProvider.isFavorite(product.id);
-    }
+      // Make sure favorites provider is initialized
+      if (!favoriteProvider.initialized) return;
 
-    if (mounted) {
+      // Get the local favorite IDs that persist between sessions
+      final localFavoriteIds = favoriteProvider.localFavoriteIds;
+
+      // Update featured products
+      for (var product in _filteredProducts) {
+        product.isFavorited = localFavoriteIds.contains(product.id);
+      }
+
+      // Update all products
+      for (var product in _filteredProducts) {
+        product.isFavorited = localFavoriteIds.contains(product.id);
+      }
+
+      // Update filtered products if they exist
+      for (var product in _filteredProducts) {
+        product.isFavorited = localFavoriteIds.contains(product.id);
+      }
+
+      // Update category products if they exist
+      for (var category in _categories) {
+        final categoryId = category['id'];
+        final products = _filteredProducts
+            .where((p) => p.categoryName == category['name'])
+            .toList();
+        if (products.isNotEmpty) {
+          for (var product in products) {
+            product.isFavorited = localFavoriteIds.contains(product.id);
+          }
+        }
+      }
+
+      // Force UI refresh if needed
       setState(() {});
+    } catch (e) {
+      print('Error updating favorite status: $e');
     }
   }
 
@@ -1124,65 +1169,49 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   onTap: () async {
                     final authService =
                         Provider.of<AuthService>(context, listen: false);
-
-                    if (!authService.isLoggedIn) {
-                      // Show login prompt
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('Please login to add favorites'),
-                          action: SnackBarAction(
-                            label: 'LOGIN',
-                            onPressed: () =>
-                                Navigator.pushNamed(context, '/login'),
-                          ),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                      return;
-                    }
+                    final favoriteProvider =
+                        Provider.of<FavoriteProvider>(context, listen: false);
 
                     try {
-                      // Show loading indicator
-                      final loadingOverlay = LoadingOverlay.of(context);
-                      loadingOverlay.show();
+                      // Toggle favorite with nice animation
+                      // This doesn't need login check anymore as our provider handles offline favorites
 
-                      final favoriteProvider =
-                          Provider.of<FavoriteProvider>(context, listen: false);
+                      // Get product reference for overlay animation
+                      final RenderBox box =
+                          context.findRenderObject() as RenderBox;
+                      final position = box.localToGlobal(Offset.zero);
+
+                      // Show animation overlay
+                      _showHeartAnimation(context, position,
+                          size: box.size, isAdding: !product.isFavorited);
 
                       // Toggle favorite and wait for the result
                       final isFavorited =
                           await favoriteProvider.toggleFavorite(product);
-
-                      // Hide loading overlay
-                      loadingOverlay.hide();
 
                       // Update the product's isFavorited status
                       setState(() {
                         product.isFavorited = isFavorited;
                       });
 
-                      // Refresh favorites list after toggling
-                      favoriteProvider.loadFavorites();
-
-                      // Show feedback to user
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(isFavorited
-                              ? 'Added to favorites'
-                              : 'Removed from favorites'),
-                          backgroundColor: const Color(0xFFFF87B2),
-                          behavior: SnackBarBehavior.floating,
-                          margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                      // Show feedback to user only if they're logged in (to avoid confusion)
+                      if (authService.isLoggedIn) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(isFavorited
+                                ? 'Added to favorites'
+                                : 'Removed from favorites'),
+                            backgroundColor: const Color(0xFFFF87B2),
+                            behavior: SnackBarBehavior.floating,
+                            margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            duration: const Duration(seconds: 2),
                           ),
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
+                        );
+                      }
                     } catch (e) {
-                      // Hide loading overlay if there was an error
-                      LoadingOverlay.of(context).hide();
-
                       // Show error message
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -1193,30 +1222,54 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       );
                     }
                   },
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.8),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Icon(
-                        product.isFavorited
-                            ? Icons.favorite
-                            : Icons.favorite_border,
-                        size: 20,
-                        color: product.isFavorited ? primaryColor : Colors.grey,
+                  child: TweenAnimationBuilder<double>(
+                      tween: Tween<double>(
+                        begin: 0.8,
+                        end: 1.0,
                       ),
-                    ),
-                  ),
+                      curve: Curves.elasticOut,
+                      duration: const Duration(milliseconds: 500),
+                      builder: (context, value, child) {
+                        return Transform.scale(
+                          scale: value,
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.9),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 300),
+                                transitionBuilder: (child, animation) {
+                                  return ScaleTransition(
+                                    scale: animation,
+                                    child: child,
+                                  );
+                                },
+                                child: Icon(
+                                  product.isFavorited
+                                      ? Icons.favorite
+                                      : Icons.favorite_border,
+                                  key: ValueKey<bool>(product.isFavorited),
+                                  size: 20,
+                                  color: product.isFavorited
+                                      ? primaryColor
+                                      : Colors.grey,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
                 ),
               ),
             ],
@@ -1358,6 +1411,69 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         ),
       ),
     );
+  }
+
+  // Show a heart animation when favoriting/unfavoriting
+  void _showHeartAnimation(BuildContext context, Offset position,
+      {required Size size, required bool isAdding}) {
+    OverlayState? overlayState = Overlay.of(context);
+
+    OverlayEntry? entry;
+    entry = OverlayEntry(
+      builder: (context) {
+        return Positioned(
+          left: position.dx,
+          top: position.dy,
+          width: size.width,
+          height: size.height,
+          child: Material(
+            color: Colors.transparent,
+            child: Center(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween<double>(
+                  begin: 0.5,
+                  end: isAdding
+                      ? 2.0
+                      : 0.0, // Grow when adding, shrink when removing
+                ),
+                curve: isAdding ? Curves.elasticOut : Curves.easeInBack,
+                duration: Duration(milliseconds: isAdding ? 800 : 500),
+                onEnd: () {
+                  entry?.remove();
+                },
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Opacity(
+                      opacity: isAdding
+                          ? value.clamp(0.0, 1.0)
+                          : (1.0 - value).clamp(0.0, 1.0),
+                      child: const Icon(
+                        Icons.favorite,
+                        color: primaryColor,
+                        size: 40,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    overlayState.insert(entry);
+  }
+
+  // Set up periodic check for favorites changes
+  void _setupFavoritesSyncTimer() {
+    // Check for favorites changes every 5 seconds
+    _favoritesSyncTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (mounted) {
+        _updateFavoriteStatus();
+      }
+    });
   }
 
   @override

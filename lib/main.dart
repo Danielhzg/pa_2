@@ -92,7 +92,7 @@ class MyApp extends StatelessWidget {
           '/register': (context) => const RegisterPage(),
           '/home': (context) => const home.HomePage(),
           '/cart': (context) => const CartPage(),
-          '/chat': (context) => const ChatPage(),
+          '/chat': (context) => const ChatPage(showBottomNav: true),
           '/profile': (context) => const ProfilePage(),
           '/favorites': (context) =>
               const FavoritesPage(), // Add favorites route

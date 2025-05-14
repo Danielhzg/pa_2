@@ -41,8 +41,9 @@ class AuthController extends Controller
                 ], 422);
             }
 
+            // Generate 6-digit OTP
             $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
-            $otpExpires = now()->addMinutes(3);
+            $otpExpires = now()->addMinutes(5); // Extend to 5 minutes for better user experience
 
             $userData = [
                 'username' => $request->username,
@@ -56,51 +57,53 @@ class AuthController extends Controller
                 'otp_expires_at' => $otpExpires,
             ];
 
-            Cache::put('user_registration_' . $request->email, $userData, now()->addMinutes(10));
+            // Store registration data in cache for 15 minutes
+            Cache::put('user_registration_' . $request->email, $userData, now()->addMinutes(15));
 
-            // Wrap email sending in try-catch to handle email service failures
+            // Send OTP via email
             try {
-                Mail::to($request->email)->send(new OtpMail($otp));
-                
-                return response()->json([
-                    'success' => true,
-                    'message' => 'User registered successfully. OTP has been sent to your email.',
-                    'data' => ['email' => $request->email]
-                ], 201);
-            } catch (\Exception $emailError) {
-                // Log email failure
-                \Log::error('Email sending failed during registration: ' . $emailError->getMessage());
-                
-                // Create the user account directly, bypassing email verification
-                $user = User::create([
-                    'username' => $userData['username'],
-                    'full_name' => $userData['full_name'],
-                    'email' => $userData['email'],
-                    'phone' => $userData['phone'],
-                    'password' => $userData['password'],
-                    'address' => $userData['address'],
-                    'birth_date' => $userData['birth_date'],
-                    'email_verified_at' => now(), // Auto-verify since email isn't working
+                // Log configuration for debugging
+                \Log::info('Mail configuration before sending:', [
+                    'driver' => config('mail.default'),
+                    'host' => config('mail.mailers.smtp.host'),
+                    'port' => config('mail.mailers.smtp.port'),
+                    'encryption' => config('mail.mailers.smtp.encryption'),
+                    'username' => config('mail.mailers.smtp.username'),
+                    // Don't log password for security reasons
+                    'from_address' => config('mail.from.address'),
+                    'from_name' => config('mail.from.name'),
                 ]);
                 
-                // Clear the cached registration data
-                Cache::forget('user_registration_' . $request->email);
+                Mail::to($request->email)->send(new OtpMail($otp));
                 
-                // Generate auth token
-                $token = $user->createToken('auth_token')->plainTextToken;
+                // Log successful email sending
+                \Log::info('OTP email sent successfully to: ' . $request->email);
                 
                 return response()->json([
                     'success' => true,
-                    'message' => 'User registered successfully. Email service is unavailable, but your account has been created.',
+                    'message' => 'Registration initiated successfully. OTP has been sent to your email.',
                     'data' => [
-                        'user' => $user,
-                        'token' => $token,
-                        'email_error' => true,
-                        'auto_verified' => true
+                        'email' => $request->email,
+                        'otp_expires_in' => '5 minutes'
                     ]
                 ], 201);
+            } catch (\Exception $emailError) {
+                // Log email failure with detailed error message
+                \Log::error('Email sending failed during registration: ' . $emailError->getMessage());
+                \Log::error('Detailed exception:', ['exception' => $emailError]);
+                
+                // Return error response with more detailed information
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to send verification email. Please try again later or contact support.',
+                    'error_code' => 'email_service_unavailable',
+                    'debug' => config('app.debug') ? $emailError->getMessage() : null
+                ], 500);
             }
         } catch (\Exception $e) {
+            \Log::error('Registration exception: ' . $e->getMessage());
+            \Log::error('Detailed exception:', ['exception' => $e]);
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Registration failed. Please try again later.',
@@ -235,7 +238,7 @@ class AuthController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'email' => 'required|email|exists:users,email',
+                'email' => 'required|email',
             ]);
 
             if ($validator->fails()) {
@@ -246,27 +249,99 @@ class AuthController extends Controller
                 ], 422);
             }
 
+            // Check if this is for new registration (data in cache)
+            $userData = Cache::get('user_registration_' . $request->email);
+            
+            if ($userData) {
+                // This is a pending registration - update OTP in cache
+                $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
+                $otpExpires = now()->addMinutes(5);
+                
+                $userData['otp'] = $otp;
+                $userData['otp_expires_at'] = $otpExpires;
+                
+                // Update the cached registration data
+                Cache::put('user_registration_' . $request->email, $userData, now()->addMinutes(15));
+                
+                try {
+                    // Send new OTP via email
+                    Mail::to($request->email)->send(new OtpMail($otp));
+                    
+                    // Log successful email sending
+                    \Log::info('Resent OTP email sent successfully to: ' . $request->email);
+                    
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'New OTP has been sent to your email.',
+                        'data' => [
+                            'email' => $request->email,
+                            'otp_expires_in' => '5 minutes'
+                        ]
+                    ]);
+                } catch (\Exception $emailError) {
+                    // Log email failure
+                    \Log::error('Email sending failed during OTP resend: ' . $emailError->getMessage());
+                    
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Unable to send verification email. Please try again later or contact support.',
+                        'error_code' => 'email_service_unavailable'
+                    ], 500);
+                }
+            }
+            
+            // If not in cache, check if user exists in database
             $user = User::where('email', $request->email)->first();
-
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Email not found. Please register first.',
+                ], 404);
+            }
+            
+            // For existing users who need OTP resend (password reset, etc.)
             $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
-            $otpExpires = now()->addMinutes(3);
+            $otpExpires = now()->addMinutes(5);
 
+            // Store OTP in database for existing user
             $user->update([
                 'otp' => $otp,
                 'otp_expires_at' => $otpExpires,
                 'otp_attempts' => 0,
             ]);
 
-            Mail::to($user->email)->send(new OtpMail($otp));
-
-            return response()->json([
-                'success' => true,
-                'message' => 'OTP has been resent to your email.',
-            ]);
+            try {
+                Mail::to($user->email)->send(new OtpMail($otp));
+                
+                // Log successful email sending
+                \Log::info('Resent OTP email to registered user: ' . $request->email);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => 'OTP has been sent to your email.',
+                    'data' => [
+                        'email' => $user->email,
+                        'otp_expires_in' => '5 minutes'
+                    ]
+                ]);
+            } catch (\Exception $emailError) {
+                // Log email failure
+                \Log::error('Email sending failed during OTP resend to registered user: ' . $emailError->getMessage());
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to send verification email. Please try again later or contact support.',
+                    'error_code' => 'email_service_unavailable'
+                ], 500);
+            }
         } catch (\Exception $e) {
+            \Log::error('Resend OTP exception: ' . $e->getMessage());
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to resend OTP. Please try again.',
+                'debug' => config('app.debug') ? $e->getMessage() : null
             ], 500);
         }
     }

@@ -36,6 +36,31 @@ class OrderController extends Controller
                 ], 422);
             }
 
+            // Check stock availability first
+            $insufficientItems = [];
+            foreach ($request->items as $item) {
+                $product = DB::table('products')->where('id', $item['id'])->first();
+                
+                if ($product && $product->stock < $item['quantity']) {
+                    // Product has insufficient stock
+                    $insufficientItems[] = [
+                        'product_id' => $product->id,
+                        'name' => $product->name,
+                        'quantity' => $item['quantity'],
+                        'available' => $product->stock,
+                    ];
+                }
+            }
+            
+            if (count($insufficientItems) > 0) {
+                // Some products have insufficient stock
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Some products have insufficient stock',
+                    'insufficient_items' => $insufficientItems,
+                ], 400);
+            }
+
             // Get user ID if authenticated
             $user = $request->user();
             $userId = $user ? $user->id : null;
@@ -56,7 +81,7 @@ class OrderController extends Controller
                 'updated_at' => now(),
             ]);
 
-            // Store order items
+            // Store order items and update product stock
             foreach ($request->items as $item) {
                 DB::table('order_items')->insert([
                     'order_id' => $orderId,
@@ -67,6 +92,11 @@ class OrderController extends Controller
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+                
+                // Update product stock
+                DB::table('products')
+                    ->where('id', $item['id'])
+                    ->decrement('stock', $item['quantity']);
             }
 
             // Get the created order with items

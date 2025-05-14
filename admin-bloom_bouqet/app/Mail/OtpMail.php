@@ -28,7 +28,7 @@ class OtpMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Your OTP Code for Bloom Bouquet',
+            subject: 'Verifikasi Pendaftaran Bloom Bouquet - Kode OTP Anda',
         );
     }
 

@@ -10,51 +10,46 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 // Define admin credentials
-$email = 'Admin@gmail.com';
+$username = 'admin';
+$email = 'bloombouqet0@gmail.com';
 $password = 'adminbloom';
 
-// Check if admin exists
-$admin = DB::table('admins')->where('email', 'admin@gmail.com')->first();
+// Generate a properly formatted Bcrypt hash using native PHP function
+// This ensures we're using the correct algorithm and format
+$bcryptHash = password_hash($password, PASSWORD_BCRYPT);
+echo "Generated Bcrypt hash: " . $bcryptHash . "\n\n";
 
-if ($admin) {
-    // Update existing admin
-    DB::table('admins')->where('email', 'admin@gmail.com')->update([
-        'email' => $email,
-        'password' => Hash::make($password),
-        'updated_at' => now()
-    ]);
-    echo "Admin updated successfully with new credentials.\n";
-} else {
-    // Try to find admin with the new email
-    $adminWithNewEmail = DB::table('admins')->where('email', $email)->first();
-    
-    if ($adminWithNewEmail) {
-        // Update just the password
-        DB::table('admins')->where('email', $email)->update([
-            'password' => Hash::make($password),
-            'updated_at' => now()
-        ]);
-        echo "Admin password updated successfully.\n";
-    } else {
-        // Create new admin
+// Delete all existing admins to ensure clean state
+DB::table('admins')->delete();
+echo "Deleted all existing admin accounts.\n";
+
+// Create new admin with correct credentials
         DB::table('admins')->insert([
-            'username' => 'Admin',
+    'username' => $username,
             'email' => $email,
-            'password' => Hash::make($password),
+    'password' => $bcryptHash,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        echo "New admin created successfully.\n";
-    }
-}
 
-// Also update any admin account (as a fallback)
-DB::table('admins')->update([
-    'password' => Hash::make($password),
-    'updated_at' => now()
-]);
-
-echo "Login credentials have been set to:\n";
+echo "Created new admin account with the following credentials:\n";
+echo "Username: $username\n";
 echo "Email: $email\n";
 echo "Password: $password\n";
+
+// Verify the admin exists with correct credentials
+$adminCheck = DB::table('admins')
+    ->where('email', $email)
+    ->where('username', $username)
+    ->first();
+
+if ($adminCheck) {
+    echo "\nVerification successful! Admin account created correctly.\n";
+    echo "You can now login with these credentials.\n";
+} else {
+    echo "\nWARNING: Admin account verification failed. Please check your database settings.\n";
+}
+
+echo "\nPlease run the following SQL query to check the admin account:\n";
+echo "SELECT username, email, password FROM admins WHERE email = 'bloombouqet0@gmail.com';\n";
 echo "\nPlease try logging in with these credentials now.\n"; 

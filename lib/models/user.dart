@@ -9,6 +9,7 @@ class User {
   final DateTime? birth_date;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final String? profile_photo;
 
   User({
     this.id,
@@ -21,6 +22,7 @@ class User {
     this.birth_date,
     this.createdAt,
     this.updatedAt,
+    this.profile_photo,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -41,6 +43,7 @@ class User {
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'])
           : null,
+      profile_photo: json['profile_photo'],
     );
   }
 
@@ -56,6 +59,7 @@ class User {
       'birth_date': birth_date?.toIso8601String(),
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
+      'profile_photo': profile_photo,
     };
   }
 }

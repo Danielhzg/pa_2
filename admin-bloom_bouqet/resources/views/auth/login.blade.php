@@ -376,13 +376,13 @@
                 </div>
             @endif
             
-            <form method="POST" action="{{ route('login') }}">
+            <form method="POST" action="{{ route('login') }}" autocomplete="off">
                 @csrf
                 
                 <div class="input-group">
                     <label for="email">Email Address</label>
                     <i class="input-icon fas fa-envelope"></i>
-                    <input type="email" name="email" id="email" value="{{ old('email', 'Admin@gmail.com') }}" required autofocus>
+                    <input type="email" name="email" id="email" autocomplete="off" required autofocus>
                     @error('email')
                         <div class="text-danger mt-1">{{ $message }}</div>
                     @enderror
@@ -391,7 +391,7 @@
                 <div class="input-group">
                     <label for="password">Password</label>
                     <i class="input-icon fas fa-lock"></i>
-                    <input type="password" name="password" id="password" value="adminbloom" required>
+                    <input type="password" name="password" id="password" autocomplete="off" required>
                     @error('password')
                         <div class="text-danger mt-1">{{ $message }}</div>
                     @enderror
@@ -405,11 +405,6 @@
                 <button type="submit">Sign In <i class="fas fa-arrow-right ms-1"></i></button>
             </form>
             
-            <div class="login-help">
-                <p><strong>Admin Login Information:</strong></p>
-                <p><i class="fas fa-envelope-open-text me-2"></i> Email: Admin@gmail.com</p>
-                <p><i class="fas fa-key me-2"></i> Password: adminbloom</p>
-            </div>
         </div>
     </div>
 </body>

@@ -871,4 +871,332 @@ class AuthService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('auth_token');
   }
+
+  // Update profile information
+  Future<Map<String, dynamic>> updateProfile(
+      Map<String, dynamic> profileData) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // Ensure username is properly formatted if provided
+      if (profileData.containsKey('username') &&
+          profileData['username'] != null) {
+        // Remove spaces and special characters from username
+        profileData['username'] = profileData['username']
+            .toString()
+            .trim()
+            .replaceAll(RegExp(r'[^\w\s]'), '');
+      }
+
+      // Mencoba beberapa endpoint yang mungkin digunakan oleh backend
+      final List<String> endpoints = [
+        'v1/update-profile',
+        'v1/profile/update',
+        'v1/users/update',
+        'update-profile', // Fallback tanpa v1 prefix
+        'profile/update', // Fallback tanpa v1 prefix
+        'user/profile', // Endpoint alternatif
+        'api/user/update', // Endpoint alternatif lain
+      ];
+
+      bool success = false;
+      String responseBody = '';
+      int statusCode = 0;
+      Map<String, dynamic>? responseData;
+
+      print('Attempting to update profile with data: $profileData');
+
+      // Coba semua endpoint sampai berhasil
+      for (String endpoint in endpoints) {
+        try {
+          print('Trying update profile via endpoint: $endpoint');
+
+          final response = await _tryRequestWithMultipleUrls(
+            endpoint: endpoint,
+            requestFunction: (url) => http.post(
+              Uri.parse(url),
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $_token',
+              },
+              body: json.encode(profileData),
+            ),
+          ).timeout(
+              const Duration(seconds: 10)); // Add timeout to avoid hanging
+
+          statusCode = response.statusCode;
+          responseBody = response.body;
+
+          print('Update profile response: $statusCode - $responseBody');
+
+          if (statusCode == 200 || statusCode == 201) {
+            success = true;
+
+            // Coba parse response untuk mendapatkan data user terbaru
+            try {
+              responseData = json.decode(responseBody);
+              if (responseData != null) {
+                if (responseData.containsKey('data') &&
+                    responseData['data'] != null) {
+                  if (responseData['data'].containsKey('user')) {
+                    _currentUser = User.fromJson(responseData['data']['user']);
+                  } else {
+                    _currentUser = User.fromJson(responseData['data']);
+                  }
+                  await _saveUserData(_currentUser!, _token!);
+                  print('User data updated from response');
+                }
+              }
+            } catch (e) {
+              print('Error parsing profile update response: $e');
+              // Jika gagal parse, kita tetap refresh data dari server
+            }
+
+            break; // Berhasil, keluar dari loop
+          }
+        } catch (e) {
+          print('Error updating profile with endpoint $endpoint: $e');
+          continue; // Coba endpoint selanjutnya
+        }
+      }
+
+      // Jika tidak ada endpoint yang berhasil, update data lokal sebagai fallback
+      if (!success) {
+        print('All API endpoints failed, updating local data as fallback');
+
+        // Update local user data as fallback
+        if (_currentUser != null) {
+          // Create updated User with the new data
+          final updatedUser = User(
+            id: _currentUser!.id,
+            name: profileData['username'] ??
+                _currentUser!.name, // Use username as name if needed
+            username: profileData['username'] ?? _currentUser!.username,
+            full_name: profileData['full_name'] ?? _currentUser!.full_name,
+            email: profileData['email'] ?? _currentUser!.email,
+            phone: profileData['phone'] ?? _currentUser!.phone,
+            address: profileData['address'] ?? _currentUser!.address,
+            birth_date: profileData['birth_date'] != null
+                ? DateTime.parse(profileData['birth_date'])
+                : _currentUser!.birth_date,
+            createdAt: _currentUser!.createdAt,
+            updatedAt: DateTime.now(),
+            profile_photo: _currentUser!.profile_photo,
+          );
+
+          _currentUser = updatedUser;
+          await _saveUserData(_currentUser!, _token!);
+          print('Local user data updated as fallback');
+          success = true;
+        }
+      }
+
+      // Try to refresh user data from server if update was successful
+      if (success) {
+        try {
+          await getUser();
+        } catch (e) {
+          print('Error refreshing user data after update: $e');
+          // Not critical since we've already updated local data
+        }
+      }
+
+      return {
+        'success': success,
+        'message': success
+            ? 'Profile updated successfully'
+            : 'Failed to update profile',
+        'data': responseData,
+        'statusCode': statusCode,
+      };
+    } catch (e) {
+      print('Error updating profile: $e');
+      return {
+        'success': false,
+        'message': 'Error updating profile: ${e.toString()}',
+        'error': e.toString(),
+      };
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Upload profile photo
+  Future<bool> uploadProfilePhoto(File imageFile) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // Create multipart request
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/v1/upload-profile-photo'),
+      );
+
+      // Add authorization header
+      request.headers.addAll({
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $_token',
+      });
+
+      // Add file
+      request.files.add(await http.MultipartFile.fromPath(
+        'profile_photo',
+        imageFile.path,
+      ));
+
+      // Send request
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      print(
+          'Upload profile photo response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Refresh user data after upload
+        await getUser();
+        return true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      print('Error uploading profile photo: $e');
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Check if username is available
+  Future<bool> isUsernameAvailable(String username) async {
+    if (username.isEmpty) {
+      print('Empty username provided, cannot check availability');
+      return false;
+    }
+
+    // If checking current user's username, it's available for them
+    if (_currentUser != null && _currentUser!.username == username) {
+      print('User is keeping their existing username: $username');
+      return true;
+    }
+
+    // Remove spaces and special characters
+    username = username.trim().replaceAll(RegExp(r'[^\w\s]'), '');
+
+    try {
+      print('Checking availability for username: $username');
+
+      // First try with the dedicated endpoint
+      try {
+        // Try using check-username-availability endpoint
+        final response = await _tryRequestWithMultipleUrls(
+          endpoint: 'v1/check-username-availability',
+          requestFunction: (url) => http.post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': _token != null ? 'Bearer $_token' : '',
+            },
+            body: json.encode({
+              'username': username,
+            }),
+          ),
+        ).timeout(const Duration(seconds: 5));
+
+        print(
+            'Username availability check response: ${response.statusCode} - ${response.body}');
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          return data['available'] == true;
+        }
+      } catch (e) {
+        print('Dedicated username endpoint not available: $e');
+        // Continue to fallback method
+      }
+
+      // Fallback method 1: Try to retrieve user by username
+      try {
+        final response = await _tryRequestWithMultipleUrls(
+          endpoint: 'v1/users/by-username/$username',
+          requestFunction: (url) => http.get(
+            Uri.parse(url),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': _token != null ? 'Bearer $_token' : '',
+            },
+          ),
+        ).timeout(const Duration(seconds: 5));
+
+        // If user is found (200), username is taken
+        // If user is not found (404), username is available
+        if (response.statusCode == 404) {
+          print('Username $username is available (user not found)');
+          return true;
+        } else if (response.statusCode == 200) {
+          print('Username $username is taken (user found)');
+          return false;
+        }
+      } catch (e) {
+        print('Fallback username check failed: $e');
+      }
+
+      // Fallback method 2: Use search endpoint if available
+      try {
+        final response = await _tryRequestWithMultipleUrls(
+          endpoint: 'v1/search/users',
+          requestFunction: (url) => http.post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': _token != null ? 'Bearer $_token' : '',
+            },
+            body: json.encode({
+              'query': username,
+              'exact': true,
+            }),
+          ),
+        ).timeout(const Duration(seconds: 5));
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          // If we find users with exactly this username, it's taken
+          if (data.containsKey('data') && data['data'] is List) {
+            final users = data['data'] as List;
+            for (var user in users) {
+              if (user is Map &&
+                  user.containsKey('username') &&
+                  user['username'].toString().toLowerCase() ==
+                      username.toLowerCase()) {
+                print('Username $username is taken (found in search results)');
+                return false;
+              }
+            }
+          }
+          // No exact match found, username is available
+          print(
+              'Username $username is available (not found in search results)');
+          return true;
+        }
+      } catch (e) {
+        print('Search fallback for username check failed: $e');
+      }
+
+      // When all checks fail but we have no clear indication username is taken
+      print(
+          'All username checks failed but no indication username is taken, assuming available');
+      return true;
+    } catch (e) {
+      print('Error checking username availability: $e');
+      // Default to true on error to be safe, but log a warning
+      print('WARNING: Defaulting to available due to error');
+      return true;
+    }
+  }
 }

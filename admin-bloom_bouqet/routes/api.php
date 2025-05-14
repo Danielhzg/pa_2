@@ -47,6 +47,7 @@ Route::prefix('v1')->group(function () {
     Route::get('products/search', [ProductController::class, 'search']); // Search products by query
     Route::get('products/category/{category}', [ProductController::class, 'getByCategory']); // Get products by category
     Route::post('products', [ProductController::class, 'store']); // Add product
+    Route::post('products/check-stock', [ProductController::class, 'checkStock']); // Check stock availability
     
     // Customer endpoints
     Route::get('customers', [CustomerController::class, 'index']); // Get all customers

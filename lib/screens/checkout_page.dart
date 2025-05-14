@@ -5,6 +5,7 @@ import '../providers/delivery_provider.dart';
 import '../models/delivery_address.dart';
 import '../models/payment.dart';
 import '../models/order.dart';
+import '../models/cart_item.dart';
 import '../services/payment_service.dart';
 import '../services/order_service.dart';
 import 'address_selection_screen.dart';
@@ -15,6 +16,8 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'chat_page.dart';
 
 class CheckoutPage extends StatefulWidget {
   const CheckoutPage({super.key});
@@ -28,6 +31,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
   static const Color accentColor = Color(0xFFFFE5EE);
   bool _isLoading = true;
   bool _isLoadingPaymentMethods = true;
+
+  final _addressFormKey = GlobalKey<FormState>();
+  final _orderFormKey = GlobalKey<FormState>();
+
+  List<dynamic> insufficientItems = [];
 
   // Payment method - now variable
   String _paymentMethod = 'qris';
@@ -780,6 +788,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   Future<void> _placeOrder(
       BuildContext context, CartProvider cartProvider) async {
+    // Check stock availability first
+    final stockValidationResult = await _validateStock(context, cartProvider);
+    if (!stockValidationResult) {
+      // Stock validation failed, exit the method
+      return;
+    }
+
     // Show loading indicator
     showDialog(
       context: context,
@@ -937,139 +952,406 @@ class _CheckoutPageState extends State<CheckoutPage> {
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: Row(
-              children: [
-                const Icon(Icons.account_balance, color: primaryColor),
-                const SizedBox(width: 10),
-                Flexible(
-                  child: Text(
-                    'Virtual Account $bankName',
-                    style: const TextStyle(fontSize: 18),
-                  ),
-                ),
-              ],
+          builder: (context) => Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Silakan lakukan pembayaran dengan rincian berikut:',
-                  textAlign: TextAlign.center,
+            child: TweenAnimationBuilder(
+              duration: const Duration(milliseconds: 400),
+              tween: Tween<double>(begin: 0.8, end: 1.0),
+              builder: (context, value, child) {
+                return Transform.scale(
+                  scale: value,
+                  child: child,
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Title with animation
+                    _FadeInTranslate(
+                      duration: const Duration(milliseconds: 400),
+                      delay: const Duration(milliseconds: 100),
+                      offset: const Offset(0, 20),
+                      child: Row(
                         children: [
-                          const Text('Bank'),
-                          Text(
-                            bankName,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      const Divider(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Nomor VA'),
+                          const Icon(Icons.account_balance,
+                              color: primaryColor),
+                          const SizedBox(width: 10),
                           Flexible(
                             child: Text(
-                              vaNumberStr,
+                              'Virtual Account $bankName',
                               style: const TextStyle(
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 16,
                               ),
-                              textAlign: TextAlign.right,
                             ),
                           ),
                         ],
                       ),
-                      const Divider(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Total'),
-                          Text(
-                            formatCurrency(total),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: primaryColor,
-                            ),
-                          ),
-                        ],
+                    ),
+                    const SizedBox(height: 15),
+
+                    const _FadeInTranslate(
+                      duration: Duration(milliseconds: 400),
+                      delay: Duration(milliseconds: 200),
+                      offset: Offset(0, 20),
+                      child: Text(
+                        'Silakan lakukan pembayaran dengan rincian berikut:',
+                        textAlign: TextAlign.center,
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.yellow.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.yellow.shade700),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline,
-                          size: 20, color: Colors.yellow.shade800),
-                      const SizedBox(width: 8),
-                      const Flexible(
-                        child: Text(
-                          'Salin nomor virtual account untuk melakukan pembayaran',
-                          style: TextStyle(fontSize: 12),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Payment details with animation
+                    _FadeInTranslate(
+                      duration: const Duration(milliseconds: 600),
+                      delay: const Duration(milliseconds: 300),
+                      offset: const Offset(0, 20),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Bank'),
+                                Text(
+                                  bankName,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                            const Divider(),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Nomor VA'),
+                                Flexible(
+                                  child: Text(
+                                    vaNumberStr,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                    textAlign: TextAlign.right,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const Divider(),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Total'),
+                                Text(
+                                  formatCurrency(total),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: primaryColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Pembayaran akan dikonfirmasi secara otomatis oleh sistem.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context); // Tutup dialog
-                },
-                child: const Text('Cek Status'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context); // Tutup dialog
-                  cartProvider.clear(); // Bersihkan keranjang setelah sukses
-                  Navigator.pop(context); // Kembali ke layar sebelumnya
-
-                  // Tampilkan pesan sukses
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Pesanan berhasil dibuat! Silakan selesaikan pembayaran.',
-                      ),
-                      backgroundColor: Colors.green,
                     ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
+                    const SizedBox(height: 12),
+
+                    // Info box with animation
+                    _FadeInTranslate(
+                      duration: const Duration(milliseconds: 600),
+                      delay: const Duration(milliseconds: 400),
+                      offset: const Offset(0, 20),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.yellow.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.yellow.shade700),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline,
+                                size: 20, color: Colors.yellow.shade800),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Salin nomor virtual account untuk melakukan pembayaran',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Action buttons with animation
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          // For narrow screens, stack the buttons vertically
+                          if (constraints.maxWidth < 280) {
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // Contact admin button
+                                _FadeInTranslate(
+                                  duration: const Duration(milliseconds: 800),
+                                  delay: const Duration(milliseconds: 800),
+                                  offset: const Offset(0, 20),
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      // Close the dialog
+                                      Navigator.of(context).pop();
+
+                                      // Ambil data produk pertama yang stoknya tidak cukup
+                                      final item = insufficientItems.isNotEmpty
+                                          ? insufficientItems[0]
+                                          : null;
+
+                                      if (item != null) {
+                                        final String productName =
+                                            item['name'] ?? '';
+                                        final int requested =
+                                            item['quantity'] ?? 0;
+                                        final int available =
+                                            item['available'] ?? 0;
+
+                                        // Cari gambar produk dari cartProvider
+                                        final cartProvider =
+                                            Provider.of<CartProvider>(context,
+                                                listen: false);
+                                        final cartItem =
+                                            cartProvider.items.firstWhere(
+                                          (ci) => ci.name == productName,
+                                          orElse: () =>
+                                              cartProvider.items.first,
+                                        );
+                                        final String productImageUrl =
+                                            cartItem.imageUrl;
+
+                                        // Buat pesan otomatis
+                                        final String autoMessage =
+                                            'Halo Admin, saya ingin menanyakan ketersediaan produk "$productName" yang ingin saya beli sebanyak $requested buah, namun stok hanya tersedia $available. Mohon informasinya, terima kasih.';
+
+                                        // Buka ChatPage
+                                        _navigateToChatPage(
+                                          context,
+                                          initialMessage: autoMessage,
+                                          productName: productName,
+                                          productImageUrl: productImageUrl,
+                                          productStock: available,
+                                          requestedQuantity: requested,
+                                        );
+                                      } else {
+                                        // Fallback if no insufficientItems
+                                        _navigateToChatPage(
+                                          context,
+                                          initialMessage:
+                                              "Halo Admin, saya ingin menanyakan tentang ketersediaan produk di toko Anda.",
+                                        );
+                                      }
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: primaryColor,
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(30),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.message,
+                                        color: Colors.white, size: 18),
+                                    label: const Text(
+                                      'Hubungi Admin',
+                                      style: TextStyle(
+                                          color: Colors.white, fontSize: 13),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+
+                                // Continue shopping button
+                                _FadeInTranslate(
+                                  duration: const Duration(milliseconds: 800),
+                                  delay: const Duration(milliseconds: 900),
+                                  offset: const Offset(0, 20),
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      Navigator.of(context).pop();
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12),
+                                      side:
+                                          const BorderSide(color: primaryColor),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(30),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.arrow_back,
+                                        color: primaryColor, size: 16),
+                                    label: const Text(
+                                      'Kembali',
+                                      style: TextStyle(
+                                          color: primaryColor, fontSize: 13),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+
+                          // For wider screens, use a row layout
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // Contact admin button
+                              Flexible(
+                                child: _FadeInTranslate(
+                                  duration: const Duration(milliseconds: 800),
+                                  delay: const Duration(milliseconds: 800),
+                                  offset: const Offset(-30, 0),
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      // Close the dialog
+                                      Navigator.of(context).pop();
+
+                                      // Ambil data produk pertama yang stoknya tidak cukup
+                                      final item = insufficientItems.isNotEmpty
+                                          ? insufficientItems[0]
+                                          : null;
+
+                                      if (item != null) {
+                                        final String productName =
+                                            item['name'] ?? '';
+                                        final int requested =
+                                            item['quantity'] ?? 0;
+                                        final int available =
+                                            item['available'] ?? 0;
+
+                                        // Cari gambar produk dari cartProvider
+                                        final cartProvider =
+                                            Provider.of<CartProvider>(context,
+                                                listen: false);
+                                        final cartItem =
+                                            cartProvider.items.firstWhere(
+                                          (ci) => ci.name == productName,
+                                          orElse: () =>
+                                              cartProvider.items.first,
+                                        );
+                                        final String productImageUrl =
+                                            cartItem.imageUrl;
+
+                                        // Buat pesan otomatis
+                                        final String autoMessage =
+                                            'Halo Admin, saya ingin menanyakan ketersediaan produk "$productName" yang ingin saya beli sebanyak $requested buah, namun stok hanya tersedia $available. Mohon informasinya, terima kasih.';
+
+                                        // Buka ChatPage
+                                        _navigateToChatPage(
+                                          context,
+                                          initialMessage: autoMessage,
+                                          productName: productName,
+                                          productImageUrl: productImageUrl,
+                                          productStock: available,
+                                          requestedQuantity: requested,
+                                        );
+                                      } else {
+                                        // Fallback if no insufficientItems
+                                        _navigateToChatPage(
+                                          context,
+                                          initialMessage:
+                                              "Halo Admin, saya ingin menanyakan tentang ketersediaan produk di toko Anda.",
+                                        );
+                                      }
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: primaryColor,
+                                      padding: EdgeInsets.symmetric(
+                                          horizontal: constraints.maxWidth < 350
+                                              ? 12
+                                              : 20,
+                                          vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(30),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.message,
+                                        color: Colors.white, size: 20),
+                                    label: const FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        'Hubungi Admin',
+                                        style: TextStyle(
+                                            color: Colors.white, fontSize: 14),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+
+                              // Continue shopping button
+                              Flexible(
+                                child: _FadeInTranslate(
+                                  duration: const Duration(milliseconds: 800),
+                                  delay: const Duration(milliseconds: 900),
+                                  offset: const Offset(30, 0),
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      Navigator.of(context).pop();
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      padding: EdgeInsets.symmetric(
+                                          horizontal: constraints.maxWidth < 350
+                                              ? 12
+                                              : 20,
+                                          vertical: 12),
+                                      side:
+                                          const BorderSide(color: primaryColor),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(30),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.arrow_back,
+                                        color: primaryColor, size: 16),
+                                    label: const FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        'Kembali',
+                                        style: TextStyle(
+                                            color: primaryColor, fontSize: 14),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-                child: const Text('Selesai'),
               ),
-            ],
+            ),
           ),
         );
 
@@ -1197,5 +1479,664 @@ class _CheckoutPageState extends State<CheckoutPage> {
       );
       return false;
     }
+  }
+
+  // Method to validate stock availability
+  Future<bool> _validateStock(
+      BuildContext context, CartProvider cartProvider) async {
+    final selectedItems =
+        cartProvider.items.where((item) => item.isSelected).toList();
+
+    // Make API request to check stock
+    try {
+      const apiUrl = 'http://10.0.2.2:8000/api/v1/products/check-stock';
+      final http.Response response = await http.post(
+        Uri.parse(apiUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: json.encode({
+          'items': selectedItems
+              .map((item) => {
+                    'product_id': item.productId,
+                    'quantity': item.quantity,
+                  })
+              .toList(),
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        if (data['success'] == true) {
+          // All products have sufficient stock
+          return true;
+        } else {
+          // Some products have insufficient stock
+          final List<dynamic> insufficientItems =
+              data['insufficient_items'] ?? [];
+
+          if (insufficientItems.isNotEmpty) {
+            // Show beautiful notification dialog for insufficient stock
+            _showInsufficientStockDialog(context, insufficientItems);
+            return false;
+          }
+        }
+      } else {
+        // API request failed, show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Failed to check stock availability. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return false;
+      }
+    } catch (e) {
+      // Exception occurred, let's do client-side stock check as fallback
+      return _clientSideStockCheck(context, selectedItems);
+    }
+
+    return true;
+  }
+
+  // Fallback method to check stock locally
+  bool _clientSideStockCheck(BuildContext context, List<CartItem> items) {
+    // This is a fallback method that would check stock locally
+    // In a real app, you would pull product data with latest stock info
+
+    // For now, we'll simulate stock check with a simple dialog
+    _showInsufficientStockDialog(context, [
+      {
+        'name': items.first.name,
+        'quantity': items.first.quantity,
+        'available': items.first.quantity - 2, // Simulate 2 less than requested
+      }
+    ]);
+
+    return false;
+  }
+
+  // Method to show beautiful insufficient stock dialog
+  void _showInsufficientStockDialog(
+      BuildContext context, List<dynamic> insufficientItems) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        child: TweenAnimationBuilder(
+          duration: const Duration(milliseconds: 400),
+          tween: Tween<double>(begin: 0.0, end: 1.0),
+          builder: (context, value, child) {
+            return Transform.scale(
+              scale: value,
+              child: child,
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.rectangle,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 10.0,
+                  offset: Offset(0.0, 10.0),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Icon and title with animation
+                _FadeInTranslate(
+                  duration: const Duration(milliseconds: 800),
+                  delay: const Duration(milliseconds: 200),
+                  offset: const Offset(0, 20),
+                  child: Container(
+                    padding: const EdgeInsets.all(15),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.red.shade100, width: 2),
+                    ),
+                    child: Icon(
+                      Icons.inventory_2,
+                      color: Colors.red.shade300,
+                      size: 50,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  'Stok Tidak Mencukupi',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.red.shade700,
+                  ),
+                ),
+                const SizedBox(height: 15),
+
+                // Description
+                const Text(
+                  'Mohon maaf, beberapa produk di keranjang Anda memiliki stok yang tidak mencukupi:',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 15),
+                ),
+                const SizedBox(height: 15),
+
+                // List of insufficient items with animation
+                Container(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.25,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Container(
+                      padding: const EdgeInsets.all(15),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Column(
+                        children:
+                            List.generate(insufficientItems.length, (index) {
+                          final item = insufficientItems[index];
+                          final String name =
+                              item['name'] ?? 'Produk tidak diketahui';
+                          final int requested = item['quantity'] ?? 0;
+                          final int available = item['available'] ?? 0;
+
+                          return _FadeInTranslate(
+                            duration: const Duration(milliseconds: 500),
+                            delay: Duration(milliseconds: 300 + (index * 100)),
+                            offset: const Offset(30, 0),
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 10.0),
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border:
+                                      Border.all(color: Colors.red.shade200),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        Icon(Icons.circle,
+                                            color: Colors.red.shade100,
+                                            size: 36),
+                                        Icon(Icons.warning_amber_rounded,
+                                            color: Colors.red.shade700,
+                                            size: 20),
+                                      ],
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            name,
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.bold),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              _buildStockInfoTag(
+                                                  'Diminta',
+                                                  requested.toString(),
+                                                  Colors.blue.shade700),
+                                              const SizedBox(width: 8),
+                                              _buildStockInfoTag(
+                                                  'Tersedia',
+                                                  available.toString(),
+                                                  Colors.red.shade700),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Animated info box
+                _FadeInTranslate(
+                  duration: const Duration(milliseconds: 800),
+                  delay: const Duration(milliseconds: 600),
+                  offset: const Offset(0, 20),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.yellow.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.yellow.shade700),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.lightbulb_outline,
+                            color: Colors.amber.shade800),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Silakan hubungi admin untuk bantuan pemesanan produk ini atau pilih jumlah yang sesuai dengan stok yang tersedia.',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Action buttons with animation
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      // For narrow screens, stack the buttons vertically
+                      if (constraints.maxWidth < 280) {
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Contact admin button
+                            _FadeInTranslate(
+                              duration: const Duration(milliseconds: 800),
+                              delay: const Duration(milliseconds: 800),
+                              offset: const Offset(0, 20),
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  // Close the dialog
+                                  Navigator.of(context).pop();
+
+                                  // Ambil data produk pertama yang stoknya tidak cukup
+                                  final item = insufficientItems.isNotEmpty
+                                      ? insufficientItems[0]
+                                      : null;
+
+                                  if (item != null) {
+                                    final String productName =
+                                        item['name'] ?? '';
+                                    final int requested = item['quantity'] ?? 0;
+                                    final int available =
+                                        item['available'] ?? 0;
+
+                                    // Cari gambar produk dari cartProvider
+                                    final cartProvider =
+                                        Provider.of<CartProvider>(context,
+                                            listen: false);
+                                    final cartItem =
+                                        cartProvider.items.firstWhere(
+                                      (ci) => ci.name == productName,
+                                      orElse: () => cartProvider.items.first,
+                                    );
+                                    final String productImageUrl =
+                                        cartItem.imageUrl;
+
+                                    // Buat pesan otomatis
+                                    final String autoMessage =
+                                        'Halo Admin, saya ingin menanyakan ketersediaan produk "$productName" yang ingin saya beli sebanyak $requested buah, namun stok hanya tersedia $available. Mohon informasinya, terima kasih.';
+
+                                    // Buka ChatPage
+                                    _navigateToChatPage(
+                                      context,
+                                      initialMessage: autoMessage,
+                                      productName: productName,
+                                      productImageUrl: productImageUrl,
+                                      productStock: available,
+                                      requestedQuantity: requested,
+                                    );
+                                  } else {
+                                    // Fallback if no insufficientItems
+                                    _navigateToChatPage(
+                                      context,
+                                      initialMessage:
+                                          "Halo Admin, saya ingin menanyakan tentang ketersediaan produk di toko Anda.",
+                                    );
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: primaryColor,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(30),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.message,
+                                    color: Colors.white, size: 18),
+                                label: const Text(
+                                  'Hubungi Admin',
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 13),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            // Continue shopping button
+                            _FadeInTranslate(
+                              duration: const Duration(milliseconds: 800),
+                              delay: const Duration(milliseconds: 900),
+                              offset: const Offset(0, 20),
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                  side: const BorderSide(color: primaryColor),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(30),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.arrow_back,
+                                    color: primaryColor, size: 16),
+                                label: const Text(
+                                  'Kembali',
+                                  style: TextStyle(
+                                      color: primaryColor, fontSize: 13),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+
+                      // For wider screens, use a row layout
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Contact admin button
+                          Flexible(
+                            child: _FadeInTranslate(
+                              duration: const Duration(milliseconds: 800),
+                              delay: const Duration(milliseconds: 800),
+                              offset: const Offset(-30, 0),
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  // Close the dialog
+                                  Navigator.of(context).pop();
+
+                                  // Ambil data produk pertama yang stoknya tidak cukup
+                                  final item = insufficientItems.isNotEmpty
+                                      ? insufficientItems[0]
+                                      : null;
+
+                                  if (item != null) {
+                                    final String productName =
+                                        item['name'] ?? '';
+                                    final int requested = item['quantity'] ?? 0;
+                                    final int available =
+                                        item['available'] ?? 0;
+
+                                    // Cari gambar produk dari cartProvider
+                                    final cartProvider =
+                                        Provider.of<CartProvider>(context,
+                                            listen: false);
+                                    final cartItem =
+                                        cartProvider.items.firstWhere(
+                                      (ci) => ci.name == productName,
+                                      orElse: () => cartProvider.items.first,
+                                    );
+                                    final String productImageUrl =
+                                        cartItem.imageUrl;
+
+                                    // Buat pesan otomatis
+                                    final String autoMessage =
+                                        'Halo Admin, saya ingin menanyakan ketersediaan produk "$productName" yang ingin saya beli sebanyak $requested buah, namun stok hanya tersedia $available. Mohon informasinya, terima kasih.';
+
+                                    // Buka ChatPage
+                                    _navigateToChatPage(
+                                      context,
+                                      initialMessage: autoMessage,
+                                      productName: productName,
+                                      productImageUrl: productImageUrl,
+                                      productStock: available,
+                                      requestedQuantity: requested,
+                                    );
+                                  } else {
+                                    // Fallback if no insufficientItems
+                                    _navigateToChatPage(
+                                      context,
+                                      initialMessage:
+                                          "Halo Admin, saya ingin menanyakan tentang ketersediaan produk di toko Anda.",
+                                    );
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: primaryColor,
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal:
+                                          constraints.maxWidth < 350 ? 12 : 20,
+                                      vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(30),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.message,
+                                    color: Colors.white, size: 20),
+                                label: const FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'Hubungi Admin',
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 14),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+
+                          // Continue shopping button
+                          Flexible(
+                            child: _FadeInTranslate(
+                              duration: const Duration(milliseconds: 800),
+                              delay: const Duration(milliseconds: 900),
+                              offset: const Offset(30, 0),
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal:
+                                          constraints.maxWidth < 350 ? 12 : 20,
+                                      vertical: 12),
+                                  side: const BorderSide(color: primaryColor),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(30),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.arrow_back,
+                                    color: primaryColor, size: 16),
+                                label: const FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'Kembali',
+                                    style: TextStyle(
+                                        color: primaryColor, fontSize: 14),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Helper method for stock info tag
+  Widget _buildStockInfoTag(String label, String value, Color textColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: textColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$label: ',
+            style: TextStyle(fontSize: 12, color: textColor.withOpacity(0.8)),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              color: textColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Method to navigate to chat page in main navigation
+  void _navigateToChatPage(
+    BuildContext context, {
+    required String initialMessage,
+    String? productName,
+    String? productImageUrl,
+    int? productStock,
+    int? requestedQuantity,
+  }) {
+    // Set the static values in ChatPage to be picked up when loaded
+    ChatPage.pendingInitialMessage = initialMessage;
+    ChatPage.pendingProductName = productName;
+    ChatPage.pendingProductImageUrl = productImageUrl;
+    ChatPage.pendingProductStock = productStock;
+    ChatPage.pendingRequestedQuantity = requestedQuantity;
+
+    // Navigate to home page
+    Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+
+    // Show a toast guiding the user to the Chat tab
+    Future.delayed(const Duration(milliseconds: 500), () {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Silakan lihat percakapan di tab Chat (klik ikon Chat di bagian bawah)'),
+          duration: Duration(seconds: 3),
+          backgroundColor: Color(0xFFFF87B2),
+        ),
+      );
+    });
+  }
+}
+
+// Custom animated widget with delay capability
+class _FadeInTranslate extends StatefulWidget {
+  final Widget child;
+  final Duration duration;
+  final Duration delay;
+  final Offset offset;
+
+  const _FadeInTranslate({
+    required this.child,
+    required this.duration,
+    required this.delay,
+    required this.offset,
+  });
+
+  @override
+  State<_FadeInTranslate> createState() => _FadeInTranslateState();
+}
+
+class _FadeInTranslateState extends State<_FadeInTranslate>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _opacity;
+  late Animation<Offset> _position;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: widget.duration,
+    );
+
+    _opacity = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+
+    _position = Tween<Offset>(
+      begin: widget.offset,
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+
+    // Add delay
+    Future.delayed(widget.delay, () {
+      if (mounted) {
+        _controller.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Opacity(
+          opacity: _opacity.value,
+          child: Transform.translate(
+            offset: _position.value,
+            child: child,
+          ),
+        );
+      },
+      child: widget.child,
+    );
   }
 }

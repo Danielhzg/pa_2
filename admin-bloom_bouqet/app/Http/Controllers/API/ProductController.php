@@ -177,4 +177,61 @@ class ProductController extends Controller
         // Fallback to a default image
         return url('storage/products/default-product.png');
     }
+
+    /**
+     * Check stock availability for multiple products
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function checkStock(Request $request)
+    {
+        // Validate request
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'items' => 'required|array',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $items = $request->input('items');
+        $insufficientItems = [];
+
+        // Check stock for each product
+        foreach ($items as $item) {
+            $product = Product::find($item['product_id']);
+            
+            if ($product && $product->stock < $item['quantity']) {
+                // Product has insufficient stock
+                $insufficientItems[] = [
+                    'product_id' => $product->id,
+                    'name' => $product->name,
+                    'quantity' => $item['quantity'],
+                    'available' => $product->stock,
+                ];
+            }
+        }
+
+        if (count($insufficientItems) > 0) {
+            // Some products have insufficient stock
+            return response()->json([
+                'success' => false,
+                'message' => 'Some products have insufficient stock',
+                'insufficient_items' => $insufficientItems,
+            ]);
+        }
+
+        // All products have sufficient stock
+        return response()->json([
+            'success' => true,
+            'message' => 'All products have sufficient stock',
+        ]);
+    }
 }

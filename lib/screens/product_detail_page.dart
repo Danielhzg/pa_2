@@ -5,6 +5,8 @@ import '../models/product.dart';
 import '../utils/image_url_helper.dart';
 import '../providers/cart_provider.dart';
 import '../services/auth_service.dart';
+import 'dart:async';
+import 'chat_page.dart'; // Import ChatPage
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
@@ -21,6 +23,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   @override
   void initState() {
     super.initState();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   void _incrementQuantity() {
@@ -114,6 +121,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         ? originalPrice * (100 - widget.product.discount) / 100
         : originalPrice;
     final double savedAmount = originalPrice - discountedPrice;
+    final bool isOutOfStock = widget.product.stock <= 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -225,6 +233,43 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   ],
 
                   const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Text(
+                        'Status:',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isOutOfStock
+                              ? Colors.red.shade100
+                              : Colors.green.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isOutOfStock ? Colors.red : Colors.green,
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          isOutOfStock ? 'Out of Stock' : 'In Stock',
+                          style: TextStyle(
+                            color: isOutOfStock ? Colors.red : Colors.green,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   const Text(
                     'Description',
                     style: TextStyle(
@@ -237,41 +282,43 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     widget.product.description,
                     style: const TextStyle(fontSize: 16),
                   ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Quantity',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                  if (!isOutOfStock) ...[
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Quantity',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: _decrementQuantity,
-                        icon: const Icon(Icons.remove_circle_outline),
-                        color: Colors.pink,
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.pink),
-                          borderRadius: BorderRadius.circular(4),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: _decrementQuantity,
+                          icon: const Icon(Icons.remove_circle_outline),
+                          color: Colors.pink,
                         ),
-                        child: Text(
-                          quantity.toString(),
-                          style: const TextStyle(fontSize: 16),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.pink),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            quantity.toString(),
+                            style: const TextStyle(fontSize: 16),
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        onPressed: _incrementQuantity,
-                        icon: const Icon(Icons.add_circle_outline),
-                        color: Colors.pink,
-                      ),
-                    ],
-                  ),
+                        IconButton(
+                          onPressed: _incrementQuantity,
+                          icon: const Icon(Icons.add_circle_outline),
+                          color: Colors.pink,
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -291,21 +338,95 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             ),
           ],
         ),
-        child: ElevatedButton(
-          onPressed: _addToCart,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.pink,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          child: const Text(
-            'Add to Cart',
-            style: TextStyle(fontSize: 18),
-          ),
-        ),
+        child: isOutOfStock
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'This product is currently unavailable',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.notifications_active_outlined),
+                          label: const Text('Notify Me'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'We\'ll notify you when this product is back in stock'),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.chat_outlined),
+                          label: const Text('Contact Admin'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF87B2),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onPressed: () {
+                            // Pesan otomatis sesuai permintaan
+                            final String autoMessage =
+                                'Halo Admin, saya tertarik dengan produk "${widget.product.name}" tetapi saat ini stoknya ${widget.product.stock}. Saya ingin membeli total ${isOutOfStock ? 1 : quantity}, kapan kira-kira akan tersedia kembali?';
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ChatPage(
+                                  initialMessage: autoMessage,
+                                  productName: widget.product.name,
+                                  productStock: widget.product.stock,
+                                  productImageUrl: ImageUrlHelper.buildImageUrl(
+                                      widget.product.imageUrl),
+                                  requestedQuantity:
+                                      isOutOfStock ? 1 : quantity,
+                                  showBottomNav:
+                                      true, // Show bottom navigation bar
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              )
+            : ElevatedButton(
+                onPressed: _addToCart,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.pink,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'Add to Cart',
+                  style: TextStyle(fontSize: 18),
+                ),
+              ),
       ),
     );
   }
