@@ -17,6 +17,7 @@ class Chat extends Model
         'is_read',
         'attachment',
         'status',
+        'updated_at',
     ];
 
     protected $casts = [
@@ -37,6 +38,22 @@ class Chat extends Model
     public function admin()
     {
         return $this->belongsTo(Admin::class);
+    }
+
+    /**
+     * Get the messages for this chat.
+     */
+    public function messages()
+    {
+        return $this->hasMany(ChatMessage::class);
+    }
+    
+    /**
+     * Get the most recent message for this chat.
+     */
+    public function lastMessage()
+    {
+        return $this->hasOne(ChatMessage::class)->latest();
     }
 
     /**
@@ -89,5 +106,13 @@ class Chat extends Model
     {
         return $query->where('user_id', $userId)
                     ->where('admin_id', $adminId);
+    }
+    
+    /**
+     * Get unread message count for this chat
+     */
+    public function getUnreadCountAttribute()
+    {
+        return $this->messages()->where('is_admin', false)->whereNull('read_at')->count();
     }
 } 

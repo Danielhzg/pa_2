@@ -61,6 +61,10 @@ Route::prefix('admin')->name('admin.')->middleware('auth:admin')->group(function
     Route::post('/chats/{chat}/send', [ChatController::class, 'sendMessage'])->name('chats.send');
     Route::get('/chats/unread-count', [ChatController::class, 'getUnreadCount'])->name('chats.unread');
     Route::get('/chats/{chat}/new-messages', [ChatController::class, 'getNewMessages'])->name('chats.new-messages');
+    Route::get('/chats/{chat}/check-new', [ChatController::class, 'checkNewMessages'])->name('chats.check-new');
+    Route::post('/chats/{chat}/clear', [ChatController::class, 'clearChat'])->name('chats.clear');
+    Route::post('/chats/mark-all-read', [ChatController::class, 'markAllAsRead'])->name('chats.mark-all-read');
+    Route::get('/chats/poll-updates', [ChatController::class, 'poll'])->name('chats.poll-updates');
 });
 
 Route::prefix('admin/products')->group(function () {

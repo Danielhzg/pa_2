@@ -231,6 +231,27 @@ class Order extends Model
     }
 
     /**
+     * Get the total number of items in this order.
+     */
+    public function getTotalItemsAttribute()
+    {
+        // First try from items relationship if it exists
+        if ($this->items()->exists()) {
+            return $this->items()->sum('quantity');
+        }
+        
+        // Otherwise, try to calculate from order_items JSON field
+        $orderItems = json_decode($this->order_items ?? '', true);
+        
+        if (is_array($orderItems)) {
+            return collect($orderItems)->sum('quantity');
+        }
+        
+        // Default if no data is available
+        return 0;
+    }
+
+    /**
      * Generate a sales report for this order.
      */
     public function generateSalesReport($title = null, $description = null)

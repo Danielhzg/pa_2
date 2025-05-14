@@ -37,16 +37,24 @@ class ReportController extends Controller
             $dailySales = $this->getDailySales($startDateTime, $endDateTime);
             
             // Get payment methods distribution
-            $paymentMethods = $this->getPaymentMethods($startDateTime, $endDateTime);
+            $paymentStats = $this->getPaymentMethods($startDateTime, $endDateTime);
             
             // Get top selling products
             $topProducts = $this->getTopProducts($startDateTime, $endDateTime, 10);
             
+            // Get latest orders
+            $latestOrders = Order::with('user')
+                ->whereBetween('created_at', [$startDateTime, $endDateTime])
+                ->orderBy('created_at', 'desc')
+                ->limit(10)
+                ->get();
+            
             return view('admin.reports.index', compact(
                 'orderStats',
                 'dailySales', 
-                'paymentMethods', 
-                'topProducts'
+                'paymentStats', 
+                'topProducts',
+                'latestOrders'
             ));
         } catch (\Exception $e) {
             Log::error('Error in ReportController@index: ' . $e->getMessage());
@@ -221,22 +229,65 @@ class ReportController extends Controller
      */
     private function getTopProducts(Carbon $startDate, Carbon $endDate, $limit = 10)
     {
-        return DB::table('order_items')
-            ->join('orders', 'order_items.order_id', '=', 'orders.id')
-            ->join('products', 'order_items.product_id', '=', 'products.id')
-            ->select(
-                'products.id',
-                'products.name',
-                'products.image',
-                'products.price',
-                DB::raw('SUM(order_items.quantity) as quantity_sold'),
-                DB::raw('SUM(order_items.quantity * order_items.price) as total_sales')
-            )
-            ->whereBetween('orders.created_at', [$startDate, $endDate])
-            ->whereIn('orders.status', ['completed', 'processing'])
-            ->groupBy('products.id', 'products.name', 'products.image', 'products.price')
-            ->orderBy('quantity_sold', 'desc')
-            ->limit($limit)
+        // Get all products
+        $allProducts = Product::all();
+        
+        // Get orders in the date range
+        $orders = Order::whereBetween('created_at', [$startDate, $endDate])
+            ->whereIn('status', ['completed', 'processing'])
             ->get();
+        
+        // Initialize a collection to track product sales
+        $productSales = collect();
+        
+        foreach ($allProducts as $product) {
+            $productSales->push([
+                'id' => $product->id,
+                'name' => $product->name,
+                'price' => $product->price,
+                'quantity_sold' => 0,
+                'total_sales' => 0,
+                'product' => $product,
+            ]);
+        }
+        
+        // Analyze each order to count product sales
+        foreach ($orders as $order) {
+            // First, try to use the order_items JSON field
+            $orderItems = json_decode($order->order_items ?? '', true);
+            
+            if (is_array($orderItems) && !empty($orderItems)) {
+                foreach ($orderItems as $item) {
+                    $productId = $item['product_id'] ?? 0;
+                    // Find the product in our tracking collection
+                    $productSale = $productSales->where('id', $productId)->first();
+                    
+                    if ($productSale) {
+                        // Update the sales data
+                        $quantity = $item['quantity'] ?? 0;
+                        $price = $item['price'] ?? 0;
+                        
+                        $productSale['quantity_sold'] += $quantity;
+                        $productSale['total_sales'] += ($quantity * $price);
+                    }
+                }
+            } else {
+                // Fallback: Try to get product information from the order total
+                // For orders without detailed items, we'll just count 1 quantity
+                // This is just a fallback when we can't determine what products were ordered
+                
+                // For simplicity, assign the whole order to the first product
+                if (count($productSales) > 0 && $order->total_amount > 0) {
+                    $firstProductSale = $productSales->first();
+                    $firstProductSale['quantity_sold'] += 1;
+                    $firstProductSale['total_sales'] += $order->total_amount;
+                }
+            }
+        }
+        
+        // Sort by quantity sold and take top products
+        return $productSales->sortByDesc('quantity_sold')
+            ->take($limit)
+            ->values();
     }
 } 

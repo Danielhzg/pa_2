@@ -4,7 +4,9 @@ import 'dart:math'; // Added for sin function
 import 'dart:ui'; // Added for ImageFilter
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/chat_service.dart';
 import '../models/user.dart';
+import '../models/chat.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -66,48 +68,6 @@ class FAQ {
   FAQ({required this.question, required this.answer});
 }
 
-class ChatMessage {
-  final String message;
-  final bool isSentByMe;
-  final DateTime timestamp;
-  final bool isDelivered;
-  final bool isRead;
-  final String? productImageUrl; // Optional product image URL
-
-  ChatMessage({
-    required this.message,
-    required this.isSentByMe,
-    required this.timestamp,
-    this.isDelivered = false,
-    this.isRead = false,
-    this.productImageUrl,
-  });
-
-  // Convert ChatMessage to JSON for storage
-  Map<String, dynamic> toJson() {
-    return {
-      'message': message,
-      'isSentByMe': isSentByMe,
-      'timestamp': timestamp.toIso8601String(),
-      'isDelivered': isDelivered,
-      'isRead': isRead,
-      'productImageUrl': productImageUrl,
-    };
-  }
-
-  // Create ChatMessage from JSON
-  factory ChatMessage.fromJson(Map<String, dynamic> json) {
-    return ChatMessage(
-      message: json['message'],
-      isSentByMe: json['isSentByMe'],
-      timestamp: DateTime.parse(json['timestamp']),
-      isDelivered: json['isDelivered'],
-      isRead: json['isRead'],
-      productImageUrl: json['productImageUrl'],
-    );
-  }
-}
-
 class ChatPage extends StatefulWidget {
   final String? initialMessage;
   final String? productImageUrl;
@@ -145,10 +105,13 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   bool _isTyping = false;
   bool _isSending = false;
   Timer? _typingTimer;
+  Timer? _pollingTimer;
   User? _userData;
   AnimationController? _fabAnimationController;
   Animation<double>? _fabAnimation;
   final bool _showFaq = true; // Changed to true by default
+  final ChatService _chatService = ChatService();
+  int _lastMessageId = 0;
 
   // Variables for draggable FAQ
   Offset _faqPosition = const Offset(20, 100);
@@ -239,6 +202,9 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       }
     });
 
+    // Start polling for new messages
+    _startPolling();
+
     // Check for any pending messages set through static fields
     if (ChatPage.pendingInitialMessage != null) {
       // Get values from static fields
@@ -280,285 +246,255 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     }
   }
 
-  // New method to process initial messages immediately
-  void _processInitialMessage() {
-    // Get username if available
-    String userName = '';
-    if (_userData != null &&
-        _userData?.username != null &&
-        _userData!.username!.isNotEmpty) {
-      userName = _userData!.username!;
-    } else {
-      try {
-        final authService = Provider.of<AuthService>(context, listen: false);
-        userName = authService.currentUser?.username ?? '';
-      } catch (_) {}
-    }
-
-    // Check if this is a product stock inquiry
-    if (widget.productName != null && widget.productStock != null) {
-      final String message = widget.initialMessage!;
-
-      // Add user message immediately
-      setState(() {
-        _messages.add(
-          ChatMessage(
-            message: message,
-            isSentByMe: true,
-            timestamp: DateTime.now(),
-            isDelivered: true,
-            productImageUrl: widget.productImageUrl,
-          ),
-        );
-
-        // Also add immediate response from admin
-        _isTyping = true;
-      });
-
-      // Show admin response after a short typing animation
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) {
-          setState(() {
-            _isTyping = false;
-
-            // Create custom stock response based on the product details
-            String responseMessage = '';
-            if (widget.productStock == 0) {
-              responseMessage =
-                  'Halo${userName.isNotEmpty ? ' $userName' : ''}, terima kasih telah menghubungi kami tentang produk "${widget.productName}". Produk ini sedang kosong dan kami sedang melakukan pengisian stok. Kami perkirakan akan tersedia dalam 2-3 hari kerja. Kami akan segera memberi tahu Anda saat produk tersedia kembali.';
-            } else if (widget.requestedQuantity != null &&
-                widget.productStock! < widget.requestedQuantity!) {
-              responseMessage =
-                  'Halo${userName.isNotEmpty ? ' $userName' : ''}, terima kasih telah menghubungi kami tentang produk "${widget.productName}". Saat ini stok tersedia hanya ${widget.productStock} buah, sedangkan Anda membutuhkan ${widget.requestedQuantity} buah. Kami akan segera melakukan pengisian stok dan memberi tahu Anda saat jumlah yang Anda inginkan tersedia.';
-            } else {
-              responseMessage =
-                  'Halo${userName.isNotEmpty ? ' $userName' : ''}, terima kasih telah menghubungi kami tentang produk "${widget.productName}". Kami akan segera mengisi kembali stok produk yang anda inginkan dan akan segera mengabari anda. Terima kasih sudah tertarik pada produk kami.';
-            }
-
-            _messages.add(
-              ChatMessage(
-                message: responseMessage,
-                isSentByMe: false,
-                timestamp: DateTime.now(),
-                isDelivered: true,
-                isRead: true,
-              ),
-            );
-          });
-        }
-      });
-    } else if (widget.initialMessage!.contains("out of stock")) {
-      // Extract product name using regex
-      final RegExp regex = RegExp(r'"([^"]*)"');
-      final match = regex.firstMatch(widget.initialMessage!);
-
-      if (match != null && match.groupCount > 0) {
-        final productName = match.group(1);
-
-        // Add user message immediately
-        setState(() {
-          _messages.add(
-            ChatMessage(
-              message: widget.initialMessage!,
-              isSentByMe: true,
-              timestamp: DateTime.now(),
-              isDelivered: true,
-              productImageUrl: widget.productImageUrl,
-            ),
-          );
-
-          _isTyping = true;
-        });
-
-        // Show response after short typing animation
-        Future.delayed(const Duration(milliseconds: 1500), () {
-          if (mounted) {
-            setState(() {
-              _isTyping = false;
-              _messages.add(
-                ChatMessage(
-                  message:
-                      "Terima kasih telah menghubungi kami mengenai produk \"$productName\" yang sedang kosong. Kami perkirakan produk tersebut akan tersedia kembali dalam 2-3 hari kerja. Kami sudah mencatat ketertarikan Anda dan akan segera memberitahu begitu stok tersedia. Apakah ada yang bisa kami bantu lainnya?",
-                  isSentByMe: false,
-                  timestamp: DateTime.now(),
-                  isDelivered: true,
-                  isRead: true,
-                ),
-              );
-            });
-          }
-        });
-      } else {
-        // Regular message - send immediately
-        _messageController.text = widget.initialMessage!;
-        _handleSendMessage();
-      }
-    } else {
-      // Regular message
-      _messageController.text = widget.initialMessage!;
-      _handleSendMessage();
-    }
-  }
-
-  Future<void> _loadUserData() async {
-    try {
-      final authService = Provider.of<AuthService>(context, listen: false);
-      if (authService.currentUser != null) {
-        setState(() {
-          _userData = authService.currentUser;
-        });
-      } else {
-        await authService.getUser();
-        if (mounted) {
-          setState(() {
-            _userData = authService.currentUser;
-          });
-        }
-      }
-    } catch (e) {
-      print('Error loading user data: $e');
-    }
-  }
-
-  Future<void> _loadChatMessages() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final messagesJson = prefs.getString('chat_messages');
-
-      if (messagesJson != null && messagesJson.isNotEmpty) {
-        final List<dynamic> decodedMessages = json.decode(messagesJson);
-        final List<ChatMessage> loadedMessages =
-            decodedMessages.map((msg) => ChatMessage.fromJson(msg)).toList();
-
-        if (loadedMessages.isNotEmpty) {
-          setState(() {
-            _messages.addAll(loadedMessages);
-          });
-          print('Loaded ${loadedMessages.length} messages from storage');
-          return;
-        }
-      }
-
-      // If no messages were loaded, continue with loading dummy messages
-      print('No saved messages found, loading welcome message');
-      _loadDummyMessages();
-    } catch (e) {
-      print('Error loading chat messages: $e');
-      _loadDummyMessages();
-    }
-  }
-
-  Future<void> _loadDummyMessages() async {
-    setState(() => _isLoading = true);
-
-    // Shorter loading delay for better UX
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    if (mounted) {
-      setState(() {
-        // Only add the welcome message if there are no other messages
-        // This ensures the product inquiry appears first
-        if (_messages.isEmpty) {
-          _messages.add(
-            ChatMessage(
-              message:
-                  "Selamat datang di Customer Service Bloom Bouquet! Saya siap membantu Anda dengan pertanyaan dan kebutuhan Anda. Silakan pilih pertanyaan dari menu FAQ atau tulis pesan langsung kepada kami.",
-              isSentByMe: false,
-              timestamp: DateTime.now().subtract(const Duration(minutes: 5)),
-              isDelivered: true,
-              isRead: true,
-            ),
-          );
-        }
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _simulateTyping() {
-    setState(() => _isTyping = true);
-
-    // Cancel any existing typing timer
-    _typingTimer?.cancel();
-
-    // Set a new timer for typing indicator
-    _typingTimer = Timer(const Duration(seconds: 3), () {
+  void _startPolling() {
+    // Poll for new messages every 3 seconds
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
       if (mounted) {
-        setState(() => _isTyping = false);
+        _fetchNewMessages();
       }
     });
   }
 
-  void _handleSendMessage() {
+  Future<void> _fetchNewMessages() async {
+    try {
+      final newMessages = await _chatService.getNewMessages(_lastMessageId);
+      if (newMessages.isNotEmpty) {
+        setState(() {
+          _messages.addAll(newMessages);
+          // Update last message ID
+          if (newMessages.isNotEmpty) {
+            _lastMessageId = newMessages.last.id ?? _lastMessageId;
+          }
+        });
+
+        // Mark messages as read
+        _chatService.markMessagesAsRead();
+
+        // Scroll to bottom
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              0.0,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      }
+    } catch (e) {
+      print('Error fetching new messages: $e');
+    }
+  }
+
+  // Process initial message from product page if provided
+  void _processInitialMessage() {
+    // Process with a slight delay to ensure view is ready
+    Future.delayed(const Duration(seconds: 1), () {
+      // Don't proceed if widget is unmounted
+      if (!mounted) return;
+
+      if (widget.initialMessage != null && widget.initialMessage!.isNotEmpty) {
+        String initialMessage = widget.initialMessage!;
+
+        // If we have product info included, create a more detailed message
+        if (widget.productName != null &&
+            widget.productName!.isNotEmpty &&
+            widget.requestedQuantity != null) {
+          if (widget.productStock != null &&
+              widget.requestedQuantity! > widget.productStock!) {
+            initialMessage =
+                "Saya tertarik dengan produk ${widget.productName}, tetapi saya ingin memesan ${widget.requestedQuantity} buah sedangkan stok hanya ${widget.productStock}. Apakah bisa dibantu?";
+          } else {
+            initialMessage =
+                "Saya tertarik dengan produk ${widget.productName}. Saya ingin memesan ${widget.requestedQuantity} buah. Bisa diproses?";
+          }
+        }
+
+        // Set the message text
+        _messageController.text = initialMessage;
+
+        // Send the message
+        _sendMessage();
+      }
+    });
+  }
+
+  // Load user data from AuthService
+  Future<void> _loadUserData() async {
+    if (mounted) {
+      try {
+        final user = Provider.of<AuthService>(context, listen: false).user;
+        if (user != null) {
+          setState(() {
+            _userData = user;
+          });
+        }
+      } catch (e) {
+        print('Error loading user data: $e');
+      }
+    }
+  }
+
+  // Load chat messages from chat service
+  Future<void> _loadChatMessages() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      try {
+        // First try to load messages from the API
+        final chat = await _chatService.getUserChat();
+        if (chat != null && chat.messages.isNotEmpty) {
+          setState(() {
+            _messages.clear();
+            _messages.addAll(chat.messages);
+
+            // Update last message ID for polling
+            if (chat.messages.isNotEmpty) {
+              // Find the highest message ID
+              int maxId = chat.messages.fold(
+                  0,
+                  (max, message) => message.id != null && message.id! > max
+                      ? message.id!
+                      : max);
+              _lastMessageId = maxId;
+            }
+
+            _isLoading = false;
+          });
+
+          // Mark messages as read
+          _chatService.markMessagesAsRead();
+
+          // Scroll to bottom
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (_scrollController.hasClients) {
+              _scrollController.animateTo(
+                0.0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            }
+          });
+
+          return;
+        }
+
+        // Fall back to local storage if API fails or returns no messages
+        final localMessages = await _chatService.getLocalChatMessages();
+        if (localMessages.isNotEmpty) {
+          setState(() {
+            _messages.clear();
+            _messages.addAll(localMessages);
+            _isLoading = false;
+          });
+
+          // Scroll to bottom
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (_scrollController.hasClients) {
+              _scrollController.animateTo(
+                0.0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            }
+          });
+        } else {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      } catch (e) {
+        print('Error loading chat messages: $e');
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // Send a message
+  Future<void> _sendMessage() async {
     final message = _messageController.text.trim();
     if (message.isEmpty) return;
 
     setState(() {
       _isSending = true;
-      _messages.add(
-        ChatMessage(
-          message: message,
-          isSentByMe: true,
-          timestamp: DateTime.now(),
-        ),
+    });
+
+    try {
+      // Send message through the chat service
+      final newMessage = await _chatService.sendMessage(
+        message,
+        productImageUrl: widget.productImageUrl,
+        productName: widget.productName,
       );
-      _messageController.clear();
-    });
 
-    // Scroll to bottom
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          0.0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-
-    // Simulate sending delay
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) {
+      if (newMessage != null) {
         setState(() {
-          // Update last message to show as delivered
-          _messages[_messages.length - 1] = ChatMessage(
-            message: _messages[_messages.length - 1].message,
-            isSentByMe: true,
-            timestamp: _messages[_messages.length - 1].timestamp,
-            isDelivered: true,
-          );
+          _messages.add(newMessage);
+          _lastMessageId = newMessage.id ?? _lastMessageId;
+          _messageController.clear();
           _isSending = false;
         });
-      }
-    });
 
-    // Simulate typing
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
-        _simulateTyping();
-      }
-    });
+        // Save messages locally as backup
+        _chatService.saveChatMessagesLocally(_messages);
 
-    // Simulate response after typing
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
+        // Scroll to bottom
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              0.0,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      } else {
+        // If API call fails, add message locally temporarily
+        final localMessage = ChatMessage(
+          message: message,
+          isFromUser: true,
+          timestamp: DateTime.now(),
+          productImageUrl: widget.productImageUrl,
+          productName: widget.productName,
+        );
+
         setState(() {
-          _isTyping = false;
-          _messages.add(
-            ChatMessage(
-              message: _generateResponse(message),
-              isSentByMe: false,
-              timestamp: DateTime.now(),
-              isDelivered: true,
-              isRead: true,
-            ),
-          );
+          _messages.add(localMessage);
+          _messageController.clear();
+          _isSending = false;
+        });
 
-          // Save chat messages after adding response
-          _saveChatMessages();
+        // Save messages locally as backup
+        _chatService.saveChatMessagesLocally(_messages);
+
+        // Scroll to bottom
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              0.0,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
         });
       }
-    });
+    } catch (e) {
+      print('Error sending message: $e');
+      setState(() {
+        _isSending = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to send message. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   // Method to ask a FAQ
@@ -577,6 +513,12 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     // The response will be handled by the existing message system
   }
 
+  // Method to handle sending a message
+  void _handleSendMessage() {
+    // Simply delegate to the existing _sendMessage method
+    _sendMessage();
+  }
+
   // Method to handle product inquiry with product details
   void handleProductInquiry(String productName, String productImageUrl) {
     // Create a message with product details
@@ -587,7 +529,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       _messages.add(
         ChatMessage(
           message: message,
-          isSentByMe: true,
+          isFromUser: true,
           timestamp: DateTime.now(),
           isDelivered: true,
         ),
@@ -610,7 +552,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             ChatMessage(
               message:
                   "Terima kasih telah menghubungi kami mengenai produk \"$productName\" yang sedang kosong. Kami perkirakan produk tersebut akan tersedia kembali dalam 2-3 hari kerja. Kami sudah mencatat ketertarikan Anda dan akan segera memberitahu begitu stok tersedia. Apakah ada yang bisa kami bantu lainnya?",
-              isSentByMe: false,
+              isFromUser: false,
               timestamp: DateTime.now(),
               isDelivered: true,
               isRead: true,
@@ -621,365 +563,395 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final bottomNavHeight = widget.showBottomNav ? 60.0 : 0.0;
-    final totalBottomPadding = bottomNavHeight + bottomPadding;
+  // Simulate typing indicator
+  void _simulateTyping() {
+    if (mounted) {
+      setState(() {
+        _isTyping = true;
+      });
 
-    // Ensure the FAQ is within the screen bounds, accounting for bottom navigation
-    final safeBottomOffset = screenSize.height - 200 - totalBottomPadding;
-    _faqPosition = Offset(_faqPosition.dx.clamp(16, screenSize.width - 80),
-        _faqPosition.dy.clamp(80, safeBottomOffset));
-
-    // The main content of the chat page
-    final chatContent = Stack(
-      children: [
-        Column(
-          children: [
-            // Customer service info at the top
-            _buildCustomerServiceHeader(),
-
-            // Messages section
-            Expanded(
-              child: _messages.isEmpty
-                  ? _buildEmptyChat()
-                  : ListView.builder(
-                      reverse: true,
-                      controller: _scrollController,
-                      padding: EdgeInsets.only(
-                        top: 20,
-                        bottom: 100 +
-                            totalBottomPadding, // Increase padding to avoid bottom nav and ensure visibility
-                        left: 16,
-                        right: 16,
-                      ),
-                      itemCount: _messages.length + (_isTyping ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        // Reverse the index to display messages in reverse chronological order
-                        final actualIndex = _messages.length - 1 - index;
-
-                        // Show typing indicator at the very bottom (most recent)
-                        if (_isTyping && index == 0) {
-                          return _buildTypingIndicator();
-                        }
-
-                        // Adjust index if typing indicator is showing
-                        final messageIndex =
-                            _isTyping ? actualIndex + 1 : actualIndex;
-                        if (messageIndex < 0 ||
-                            messageIndex >= _messages.length) {
-                          return const SizedBox.shrink();
-                        }
-
-                        final message = _messages[messageIndex];
-                        return _buildMessageBubble(message);
-                      },
-                    ),
-            ),
-
-            // Message input section with SafeArea to ensure it's not covered by system UI
-            SafeArea(
-              bottom: true,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
-                color: Colors.white,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: TextField(
-                          controller: _messageController,
-                          decoration: const InputDecoration(
-                            hintText: 'Tulis pesan...',
-                            border: InputBorder.none,
-                          ),
-                          textCapitalization: TextCapitalization.sentences,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    InkWell(
-                      onTap: _isSending ? null : _handleSendMessage,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF87B2),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFFF87B2).withOpacity(0.3),
-                              blurRadius: 10,
-                              offset: const Offset(0, 5),
-                            ),
-                          ],
-                        ),
-                        child: _isSending
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white),
-                                ),
-                              )
-                            : const Icon(
-                                Icons.send_rounded,
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-
-        // Floating FAQ button - draggable
-        if (_showFaq && !_expandedFaq)
-          Positioned(
-            left: _faqPosition
-                .dx, // Use X position from state for free positioning
-            top: _faqPosition.dy, // Use Y position from state
-            child: GestureDetector(
-              onTap: _isDragging
-                  ? null
-                  : () {
-                      setState(() {
-                        _expandedFaq = true;
-                      });
-                    },
-              onPanStart: (_) {
-                setState(() {
-                  _isDragging = true;
-                });
-              },
-              onPanUpdate: (details) {
-                setState(() {
-                  // Allow free movement in both X and Y directions
-                  _faqPosition = Offset(
-                    (_faqPosition.dx + details.delta.dx)
-                        .clamp(16, screenSize.width - 80),
-                    (_faqPosition.dy + details.delta.dy)
-                        .clamp(80, safeBottomOffset),
-                  );
-                });
-              },
-              onPanEnd: (_) {
-                // Small delay to prevent accidental tap when dragging ends
-                Future.delayed(const Duration(milliseconds: 100), () {
-                  if (mounted) {
-                    setState(() {
-                      _isDragging = false;
-                    });
-                  }
-                });
-              },
-              child: _buildFaqIcon(),
-            ),
-          ),
-
-        // Show expanded FAQ panel when needed - centered on screen
-        if (_expandedFaq)
-          Positioned.fill(
-            child: Container(
-              color: Colors.black.withOpacity(0.3), // Semi-transparent overlay
-              child: Center(
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0.8, end: 1.0),
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutBack,
-                  builder: (context, scale, child) {
-                    return Transform.scale(
-                      scale: scale,
-                      child: _buildVerticalFaqPanel(),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-
-    // Return either a full Scaffold or just the content based on showBottomNav
-    if (widget.showBottomNav) {
-      return Scaffold(
-        body: chatContent,
-      );
-    } else {
-      // Just return the content without Scaffold when used in a bottom sheet
-      return chatContent;
+      // Automatically turn off typing indicator after some time
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            _isTyping = false;
+          });
+        }
+      });
     }
   }
 
-  // New method to build customer service header
-  Widget _buildCustomerServiceHeader() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 50, 16, 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Profile image with online indicator - replaced with icon
-          Container(
-            margin: const EdgeInsets.only(right: 12),
-            child: Stack(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFFFF87B2), Color(0xFFFF5A8A)],
-                    ),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFFF87B2).withOpacity(0.3),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
+  // Set user typing status and notify server
+  void _setTypingStatus(bool isTyping) {
+    if (mounted && _isTyping != isTyping) {
+      setState(() {
+        _isTyping = isTyping;
+      });
+
+      // Send typing status to server
+      _chatService.updateTypingStatus(isTyping).then((success) {
+        if (!success) {
+          print('Failed to update typing status on server');
+        }
+      });
+
+      // If typing, set a timeout to automatically set to false after inactivity
+      if (isTyping) {
+        if (_typingTimer != null) {
+          _typingTimer!.cancel();
+        }
+        _typingTimer = Timer(const Duration(seconds: 5), () {
+          if (mounted && _isTyping) {
+            _setTypingStatus(false);
+          }
+        });
+      }
+    }
+  }
+
+  // Build the animated typing indicator dots
+  Widget _buildTypingDots() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(3, (index) {
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.0, end: 1.0),
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOut,
+          builder: (context, value, child) {
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              height: 8,
+              width: 8,
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(
+                  0.4 + (0.6 * sin((value * 3 + index) * 3.14)),
+                ),
+                shape: BoxShape.circle,
+              ),
+            );
+          },
+        );
+      }),
+    );
+  }
+
+  // Process a pending message that was set through static fields
+  void _processPendingMessage(Map<String, dynamic> params) {
+    final message = params['initialMessage'] as String;
+
+    if (message.isNotEmpty) {
+      // If we have product info included, use that info
+      if (params['productName'] != null &&
+          params['requestedQuantity'] != null &&
+          params['productStock'] != null) {
+        String formattedMessage;
+        final productName = params['productName'] as String;
+        final requestedQuantity = params['requestedQuantity'] as int;
+        final productStock = params['productStock'] as int;
+
+        if (requestedQuantity > productStock) {
+          formattedMessage =
+              "Saya tertarik dengan produk $productName, tetapi saya ingin memesan $requestedQuantity buah sedangkan stok hanya $productStock. Apakah bisa dibantu?";
+        } else {
+          formattedMessage =
+              "Saya tertarik dengan produk $productName. Saya ingin memesan $requestedQuantity buah. Bisa diproses?";
+        }
+
+        // Set the message
+        _messageController.text = formattedMessage;
+      } else {
+        // Just use the original message
+        _messageController.text = message;
+      }
+
+      // Send the message
+      _sendMessage();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async {
+        if (widget.initialMessage != null &&
+            widget.initialMessage!.isNotEmpty) {
+          return false;
+        }
+        return true;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Customer Service',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              _isTyping
+                  ? const Text(
+                      'Typing...',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12,
+                        color: Colors.lightGreen,
                       ),
-                    ],
+                    )
+                  : const Text(
+                      'Online',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12,
+                        color: Colors.lightGreen,
+                      ),
+                    ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              onPressed: () {
+                setState(() {
+                  _expandedFaq = !_expandedFaq;
+                });
+              },
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Column(
+                children: [
+                  // Messages area
+                  Expanded(
+                    child: _isLoading
+                        ? const Center(
+                            child: CircularProgressIndicator(),
+                          )
+                        : _messages.isEmpty
+                            ? Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.chat_bubble_outline,
+                                      size: 80,
+                                      color: Colors.black12,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Start a conversation',
+                                      style: TextStyle(
+                                        fontFamily: 'Inter',
+                                        color: Colors.grey[600],
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'We typically reply within a few minutes',
+                                      style: TextStyle(
+                                        fontFamily: 'Inter',
+                                        color: Colors.grey[400],
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : ListView.builder(
+                                controller: _scrollController,
+                                reverse: true,
+                                padding: const EdgeInsets.all(10),
+                                itemCount: _messages.length,
+                                itemBuilder: (context, index) {
+                                  // Display messages in reverse order (newest at bottom)
+                                  final message =
+                                      _messages[_messages.length - 1 - index];
+                                  return _buildMessageBubble(message);
+                                },
+                              ),
                   ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Inner circle for design
-                      Container(
-                        width: 36,
-                        height: 36,
+
+                  // Typing indicator
+                  if (_isTyping)
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          shape: BoxShape.circle,
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 40,
+                              child: _buildTypingDots(),
+                            ),
+                          ],
                         ),
                       ),
-                      // Customer service icon
-                      const Icon(
-                        Icons.support_agent,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                    ],
-                  ),
-                ),
-                // Online indicator
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 14,
-                    height: 14,
+                    ),
+
+                  // Input bar
+                  Container(
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.green,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white,
-                        width: 2,
-                      ),
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          offset: const Offset(0, -1),
+                          blurRadius: 3,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            decoration: InputDecoration(
+                              hintText: 'Type a message',
+                              hintStyle: TextStyle(
+                                fontFamily: 'Inter',
+                                color: Colors.grey[400],
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                              filled: true,
+                              fillColor: Colors.grey[100],
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
+                            ),
+                            onChanged: (text) {
+                              // If the user is typing, send a typing indicator
+                              if (text.isNotEmpty && !_isTyping) {
+                                _setTypingStatus(true);
+                              } else if (text.isEmpty && _isTyping) {
+                                _setTypingStatus(false);
+                              }
+                            },
+                            keyboardType: TextInputType.multiline,
+                            textCapitalization: TextCapitalization.sentences,
+                            minLines: 1,
+                            maxLines: 5,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        InkWell(
+                          onTap: _isSending ? null : _sendMessage,
+                          borderRadius: BorderRadius.circular(30),
+                          child: Container(
+                            height: 48,
+                            width: 48,
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).primaryColor,
+                              shape: BoxShape.circle,
+                            ),
+                            child: _isSending
+                                ? const Center(
+                                    child: SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.send,
+                                    color: Colors.white,
+                                  ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          // Title and status
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Customer Service',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      margin: const EdgeInsets.only(right: 5),
-                      decoration: const BoxDecoration(
-                        color: Colors.green,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    Text(
-                      _isTyping ? 'mengetik...' : 'online',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // More options
-          IconButton(
-            icon: Icon(Icons.more_vert, color: Colors.grey[700]),
-            onPressed: () {
-              // Show options menu
-              showModalBottomSheet(
-                context: context,
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                ),
-                builder: (context) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.delete),
-                        title: const Text('Clear chat'),
-                        onTap: () {
-                          Navigator.pop(context);
-                          _clearChat();
-                        },
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.help_outline),
-                        title: const Text('Show FAQ'),
-                        onTap: () {
-                          Navigator.pop(context);
+                ],
+              ),
+
+              // Floating FAQ button - draggable
+              if (_showFaq && !_expandedFaq)
+                Positioned(
+                  left: _faqPosition
+                      .dx, // Use X position from state for free positioning
+                  top: _faqPosition.dy, // Use Y position from state
+                  child: GestureDetector(
+                    onTap: _isDragging
+                        ? null
+                        : () {
+                            setState(() {
+                              _expandedFaq = true;
+                            });
+                          },
+                    onPanStart: (_) {
+                      setState(() {
+                        _isDragging = true;
+                      });
+                    },
+                    onPanUpdate: (details) {
+                      setState(() {
+                        // Allow free movement in both X and Y directions
+                        _faqPosition = Offset(
+                          (_faqPosition.dx + details.delta.dx).clamp(
+                              16, MediaQuery.of(context).size.width - 80),
+                          (_faqPosition.dy + details.delta.dy).clamp(
+                              80, MediaQuery.of(context).size.height - 200),
+                        );
+                      });
+                    },
+                    onPanEnd: (_) {
+                      // Small delay to prevent accidental tap when dragging ends
+                      Future.delayed(const Duration(milliseconds: 100), () {
+                        if (mounted) {
                           setState(() {
-                            _expandedFaq = true;
+                            _isDragging = false;
                           });
-                        },
-                      ),
-                    ],
+                        }
+                      });
+                    },
+                    child: _buildFaqIcon(),
                   ),
                 ),
-              );
-            },
+
+              // Show expanded FAQ panel when needed - centered on screen
+              if (_expandedFaq)
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black
+                        .withOpacity(0.3), // Semi-transparent overlay
+                    child: Center(
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.8, end: 1.0),
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutBack,
+                        builder: (context, scale, child) {
+                          return Transform.scale(
+                            scale: scale,
+                            child: _buildVerticalFaqPanel(),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1344,840 +1316,200 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildTypingIndicator() {
-    return Align(
-      alignment: Alignment.centerLeft,
+  Widget _buildMessageBubble(ChatMessage message) {
+    return GestureDetector(
+      onLongPress: () {
+        // Show options
+        showModalBottomSheet(
+          context: context,
+          builder: (context) => SafeArea(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 16.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.copy),
+                    title: const Text('Copy Text'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      // Copy message text
+                    },
+                  ),
+                  message.isFromUser
+                      ? ListTile(
+                          leading: const Icon(Icons.delete_outline),
+                          title: const Text('Delete'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            // Delete message
+                          },
+                        )
+                      : const SizedBox.shrink(),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        margin: EdgeInsets.only(
+          top: 4,
+          bottom: 4,
+          left: message.isFromUser ? 80 : 10,
+          right: message.isFromUser ? 10 : 80,
+        ),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.only(
+            topLeft: message.isFromUser
+                ? const Radius.circular(16)
+                : const Radius.circular(4),
+            topRight: message.isFromUser
+                ? const Radius.circular(4)
+                : const Radius.circular(16),
+            bottomLeft: const Radius.circular(16),
+            bottomRight: const Radius.circular(16),
+          ),
+          color: message.isFromUser
+              ? Theme.of(context).primaryColor.withOpacity(0.9)
+              : Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.1),
-              blurRadius: 3,
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 4,
               offset: const Offset(0, 2),
             ),
           ],
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildDot(1),
-            _buildDot(2),
-            _buildDot(3),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDot(int index) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 2),
-      child: TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: 1.0),
-        duration: Duration(milliseconds: 400 + (index * 100)),
-        curve: Curves.easeInOut,
-        builder: (context, value, child) {
-          return Transform.translate(
-            offset: Offset(0, -3 * sin(value * 3.14)),
-            child: Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFF87B2).withOpacity(0.7),
-                shape: BoxShape.circle,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildMessageBubble(ChatMessage message) {
-    return Container(
-      margin: EdgeInsets.only(
-        bottom: 12,
-        left: message.isSentByMe ? 50 : 0,
-        right: message.isSentByMe ? 0 : 50,
-      ),
-      child: AnimatedOpacity(
-        opacity: 1.0,
-        duration: const Duration(milliseconds: 300),
-        child: Column(
-          crossAxisAlignment: message.isSentByMe
-              ? CrossAxisAlignment.end
-              : CrossAxisAlignment.start,
-          children: [
-            // Product image if available
-            if (message.productImageUrl != null &&
-                message.productImageUrl!.isNotEmpty)
-              Container(
-                margin: EdgeInsets.only(
-                  bottom: 8,
-                  left: message.isSentByMe ? 50 : 0,
-                  right: message.isSentByMe ? 0 : 50,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: const Color(0xFFFF87B2).withOpacity(0.5),
-                    width: 2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.2),
-                      blurRadius: 5,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.network(
-                    message.productImageUrl!,
-                    height: 150,
-                    width: 200,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        height: 150,
-                        width: 200,
-                        color: Colors.grey[200],
-                        child: const Center(
-                          child: Icon(Icons.image_not_supported,
-                              size: 40, color: Colors.grey),
-                        ),
-                      );
-                    },
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        height: 150,
-                        width: 200,
-                        color: Colors.grey[100],
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
-                                : null,
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                                Color(0xFFFF87B2)),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-
-            // Message bubble
-            Row(
-              mainAxisAlignment: message.isSentByMe
-                  ? MainAxisAlignment.end
-                  : MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (!message.isSentByMe)
-                  Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    child: const CircleAvatar(
-                      radius: 16,
-                      backgroundColor: Color(0xFFFF87B2),
-                      child: Icon(
-                        Icons.support_agent,
-                        size: 18,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                Flexible(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: message.isSentByMe
-                          ? const Color(0xFFFF87B2)
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(20).copyWith(
-                        bottomRight: message.isSentByMe
-                            ? const Radius.circular(5)
-                            : const Radius.circular(20),
-                        bottomLeft: message.isSentByMe
-                            ? const Radius.circular(20)
-                            : const Radius.circular(5),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.grey.withOpacity(0.1),
-                          blurRadius: 3,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          message.message,
-                          style: TextStyle(
-                            color: message.isSentByMe
-                                ? Colors.white
-                                : Colors.black87,
-                            fontSize: 15,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _formatTime(message.timestamp),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: message.isSentByMe
-                                    ? Colors.white.withOpacity(0.7)
-                                    : Colors.black54,
-                              ),
-                            ),
-                            if (message.isSentByMe) ...[
-                              const SizedBox(width: 4),
-                              Icon(
-                                message.isRead
-                                    ? Icons.done_all
-                                    : message.isDelivered
-                                        ? Icons.done
-                                        : Icons.access_time,
-                                size: 14,
-                                color: message.isRead
-                                    ? Colors.white
-                                    : Colors.white.withOpacity(0.7),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                if (message.isSentByMe)
-                  Container(
-                    margin: const EdgeInsets.only(left: 8),
-                    child: CircleAvatar(
-                      radius: 16,
-                      backgroundColor: const Color(0xFFFF87B2),
-                      child: _userData?.profile_photo != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: Image.network(
-                                _userData!.profile_photo!,
-                                width: 32,
-                                height: 32,
-                                fit: BoxFit.cover,
-                              ),
-                            )
-                          : Text(
-                              _userData?.username?.isNotEmpty == true
-                                  ? _userData!.username![0].toUpperCase()
-                                  : 'U',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _formatTime(DateTime time) {
-    return DateFormat('HH:mm').format(time);
-  }
-
-  String _generateResponse(String message) {
-    message = message.toLowerCase();
-
-    // Check if the message matches any FAQ
-    for (var faq in _faqs) {
-      if (message.toLowerCase() == faq.question.toLowerCase()) {
-        return faq.answer;
-      }
-    }
-
-    // Check if this is a product inquiry about availability or stock
-    if ((message.contains('stok') ||
-            message.contains('ketersediaan') ||
-            message.contains('stock') ||
-            message.contains('availability')) &&
-        (message.contains('produk') || message.contains('product'))) {
-      // Try to extract product name if it's in quotes
-      final RegExp regex = RegExp(r'"([^"]*)"');
-      final match = regex.firstMatch(message);
-
-      if (match != null && match.groupCount > 0) {
-        final productName = match.group(1);
-        return "Terima kasih telah menghubungi kami tentang ketersediaan produk \"$productName\". Kami sedang memeriksa stok produk tersebut dan akan memberikan informasi sesegera mungkin. Kami akan berusaha memenuhi permintaan Anda dan akan melakukan pengisian stok jika diperlukan.";
-      } else {
-        return "Terima kasih telah menghubungi kami tentang ketersediaan produk. Kami sedang memeriksa stok produk tersebut dan akan memberikan informasi sesegera mungkin. Mohon sebutkan nama spesifik produk yang Anda cari agar kami bisa memberikan informasi yang lebih akurat.";
-      }
-    }
-
-    // Check if this is a product inquiry (contains product name and out of stock)
-    if (message.contains('out of stock') &&
-        message.contains('interested in the product')) {
-      // Extract product name from the message using RegExp
-      final RegExp regex = RegExp(r'"([^"]*)"');
-      final match = regex.firstMatch(message);
-      if (match != null && match.groupCount > 0) {
-        final productName = match.group(1);
-        return "Terima kasih telah menghubungi kami mengenai produk \"$productName\" yang sedang kosong. Kami perkirakan produk tersebut akan tersedia kembali dalam 2-3 hari kerja. Kami sudah mencatat ketertarikan Anda dan akan segera memberitahu begitu stok tersedia. Apakah ada yang bisa kami bantu lainnya?";
-      }
-    }
-
-    // Default responses for common queries
-    if (message.contains('stok') ||
-        message.contains('stock') ||
-        message.contains('tersedia')) {
-      return "Terima kasih atas pertanyaannya. Untuk pengecekan stok produk, mohon berikan nama produk yang ingin Anda cek ketersediaannya.";
-    } else if (message.contains('harga') || message.contains('price')) {
-      return "Untuk informasi harga produk, Anda dapat melihatnya di halaman detail produk. Jika ada pertanyaan spesifik tentang harga, mohon sebutkan nama produknya.";
-    } else if (message.contains('pengiriman') ||
-        message.contains('delivery') ||
-        message.contains('kirim')) {
-      return "Untuk pengiriman, kami menyediakan beberapa metode yang dapat Anda pilih saat checkout. Pengiriman biasanya membutuhkan waktu 1-3 hari kerja tergantung lokasi Anda.";
-    } else if (message.contains('bayar') ||
-        message.contains('payment') ||
-        message.contains('pembayaran')) {
-      return "Kami menerima pembayaran melalui transfer bank, QRIS, dan virtual account. Semua metode pembayaran dapat Anda pilih saat proses checkout.";
-    } else if (message.contains('hello') ||
-        message.contains('hi') ||
-        message.contains('halo')) {
-      return "Halo! Selamat datang di Bloom Bouquet. Ada yang bisa kami bantu hari ini?";
-    } else if (message.contains('custom') ||
-        message.contains('kustom') ||
-        message.contains('sesuai permintaan')) {
-      return "Tentu, kami menyediakan layanan kustomisasi rangkaian bunga agar dapat disesuaikan dengan kebutuhan dan preferensi Anda. Anda dapat menentukan jenis bunga, warna, ukuran, serta gaya rangkaian atau mengirimkan foto bouquet bunga yang anda inginkan.";
-    } else if (message.contains('rusak') ||
-        message.contains('tidak sesuai') ||
-        message.contains('komplain')) {
-      return "Apabila bunga yang diterima dalam kondisi rusak atau tidak sesuai dengan pesanan, mohon segera menghubungi kami dalam waktu 24 jam setelah produk diterima dan segera kirim bukti foto/video. Kami akan memverifikasi laporan Anda.";
-    } else if (message.contains('buka') ||
-        message.contains('hari libur') ||
-        message.contains('minggu')) {
-      return "Ya, kami tetap melayani pelanggan pada hari libur nasional dan hari Minggu.";
-    } else {
-      return "Terima kasih atas pesan Anda. Customer service kami akan segera menghubungi Anda. Jika ada pertanyaan lain, silakan sampaikan kepada kami.";
-    }
-  }
-
-  // Helper method to create a product stock inquiry message
-  String _createProductStockMessage(
-      String productName, int stock, int requestedQuantity) {
-    if (stock == 0) {
-      return 'Halo Admin, saya tertarik dengan produk "$productName" tetapi saat ini stoknya kosong. Saya ingin membeli $requestedQuantity buah, kapan kira-kira akan tersedia kembali?';
-    } else if (stock < requestedQuantity) {
-      return 'Halo Admin, saya tertarik dengan produk "$productName" tetapi stoknya hanya tersisa $stock buah. Saya sebenarnya membutuhkan $requestedQuantity buah. Apakah bisa dipesan lebih dulu atau kapan akan ada tambahan stok?';
-    } else {
-      return 'Halo Admin, saya tertarik dengan produk "$productName" dan ingin menanyakan beberapa hal tentang produk ini sebelum melakukan pembelian.';
-    }
-  }
-
-  // Helper method to generate response for stock inquiry
-  String _generateStockInquiryResponse(
-      String productName, int stock, int requestedQuantity) {
-    if (stock == 0) {
-      return 'Terima kasih telah menghubungi kami mengenai produk "$productName". Mohon maaf produk ini sedang tidak tersedia. Kami perkirakan akan tersedia kembali dalam 3-5 hari kerja. Kami sudah mencatat permintaan Anda untuk $requestedQuantity buah dan akan segera memberitahu begitu stok tersedia. Apakah Anda ingin kami menyisihkan produk ini untuk Anda saat sudah tersedia?';
-    } else if (stock < requestedQuantity) {
-      return 'Terima kasih telah menghubungi kami mengenai produk "$productName". Benar, saat ini stok kami hanya tersisa $stock buah, sedangkan Anda membutuhkan $requestedQuantity buah. Kami bisa membantu memesan lebih dulu dan akan mendapatkan tambahan stok dalam 2-3 hari kerja. Apakah Anda berkenan untuk membeli $stock buah terlebih dahulu, dan kami akan menyisihkan sisanya ($requestedQuantity - $stock) saat stok sudah tersedia?';
-    } else {
-      return 'Terima kasih telah menghubungi kami mengenai produk "$productName". Dengan senang hati kami akan membantu menjawab pertanyaan Anda. Silakan sampaikan pertanyaan spesifik yang ingin Anda ketahui tentang produk ini. Stok saat ini tersedia $stock buah, cukup untuk memenuhi permintaan Anda sebanyak $requestedQuantity buah.';
-    }
-  }
-
-  // Method to clear chat history
-  void _clearChat() {
-    setState(() {
-      _messages.clear();
-      _loadDummyMessages();
-    });
-
-    // Save the cleared state
-    _saveChatMessages();
-  }
-
-  // New method to process pending message from static fields
-  void _processPendingMessage(Map<String, dynamic> params) {
-    final initialMessage = params['initialMessage'] as String;
-    final productName = params['productName'] as String?;
-    final productImageUrl = params['productImageUrl'] as String?;
-    final productStock = params['productStock'] as int?;
-    final requestedQuantity = params['requestedQuantity'] as int?;
-
-    // Get username if available
-    String userName = '';
-    if (_userData != null &&
-        _userData?.username != null &&
-        _userData!.username!.isNotEmpty) {
-      userName = _userData!.username!;
-    } else {
-      try {
-        final authService = Provider.of<AuthService>(context, listen: false);
-        userName = authService.currentUser?.username ?? '';
-      } catch (_) {}
-    }
-
-    // Check if this is a product stock inquiry
-    if (productName != null && productStock != null) {
-      // Add user message immediately
-      setState(() {
-        _messages.add(
-          ChatMessage(
-            message: initialMessage,
-            isSentByMe: true,
-            timestamp: DateTime.now(),
-            isDelivered: true,
-            productImageUrl: productImageUrl,
-          ),
-        );
-
-        // Show typing indicator
-        _isTyping = true;
-      });
-
-      // Show admin response after a short typing animation
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) {
-          setState(() {
-            _isTyping = false;
-
-            // Create custom stock response based on the product details
-            String responseMessage = '';
-            if (productStock == 0) {
-              responseMessage =
-                  'Halo${userName.isNotEmpty ? ' $userName' : ''}, terima kasih telah menghubungi kami tentang produk "$productName". Produk ini sedang kosong dan kami sedang melakukan pengisian stok. Kami perkirakan akan tersedia dalam 2-3 hari kerja. Kami akan segera memberi tahu Anda saat produk tersedia kembali.';
-            } else if (requestedQuantity != null &&
-                productStock < requestedQuantity) {
-              responseMessage =
-                  'Halo${userName.isNotEmpty ? ' $userName' : ''}, terima kasih telah menghubungi kami tentang produk "$productName". Saat ini stok tersedia hanya $productStock buah, sedangkan Anda membutuhkan $requestedQuantity buah. Kami akan segera melakukan pengisian stok dan memberi tahu Anda saat jumlah yang Anda inginkan tersedia.';
-            } else {
-              responseMessage =
-                  'Halo${userName.isNotEmpty ? ' $userName' : ''}, terima kasih telah menghubungi kami tentang produk "$productName". Kami akan segera mengisi kembali stok produk yang anda inginkan dan akan segera mengabari anda. Terima kasih sudah tertarik pada produk kami.';
-            }
-
-            _messages.add(
-              ChatMessage(
-                message: responseMessage,
-                isSentByMe: false,
-                timestamp: DateTime.now(),
-                isDelivered: true,
-                isRead: true,
-              ),
-            );
-          });
-        }
-      });
-    } else {
-      // Regular message - send immediately
-      _messageController.text = initialMessage;
-      _handleSendMessage();
-    }
-  }
-
-  // Static method to navigate to chat tab with a pre-set message
-  static void navigateToChat(
-    BuildContext context, {
-    required String initialMessage,
-    String? productName,
-    String? productImageUrl,
-    int? productStock,
-    int? requestedQuantity,
-  }) {
-    // Store the message parameters to be picked up when ChatPage loads
-    ChatPage.pendingInitialMessage = initialMessage;
-    ChatPage.pendingProductName = productName;
-    ChatPage.pendingProductImageUrl = productImageUrl;
-    ChatPage.pendingProductStock = productStock;
-    ChatPage.pendingRequestedQuantity = requestedQuantity;
-
-    // Navigate to home page
-    Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
-
-    // Show a toast guiding the user to the chat tab
-    Future.delayed(const Duration(milliseconds: 300), () {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Silakan lihat percakapan di tab Chat'),
-          duration: Duration(seconds: 2),
-          backgroundColor: Color(0xFFFF87B2),
-        ),
-      );
-    });
-  }
-
-  // New method to build empty chat state with FAQ suggestions
-  Widget _buildEmptyChat() {
-    return SingleChildScrollView(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const SizedBox(height: 40),
-          Container(
-            width: 100,
-            height: 100,
-            decoration: const BoxDecoration(
-              color: Color(0xFFFFF0F5),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.chat_bubble_outline,
-              size: 50,
-              color: Color(0xFFFF87B2),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Selamat Datang di Chat Bloom Bouquet',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[800],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Text(
-              'Kami siap membantu dengan semua pertanyaan Anda tentang bunga dan layanan kami',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
-            ),
-          ),
-          const SizedBox(height: 30),
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 20),
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFFFF87B2).withOpacity(0.8),
-                  const Color(0xFFFF5A8A).withOpacity(0.9)
-                ],
-              ),
-              borderRadius: BorderRadius.circular(15),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.3),
-                  spreadRadius: 2,
-                  blurRadius: 5,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.lightbulb, color: Colors.white, size: 22),
-                    SizedBox(width: 8),
-                    Text(
-                      'Apa yang bisa kami bantu?',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Bloom Bouquet menyediakan berbagai pilihan rangkaian bunga untuk segala kebutuhan. Tanyakan apa saja kepada kami, dari pengiriman, ketersediaan bunga, hingga kustomisasi pesanan.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 15),
+        child: Padding(
+          padding: const EdgeInsets.all(10.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Product Image (if available)
+              if (message.productImageUrl != null &&
+                  message.productImageUrl!.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9),
                     borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Coba tanyakan salah satu dari ini:',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFFFF5A8A),
-                        ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
                       ),
-                      const SizedBox(height: 8),
-                      ...[
-                        'Berapa lama estimasi pengiriman?',
-                        'Apakah bisa custom rangkaian bunga?',
-                        'Metode pembayaran apa saja yang tersedia?',
-                        'Bagaimana prosedur pengembalian?'
-                      ].map((item) {
-                        return InkWell(
-                          onTap: () {
-                            // Set text and send message
-                            _messageController.text = item;
-                            _handleSendMessage();
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.chat_bubble_outline,
-                                  color: Color(0xFFFF87B2),
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    item,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                ),
-                                const Icon(
-                                  Icons.arrow_forward_ios,
-                                  size: 12,
-                                  color: Color(0xFFFF87B2),
-                                ),
-                              ],
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      message.productImageUrl!,
+                      height: 150,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (BuildContext context, Widget child,
+                          ImageChunkEvent? loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          height: 150,
+                          width: double.infinity,
+                          color: Colors.grey[300],
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  Theme.of(context).primaryColor),
                             ),
                           ),
                         );
-                      }).toList(),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 30),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.question_answer,
-                  size: 20,
-                  color: Color(0xFFFF5A8A),
-                ),
-                SizedBox(width: 8),
-                Text(
-                  "Pertanyaan Populer",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFFF5A8A),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildFaqCarousel(),
-          const SizedBox(height: 40),
-        ],
-      ),
-    );
-  }
-
-  // New method to build a horizontal carousel of FAQ items
-  Widget _buildFaqCarousel() {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final itemWidth = min(240.0, screenWidth * 0.75);
-
-    return Container(
-      height: 190,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: _faqs.length,
-        physics: const BouncingScrollPhysics(),
-        itemBuilder: (context, index) {
-          final gradientColors = [
-            [const Color(0xFFFF87B2), const Color(0xFFFF5A8A)], // Pink
-            [const Color(0xFF90CAF9), const Color(0xFF42A5F5)], // Blue
-            [const Color(0xFFA5D6A7), const Color(0xFF66BB6A)], // Green
-            [const Color(0xFFFFCC80), const Color(0xFFFF9800)], // Orange
-            [const Color(0xFFCE93D8), const Color(0xFF9C27B0)], // Purple
-            [const Color(0xFFFFAB91), const Color(0xFFFF5722)], // Deep Orange
-            [const Color(0xFFB39DDB), const Color(0xFF673AB7)], // Indigo
-          ];
-
-          final colorIndex = index % gradientColors.length;
-
-          return Container(
-            width: itemWidth,
-            margin: const EdgeInsets.only(right: 16),
-            child: GestureDetector(
-              onTap: () => _askFAQ(_faqs[index]),
-              child: Hero(
-                tag: 'faq_card_$index',
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: Card(
-                    elevation: 5,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: gradientColors[colorIndex],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.question_answer,
-                                  color: Colors.white,
-                                  size: 22,
-                                ),
-                              ),
-                              const Spacer(),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  'FAQ #${index + 1}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Expanded(
-                            child: Text(
-                              _faqs[index].question,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          height: 150,
+                          width: double.infinity,
+                          color: Colors.grey[300],
+                          child: Center(
+                            child: Icon(
+                              Icons.error_outline,
+                              color: Colors.red[300],
+                              size: 40,
                             ),
                           ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'Tanyakan',
-                                      style: TextStyle(
-                                        color: gradientColors[colorIndex][1],
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Icon(
-                                      Icons.arrow_forward,
-                                      size: 14,
-                                      color: gradientColors[colorIndex][1],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
                   ),
                 ),
+
+              // Message Text
+              Text(
+                message.message,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  color: message.isFromUser ? Colors.white : Colors.black87,
+                  fontSize: 14,
+                ),
               ),
-            ),
-          );
-        },
+
+              // Timestamp and delivery status
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  const SizedBox(width: 5),
+                  Text(
+                    _formatDateTime(message.timestamp),
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 10,
+                      color: message.isFromUser
+                          ? Colors.white.withOpacity(0.7)
+                          : Colors.black54,
+                    ),
+                  ),
+                  if (message.isFromUser) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      message.isRead
+                          ? Icons.done_all
+                          : (message.isDelivered
+                              ? Icons.done
+                              : Icons.access_time),
+                      size: 12,
+                      color: message.isRead
+                          ? Colors.lightBlueAccent
+                          : Colors.white.withOpacity(0.7),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  // Method to add a new FAQ from the customer (for future implementation)
-  void _saveFrequentlyAskedQuestion(String question, String answer) {
-    // This would ideally save to a database or shared preferences
-    // For now, we'll just add it to the current session
-    setState(() {
-      _faqs.add(FAQ(question: question, answer: answer));
-    });
+  String _formatDateTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
 
-    // Show a confirmation toast
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Pertanyaan berhasil disimpan'),
-        backgroundColor: Color(0xFFFF87B2),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  // Save chat messages to SharedPreferences
-  Future<void> _saveChatMessages() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final messagesJson = _messages.map((msg) => msg.toJson()).toList();
-      await prefs.setString('chat_messages', json.encode(messagesJson));
-      print('Saved ${_messages.length} messages to storage');
-    } catch (e) {
-      print('Error saving chat messages: $e');
+    if (difference.inDays == 0) {
+      // Today: 14:30
+      return DateFormat('HH:mm').format(dateTime);
+    } else if (difference.inDays == 1) {
+      // Yesterday: Yesterday, 14:30
+      return 'Yesterday, ${DateFormat('HH:mm').format(dateTime)}';
+    } else if (difference.inDays < 7) {
+      // Within a week: Monday, 14:30
+      return DateFormat('EEEE, HH:mm').format(dateTime);
+    } else {
+      // Older: 2023-01-01, 14:30
+      return DateFormat('yyyy-MM-dd, HH:mm').format(dateTime);
     }
   }
 

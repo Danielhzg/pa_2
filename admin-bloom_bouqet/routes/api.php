@@ -10,6 +10,7 @@ use App\Http\Controllers\API\OrderController;
 use App\Http\Controllers\API\CustomerController;
 use App\Http\Controllers\API\CarouselController;
 use App\Http\Controllers\API\FavoriteController;
+use App\Http\Controllers\API\ChatController;
 
 /*
 |--------------------------------------------------------------------------
@@ -40,6 +41,13 @@ Route::prefix('v1')->group(function () {
         Route::get('favorites', [FavoriteController::class, 'index']);
         Route::post('favorites/toggle', [FavoriteController::class, 'toggle']);
         Route::get('favorites/check/{productId}', [FavoriteController::class, 'check']);
+        
+        // Chat routes
+        Route::get('chat', [ChatController::class, 'getChat']);
+        Route::post('chat/message', [ChatController::class, 'sendMessage']);
+        Route::get('chat/messages', [ChatController::class, 'getNewMessages']);
+        Route::post('chat/mark-read', [ChatController::class, 'markAsRead']);
+        Route::post('chat/typing', [ChatController::class, 'updateTypingStatus']);
     });
 
     // Product endpoints

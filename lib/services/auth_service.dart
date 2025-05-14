@@ -38,6 +38,9 @@ class AuthService extends ChangeNotifier {
   bool get initialized => _initialized;
   Future<void> get initializationFuture => _initCompleter.future;
 
+  // Alias for currentUser for backward compatibility
+  User? get user => _currentUser;
+
   AuthService() {
     // Start initialization without calling notifyListeners
     _initialize();
