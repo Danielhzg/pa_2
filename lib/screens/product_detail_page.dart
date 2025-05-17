@@ -6,7 +6,7 @@ import '../utils/image_url_helper.dart';
 import '../providers/cart_provider.dart';
 import '../services/auth_service.dart';
 import 'dart:async';
-import 'chat_page.dart'; // Import ChatPage
+import 'chat_page.dart'; // Import FAQ/Help page
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
@@ -375,8 +375,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton.icon(
-                          icon: const Icon(Icons.chat_outlined),
-                          label: const Text('Contact Admin'),
+                          icon: const Icon(Icons.question_answer),
+                          label: const Text('Bantuan'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFFF87B2),
                             foregroundColor: Colors.white,
@@ -386,22 +386,20 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                             ),
                           ),
                           onPressed: () {
-                            // Pesan otomatis sesuai permintaan
-                            final String autoMessage =
-                                'Halo Admin, saya tertarik dengan produk "${widget.product.name}" tetapi saat ini stoknya ${widget.product.stock}. Saya ingin membeli total ${isOutOfStock ? 1 : quantity}, kapan kira-kira akan tersedia kembali?';
+                            // Create an automatic message about out-of-stock product
+                            final productName = widget.product.name;
+                            final productImageUrl = widget.product.imageUrl;
+
+                            // Navigate to chat page
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => ChatPage(
-                                  initialMessage: autoMessage,
-                                  productName: widget.product.name,
-                                  productStock: widget.product.stock,
-                                  productImageUrl: ImageUrlHelper.buildImageUrl(
-                                      widget.product.imageUrl),
-                                  requestedQuantity:
-                                      isOutOfStock ? 1 : quantity,
-                                  showBottomNav:
-                                      true, // Show bottom navigation bar
+                                  showBottomNav: true,
+                                  initialMessage:
+                                      'Halo Admin, saya tertarik dengan produk "$productName" yang sedang kosong (out of stock). Kapan produk ini akan tersedia kembali? Terima kasih.',
+                                  productName: productName,
+                                  productImageUrl: productImageUrl,
                                 ),
                               ),
                             );

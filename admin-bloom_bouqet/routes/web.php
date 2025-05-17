@@ -44,7 +44,8 @@ Route::prefix('admin')->name('admin.')->middleware('auth:admin')->group(function
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
     Route::post('/orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.updateStatus');
-    Route::get('/orders/stats', [OrderController::class, 'getOrderStats'])->name('orders.stats');
+    Route::get('/orders-stats', [OrderController::class, 'getOrderStats'])->name('orders.stats');
+    Route::get('/orders-check-new', [OrderController::class, 'checkNewOrders'])->name('orders.check-new');
 
     // Report Routes
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
@@ -54,17 +55,6 @@ Route::prefix('admin')->name('admin.')->middleware('auth:admin')->group(function
     Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
     Route::get('/customers/{customer}', [CustomerController::class, 'show'])->name('customers.show');
     Route::get('/customers/export', [CustomerController::class, 'export'])->name('customers.export');
-    
-    // Chat Routes
-    Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
-    Route::get('/chats/{chat}', [ChatController::class, 'show'])->name('chats.show');
-    Route::post('/chats/{chat}/send', [ChatController::class, 'sendMessage'])->name('chats.send');
-    Route::get('/chats/unread-count', [ChatController::class, 'getUnreadCount'])->name('chats.unread');
-    Route::get('/chats/{chat}/new-messages', [ChatController::class, 'getNewMessages'])->name('chats.new-messages');
-    Route::get('/chats/{chat}/check-new', [ChatController::class, 'checkNewMessages'])->name('chats.check-new');
-    Route::post('/chats/{chat}/clear', [ChatController::class, 'clearChat'])->name('chats.clear');
-    Route::post('/chats/mark-all-read', [ChatController::class, 'markAllAsRead'])->name('chats.mark-all-read');
-    Route::get('/chats/poll-updates', [ChatController::class, 'poll'])->name('chats.poll-updates');
 });
 
 Route::prefix('admin/products')->group(function () {

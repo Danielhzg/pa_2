@@ -4,6 +4,73 @@
 
 @section('page-title', 'Dashboard')
 
+@section('styles')
+<style>
+    /* Unread order highlighting */
+    tr.unread-order {
+        background-color: rgba(255, 135, 178, 0.1) !important;
+        font-weight: 500;
+        position: relative;
+    }
+    
+    tr.unread-order::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: 4px;
+        background-color: var(--primary-color);
+    }
+    
+    /* Animation for new orders */
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+    }
+    
+    .new-order-indicator {
+        animation: pulse 1.5s infinite;
+    }
+    
+    .quick-action-card {
+        transition: all 0.3s;
+        border: none;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    }
+    
+    .quick-action-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(255, 135, 178, 0.2);
+    }
+    
+    .product-item {
+        transition: all 0.3s;
+        border-radius: 10px;
+    }
+    
+    .product-item:hover {
+        background-color: rgba(255, 230, 238, 0.3);
+    }
+    
+    .table-hover tbody tr:hover {
+        background-color: rgba(255, 182, 193, 0.1);
+    }
+    
+    .text-pink {
+        color: #FF87B2 !important;
+        font-weight: 600;
+    }
+    
+    /* Add animation to text-pink */
+    .text-pink:hover {
+        color: #D46A9F !important;
+        transition: color 0.3s;
+    }
+</style>
+@endsection
+
 @section('content')
 <div class="dashboard-container">
     <!-- Stats Cards Row -->
@@ -80,19 +147,26 @@
                             </thead>
                             <tbody>
                                 @forelse($recentOrders ?? [] as $order)
-                                <tr>
+                                <tr class="{{ $order->is_read ? '' : 'unread-order' }}">
                                     <td>#{{ $order->id }}</td>
                                     <td>{{ $order->user->username ?? 'Guest' }}</td>
                                     <td>Rp {{ number_format($order->total_amount, 0, ',', '.') }}</td>
                                     <td>
-                                        @if($order->status == 'completed')
-                                            <span class="badge bg-success">Completed</span>
-                                        @elseif($order->status == 'processing')
-                                            <span class="badge bg-primary">Processing</span>
-                                        @elseif($order->status == 'pending')
-                                            <span class="badge bg-warning">Pending</span>
+                                        @if($order->status == Order::STATUS_DELIVERED)
+                                            <span class="badge bg-success">Pesanan Selesai</span>
+                                        @elseif($order->status == Order::STATUS_PROCESSING)
+                                            <span class="badge bg-primary">Pesanan Diproses</span>
+                                        @elseif($order->status == Order::STATUS_WAITING_FOR_PAYMENT)
+                                            <span class="badge bg-warning">Menunggu Pembayaran</span>
+                                        @elseif($order->status == Order::STATUS_SHIPPING)
+                                            <span class="badge bg-info">Dalam Pengiriman</span>
+                                        @elseif($order->status == Order::STATUS_CANCELLED)
+                                            <span class="badge bg-danger">Dibatalkan</span>
                                         @else
                                             <span class="badge bg-secondary">{{ ucfirst($order->status) }}</span>
+                                        @endif
+                                        @if(!$order->is_read)
+                                            <span class="badge bg-danger ms-1">Baru</span>
                                         @endif
                                     </td>
                                     <td>{{ $order->created_at->format('d M Y') }}</td>
@@ -263,43 +337,4 @@
         </div>
     </div>
 </div>
-@endsection
-
-@section('styles')
-<style>
-    .quick-action-card {
-        transition: all 0.3s;
-        border: none;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-    }
-    
-    .quick-action-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 25px rgba(255, 135, 178, 0.2);
-    }
-    
-    .product-item {
-        transition: all 0.3s;
-        border-radius: 10px;
-    }
-    
-    .product-item:hover {
-        background-color: rgba(255, 230, 238, 0.3);
-    }
-    
-    .table-hover tbody tr:hover {
-        background-color: rgba(255, 182, 193, 0.1);
-    }
-    
-    .text-pink {
-        color: #FF87B2 !important;
-        font-weight: 600;
-    }
-    
-    /* Add animation to text-pink */
-    .text-pink:hover {
-        color: #D46A9F !important;
-        transition: color 0.3s;
-    }
-</style>
 @endsection

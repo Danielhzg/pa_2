@@ -9,6 +9,9 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use App\Models\Order;
+use App\Models\User;
+use Illuminate\Support\Facades\Log;
 
 class AdminController extends Controller
 {
@@ -18,81 +21,42 @@ class AdminController extends Controller
     public function index()
     {
         try {
-            // Check if Order model exists and orders table exists
-            if (class_exists(\App\Models\Order::class) && Schema::hasTable('orders')) {
-                $totalOrders = \App\Models\Order::count();
-                $totalRevenue = \App\Models\Order::where('status', 'completed')->sum('total_amount');
-                
-                // Get recent orders
-                $recentOrders = \App\Models\Order::with('user')
-                    ->orderBy('created_at', 'desc')
-                    ->take(5)
-                    ->get();
-            } else {
-                $totalOrders = 0;
-                $totalRevenue = 0;
-                $recentOrders = collect();
-            }
-        } catch (\Exception $e) {
-            $totalOrders = 0;
-            $totalRevenue = 0;
-            $recentOrders = collect();
-        }
-        
-        // Products and categories are likely to exist since we're in the product admin area
-        $totalProducts = Product::count(); 
-        $totalCategories = Category::count();
-        
-        try {
-            // Check if User model exists and user table exists with role column
-            if (class_exists(\App\Models\User::class) && Schema::hasTable('users') && Schema::hasColumn('users', 'role')) {
-                $totalCustomers = \App\Models\User::where('role', 'customer')->count();
-                
-                // Get recent customers
-                $recentCustomers = \App\Models\User::where('role', 'customer')
-                    ->orderBy('created_at', 'desc')
-                    ->take(5)
-                    ->get();
-            } else {
-                $totalCustomers = 0;
-                $recentCustomers = collect();
-            }
-        } catch (\Exception $e) {
-            $totalCustomers = 0;
-            $recentCustomers = collect();
-        }
-        
-        // Get popular products - without using order_items relationship
-        try {
-            // First try the original query in case the table exists
-            if (Schema::hasTable('order_items')) {
-                $popularProducts = Product::withCount('orderItems')
-                    ->orderBy('order_items_count', 'desc')
-                    ->take(5)
-                    ->get();
-            } else {
-                // Fallback to recently created products
-                $popularProducts = Product::orderBy('created_at', 'desc')
-                    ->take(5)
-                    ->get();
-            }
-        } catch (\Exception $e) {
-            // If there's an error (table doesn't exist), use a fallback
-            $popularProducts = Product::orderBy('created_at', 'desc')
-                ->take(5)
+            // Get counts for dashboard stats
+            $totalOrders = Order::count();
+            $totalProducts = Product::count();
+            $totalCustomers = User::count();
+            $totalRevenue = Order::where('status', '!=', Order::STATUS_CANCELLED)->sum('total_amount');
+            
+            // Get recent orders with unread status
+            $recentOrders = Order::with('user')
+                ->orderBy('created_at', 'desc')
+                ->limit(10)
                 ->get();
+                
+            // Get popular products
+            $popularProducts = Product::withCount('orderItems')
+                ->orderBy('order_items_count', 'desc')
+                ->limit(5)
+                ->get();
+                
+            // Get recent customers
+            $recentCustomers = User::orderBy('created_at', 'desc')
+                ->limit(5)
+                ->get();
+                
+            return view('admin.dashboard', compact(
+                'totalOrders',
+                'totalProducts',
+                'totalCustomers',
+                'totalRevenue',
+                'recentOrders',
+                'popularProducts',
+                'recentCustomers'
+            ));
+        } catch (\Exception $e) {
+            Log::error('Error in AdminController@index: ' . $e->getMessage());
+            return back()->with('error', 'Terjadi kesalahan saat memuat dashboard.');
         }
-
-        return view('admin.dashboard', compact(
-            'totalProducts', 
-            'totalCategories', 
-            'totalOrders', 
-            'totalCustomers', 
-            'totalRevenue',
-            'recentOrders',
-            'popularProducts',
-            'recentCustomers'
-        ));
     }
 
     /**

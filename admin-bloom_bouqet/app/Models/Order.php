@@ -40,7 +40,23 @@ class Order extends Model
         'shipped_at',
         'delivered_at',
         'cancelled_at',
+        'is_read',
+        'payment_deadline',
     ];
+
+    // Order status constants
+    const STATUS_WAITING_FOR_PAYMENT = 'waiting_for_payment';
+    const STATUS_PROCESSING = 'processing';
+    const STATUS_SHIPPING = 'shipping';
+    const STATUS_DELIVERED = 'delivered';
+    const STATUS_CANCELLED = 'cancelled';
+    
+    // Payment status constants
+    const PAYMENT_PENDING = 'pending';
+    const PAYMENT_PAID = 'paid';
+    const PAYMENT_FAILED = 'failed';
+    const PAYMENT_EXPIRED = 'expired';
+    const PAYMENT_REFUNDED = 'refunded';
 
     /**
      * The attributes that should be cast.
@@ -58,6 +74,7 @@ class Order extends Model
         'cancelled_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'payment_deadline' => 'datetime',
     ];
 
     /**
@@ -115,7 +132,15 @@ class Order extends Model
      */
     public function getStatusLabelAttribute(): string
     {
-        return ucfirst($this->status);
+        $statusLabels = [
+            self::STATUS_WAITING_FOR_PAYMENT => 'Menunggu Pembayaran',
+            self::STATUS_PROCESSING => 'Pesanan Sedang Diproses',
+            self::STATUS_SHIPPING => 'Pesanan Sedang Diantar',
+            self::STATUS_DELIVERED => 'Pesanan Selesai',
+            self::STATUS_CANCELLED => 'Pesanan Dibatalkan',
+        ];
+        
+        return $statusLabels[$this->status] ?? ucfirst($this->status);
     }
 
     /**
@@ -123,7 +148,15 @@ class Order extends Model
      */
     public function getPaymentStatusLabelAttribute(): string
     {
-        return ucfirst($this->payment_status);
+        $paymentLabels = [
+            self::PAYMENT_PENDING => 'Menunggu Pembayaran',
+            self::PAYMENT_PAID => 'Pembayaran Berhasil',
+            self::PAYMENT_FAILED => 'Pembayaran Gagal',
+            self::PAYMENT_EXPIRED => 'Pembayaran Kadaluarsa',
+            self::PAYMENT_REFUNDED => 'Pembayaran Dikembalikan',
+        ];
+        
+        return $paymentLabels[$this->payment_status] ?? ucfirst($this->payment_status);
     }
 
     /**
@@ -143,11 +176,11 @@ class Order extends Model
     }
 
     /**
-     * Check if order is pending.
+     * Check if order is waiting for payment.
      */
-    public function isPending(): bool
+    public function isWaitingForPayment(): bool
     {
-        return $this->status === 'pending';
+        return $this->status === self::STATUS_WAITING_FOR_PAYMENT;
     }
 
     /**
@@ -155,15 +188,15 @@ class Order extends Model
      */
     public function isProcessing(): bool
     {
-        return $this->status === 'processing';
+        return $this->status === self::STATUS_PROCESSING;
     }
 
     /**
-     * Check if order is shipped.
+     * Check if order is being shipped.
      */
-    public function isShipped(): bool
+    public function isShipping(): bool
     {
-        return $this->status === 'shipped';
+        return $this->status === self::STATUS_SHIPPING;
     }
 
     /**
@@ -171,7 +204,7 @@ class Order extends Model
      */
     public function isDelivered(): bool
     {
-        return $this->status === 'delivered';
+        return $this->status === self::STATUS_DELIVERED;
     }
 
     /**
@@ -179,15 +212,7 @@ class Order extends Model
      */
     public function isCancelled(): bool
     {
-        return $this->status === 'cancelled';
-    }
-
-    /**
-     * Check if order is refunded.
-     */
-    public function isRefunded(): bool
-    {
-        return $this->status === 'refunded';
+        return $this->status === self::STATUS_CANCELLED;
     }
 
     /**
@@ -195,7 +220,7 @@ class Order extends Model
      */
     public function isPaymentPending(): bool
     {
-        return $this->payment_status === 'pending';
+        return $this->payment_status === self::PAYMENT_PENDING;
     }
 
     /**
@@ -203,7 +228,7 @@ class Order extends Model
      */
     public function isPaymentPaid(): bool
     {
-        return $this->payment_status === 'paid';
+        return $this->payment_status === self::PAYMENT_PAID;
     }
 
     /**
@@ -211,7 +236,7 @@ class Order extends Model
      */
     public function isPaymentFailed(): bool
     {
-        return $this->payment_status === 'failed';
+        return $this->payment_status === self::PAYMENT_FAILED;
     }
 
     /**
@@ -219,7 +244,7 @@ class Order extends Model
      */
     public function isPaymentExpired(): bool
     {
-        return $this->payment_status === 'expired';
+        return $this->payment_status === self::PAYMENT_EXPIRED;
     }
 
     /**
@@ -227,7 +252,7 @@ class Order extends Model
      */
     public function isPaymentRefunded(): bool
     {
-        return $this->payment_status === 'refunded';
+        return $this->payment_status === self::PAYMENT_REFUNDED;
     }
 
     /**
@@ -249,6 +274,53 @@ class Order extends Model
         
         // Default if no data is available
         return 0;
+    }
+    
+    /**
+     * Update order status with appropriate timestamp
+     */
+    public function updateStatus(string $status)
+    {
+        $this->status = $status;
+        
+        switch ($status) {
+            case self::STATUS_PROCESSING:
+                // No specific timestamp for processing
+                break;
+                
+            case self::STATUS_SHIPPING:
+                $this->shipped_at = now();
+                break;
+                
+            case self::STATUS_DELIVERED:
+                $this->delivered_at = now();
+                break;
+                
+            case self::STATUS_CANCELLED:
+                $this->cancelled_at = now();
+                break;
+        }
+        
+        $this->save();
+    }
+    
+    /**
+     * Update payment status with appropriate timestamp
+     */
+    public function updatePaymentStatus(string $paymentStatus)
+    {
+        $this->payment_status = $paymentStatus;
+        
+        if ($paymentStatus === self::PAYMENT_PAID) {
+            $this->paid_at = now();
+            
+            // If payment is successful, automatically update order status to processing
+            if ($this->status === self::STATUS_WAITING_FOR_PAYMENT) {
+                $this->status = self::STATUS_PROCESSING;
+            }
+        }
+        
+        $this->save();
     }
 
     /**

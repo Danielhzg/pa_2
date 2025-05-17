@@ -19,12 +19,14 @@
                         <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
                             Status: 
                             <span class="fw-bold status-text">
-                                @if($order->status == 'pending')
-                                    Menunggu
+                                @if($order->status == 'waiting_for_payment')
+                                    Menunggu Pembayaran
                                 @elseif($order->status == 'processing')
-                                    Diproses
-                                @elseif($order->status == 'completed')
-                                    Selesai
+                                    Pesanan Diproses
+                                @elseif($order->status == 'shipping')
+                                    Dalam Pengiriman
+                                @elseif($order->status == 'delivered')
+                                    Pesanan Selesai
                                 @elseif($order->status == 'cancelled')
                                     Dibatalkan
                                 @endif
@@ -32,18 +34,23 @@
                         </button>
                         <ul class="dropdown-menu">
                             <li>
-                                <a class="dropdown-item status-option" href="#" data-status="pending">
-                                    Menunggu
+                                <a class="dropdown-item status-option" href="#" data-status="waiting_for_payment">
+                                    Menunggu Pembayaran
                                 </a>
                             </li>
                             <li>
                                 <a class="dropdown-item status-option" href="#" data-status="processing">
-                                    Diproses
+                                    Pesanan Diproses
                                 </a>
                             </li>
                             <li>
-                                <a class="dropdown-item status-option" href="#" data-status="completed">
-                                    Selesai
+                                <a class="dropdown-item status-option" href="#" data-status="shipping">
+                                    Dalam Pengiriman
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item status-option" href="#" data-status="delivered">
+                                    Pesanan Selesai
                                 </a>
                             </li>
                             <li>
@@ -199,9 +206,10 @@
                     if (data.success) {
                         // Update status text
                         let displayStatus = '';
-                        if (status === 'pending') displayStatus = 'Menunggu';
-                        else if (status === 'processing') displayStatus = 'Diproses';
-                        else if (status === 'completed') displayStatus = 'Selesai';
+                        if (status === 'waiting_for_payment') displayStatus = 'Menunggu Pembayaran';
+                        else if (status === 'processing') displayStatus = 'Pesanan Diproses';
+                        else if (status === 'shipping') displayStatus = 'Dalam Pengiriman';
+                        else if (status === 'delivered') displayStatus = 'Pesanan Selesai';
                         else if (status === 'cancelled') displayStatus = 'Dibatalkan';
                         
                         statusText.textContent = displayStatus;

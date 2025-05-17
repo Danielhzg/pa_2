@@ -41,45 +41,7 @@
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     
-    <!-- Chat Notification Script -->
-    <script>
-        $(document).ready(function() {
-            // Function to check for unread messages
-            function checkUnreadMessages() {
-                $.ajax({
-                    url: "{{ route('admin.chats.unread') }}",
-                    type: "GET",
-                    dataType: "json",
-                    success: function(data) {
-                        if (data.success && data.unread_count > 0) {
-                            // Update the unread counter
-                            var badge = $('.nav-link .badge[data-count-for="chat"]');
-                            if (badge.length === 0) {
-                                // Create badge if it doesn't exist
-                                $('.nav-link[href="{{ route('admin.chats.index') }}"]').append(
-                                    '<span class="badge bg-danger ms-1" data-count-for="chat">' + data.unread_count + '</span>'
-                                );
-                            } else {
-                                // Update existing badge
-                                badge.text(data.unread_count);
-                                badge.show();
-                            }
-                        } else {
-                            // Hide badge if no unread messages
-                            $('.nav-link .badge[data-count-for="chat"]').hide();
-                        }
-                    },
-                    error: function() {
-                        console.error("Failed to check for unread messages");
-                    }
-                });
-            }
-
-            // Check for unread messages every 30 seconds
-            checkUnreadMessages(); // Check on page load
-            setInterval(checkUnreadMessages, 30000); // Check every 30 seconds
-        });
-    </script>
+    <!-- Chat Functionality Removed -->
     
     @stack('scripts')
 </body>

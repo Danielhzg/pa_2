@@ -249,20 +249,20 @@ class PaymentController extends Controller
             
             // Update order payment status based on transaction status
             $paymentStatus = 'pending';
-            $orderStatus = 'pending';
+            $orderStatus = Order::STATUS_WAITING_FOR_PAYMENT;
             $message = '';
             
             if ($transactionStatus == 'capture') {
                 // For credit card payment that has been captured
                 if ($fraudStatus == 'accept') {
                     $paymentStatus = 'paid';
-                    $orderStatus = 'processing';
+                    $orderStatus = Order::STATUS_PROCESSING;
                     $message = 'Pembayaran berhasil, pesanan Anda sedang diproses.';
                 }
             } else if ($transactionStatus == 'settlement') {
                 // For bank transfer, GoTo payments, etc.
                 $paymentStatus = 'paid';
-                $orderStatus = 'processing';
+                $orderStatus = Order::STATUS_PROCESSING;
                 $message = 'Pembayaran berhasil, pesanan Anda sedang diproses.';
             } else if ($transactionStatus == 'pending') {
                 // Payment is pending
@@ -327,7 +327,7 @@ class PaymentController extends Controller
             // If order not found, create a temporary QR code with the provided order ID
             if (!$order) {
                 $qrData = "QRIS.ID|MERCHANT.{$orderId}|AMOUNT.0|"
-                    . "DATETIME." . date('YmdHis') . "|EXPIRE." . date('YmdHis', strtotime('+24 hours'));
+                    . "DATETIME." . date('YmdHis') . "|EXPIRE." . date('YmdHis', strtotime('+15 minutes'));
 
                 // Generate QR code image as SVG and convert to base64
                 $qrCodeSvg = QrCode::format('svg')
@@ -345,19 +345,28 @@ class PaymentController extends Controller
                         'qr_code_data' => $qrData,
                         'qr_code_url' => $qrCodeBase64,
                         'amount' => 0,
-                        'expires_at' => date('Y-m-d H:i:s', strtotime('+24 hours')),
+                        'expires_at' => date('Y-m-d H:i:s', strtotime('+15 minutes')),
                     ]
                 ], 200);
             }
 
             // Create QR code data based on payment method
             $qrData = '';
+            $expiryTime = date('Y-m-d H:i:s', strtotime('+15 minutes'));
+            
+            // Set payment deadline if not already set
+            if (!$order->payment_deadline) {
+                $order->payment_deadline = $expiryTime;
+            } else {
+                $expiryTime = $order->payment_deadline;
+            }
             
             if ($order->payment_method === 'qris' || $order->payment_method === 'qr_code') {
                 // For QRIS (Indonesian standard QR code payments)
                 // Create a standardized string containing payment info
+                $expiryTimeFormat = date('YmdHis', strtotime($expiryTime));
                 $qrData = "QRIS.ID|MERCHANT.{$order->order_id}|AMOUNT.{$order->total_amount}|"
-                        . "DATETIME." . date('YmdHis') . "|EXPIRE." . date('YmdHis', strtotime('+24 hours'));
+                        . "DATETIME." . date('YmdHis') . "|EXPIRE.{$expiryTimeFormat}";
             } else {
                 // For Midtrans payment methods (using their token)
                 $qrData = "MIDTRANS|{$order->midtrans_token}|{$order->order_id}|{$order->total_amount}";
@@ -386,7 +395,7 @@ class PaymentController extends Controller
                     'qr_code_data' => $qrData,
                     'qr_code_url' => $qrCodeBase64,
                     'amount' => $order->total_amount,
-                    'expires_at' => date('Y-m-d H:i:s', strtotime('+24 hours')),
+                    'expires_at' => $expiryTime,
                 ]
             ], 200);
 
@@ -429,19 +438,19 @@ class PaymentController extends Controller
             // Default message if not provided
             if (!$message) {
                 switch ($status) {
-                    case 'pending':
+                    case Order::STATUS_WAITING_FOR_PAYMENT:
                         $message = 'Pesanan Anda sedang menunggu pembayaran.';
                         break;
-                    case 'processing':
+                    case Order::STATUS_PROCESSING:
                         $message = 'Pesanan Anda sedang diproses.';
                         break;
-                    case 'shipped':
+                    case Order::STATUS_SHIPPING:
                         $message = 'Pesanan Anda telah dikirim.';
                         break;
-                    case 'completed':
+                    case Order::STATUS_DELIVERED:
                         $message = 'Pesanan Anda telah selesai.';
                         break;
-                    case 'cancelled':
+                    case Order::STATUS_CANCELLED:
                         $message = 'Pesanan Anda telah dibatalkan.';
                         break;
                     default:

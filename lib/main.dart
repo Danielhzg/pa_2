@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'services/auth_service.dart';
 import 'services/payment_service.dart'; // Import PaymentService
+import 'services/order_service.dart'; // Import OrderService
 import 'screens/splash_screen.dart';
 import 'login_page.dart';
 import 'register.dart';
@@ -166,6 +167,11 @@ class ProviderConfig extends StatelessWidget {
           create: (context) => FavoriteProvider(context.read<AuthService>()),
           update: (context, authService, previous) =>
               previous ?? FavoriteProvider(authService),
+        ),
+        ChangeNotifierProxyProvider<AuthService, OrderService>(
+          create: (context) => OrderService(context.read<AuthService>()),
+          update: (context, authService, previous) =>
+              previous ?? OrderService(authService),
         ),
       ],
       child: child,

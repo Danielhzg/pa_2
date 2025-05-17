@@ -22,13 +22,12 @@ return new class extends Migration
             $table->decimal('shipping_cost', 10, 2);
             $table->decimal('total_amount', 10, 2)->comment('Subtotal + shipping cost');
             $table->enum('status', [
-                'pending',
+                'waiting_for_payment',
                 'processing',
-                'shipped',
+                'shipping',
                 'delivered',
-                'cancelled',
-                'refunded'
-            ])->default('pending');
+                'cancelled'
+            ])->default('waiting_for_payment');
             $table->enum('payment_status', [
                 'pending',
                 'paid',
@@ -40,7 +39,7 @@ return new class extends Migration
             $table->string('midtrans_token')->nullable();
             $table->string('midtrans_redirect_url')->nullable();
             $table->text('payment_details')->nullable()->comment('JSON encoded payment details');
-            $table->text('qr_code_data')->nullable()->comment('Data encoded in the QR code');
+            $table->text('qr_code_data')->nullable()->comment('JSON encoded data for QR code');
             $table->string('qr_code_url')->nullable()->comment('URL to the QR code image if stored');
             $table->text('notes')->nullable();
             $table->json('order_items')->nullable()->comment('JSON encoded order items data');

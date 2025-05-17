@@ -83,14 +83,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     _fetchBanners(); // Fetch banners from API
     _loadUsername();
 
-    // Check if there are pending chat messages and switch to chat tab if needed
-    if (ChatPage.pendingInitialMessage != null) {
-      // Switch to chat tab (index 2)
-      setState(() {
-        _selectedIndex = 2;
-      });
-    }
-
     // Auto-scroll banner - start after a short delay
     Future.delayed(const Duration(seconds: 1), () {
       _startBannerAutoScroll();
@@ -1516,7 +1508,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           BottomNavigationBarItem(
               icon: Icon(LineIcons.shoppingBag), label: 'Cart'),
           BottomNavigationBarItem(
-              icon: Icon(LineIcons.commentDots), label: 'Chat'),
+              icon: Icon(LineIcons.commentAlt), label: 'Bantuan'),
           BottomNavigationBarItem(icon: Icon(LineIcons.user), label: 'Profile'),
         ],
       ),

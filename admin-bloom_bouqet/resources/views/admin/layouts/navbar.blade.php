@@ -43,9 +43,7 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('admin.chats.*') ? 'active' : '' }}" 
-                       href="{{ route('admin.chats.index') }}">
-                        Chat
+                    <!-- Chat functionality removed -->
                     </a>
                 </li>
             </ul>

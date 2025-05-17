@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -7,9 +9,13 @@ import '../models/cart_item.dart';
 import 'package:flutter/foundation.dart';
 
 class PaymentService {
-  // Updated Midtrans API URLs
+  // Updated Midtrans API URLs - with fallback IP for sandbox.midtrans.com if needed
   final String snapUrl = 'https://app.sandbox.midtrans.com/snap/v1';
+  final String snapUrlFallback =
+      'https://103.30.236.18/snap/v1'; // IP address fallback
   final String coreApiUrl = 'https://api.sandbox.midtrans.com/v2';
+  final String coreApiUrlFallback =
+      'https://103.30.236.19/v2'; // IP address fallback
   final String clientKey = 'SB-Mid-client-LqPJ6nGv11G9ceCF';
   final String serverKey = 'SB-Mid-server-xkWYB70njNQ8ETfGJj_lhcry';
   final String apiUrl = 'http://10.0.2.2:8000/api'; // Laravel API URL
@@ -20,6 +26,7 @@ class PaymentService {
   PaymentService._internal();
 
   bool _initialized = false;
+  bool _useIpFallback = false; // Flag to use IP address instead of domain
 
   // Initialize payment service and verify connectivity
   Future<bool> initialize() async {
@@ -27,19 +34,107 @@ class PaymentService {
 
     debugPrint('Initializing PaymentService...');
     try {
+      // Check basic internet connectivity
+      final hasInternet = await checkInternetConnection();
+      if (!hasInternet) {
+        debugPrint('No internet connection detected!');
+        return false;
+      }
+
       // Verify connectivity to Midtrans API
       final midtransConnected = await pingMidtransAPI();
       if (midtransConnected) {
         debugPrint('Successfully connected to Midtrans API!');
+        _useIpFallback = false;
       } else {
         debugPrint(
-            'WARNING: Could not connect to Midtrans API. Payment functionality may be limited.');
+            'WARNING: Could not connect to Midtrans API with domain. Trying IP fallback...');
+        // Try with IP address fallback
+        final fallbackConnected = await pingMidtransAPIFallback();
+        if (fallbackConnected) {
+          _useIpFallback = true;
+          debugPrint('Successfully connected to Midtrans API via IP fallback!');
+        } else {
+          debugPrint(
+              'WARNING: All connection attempts to Midtrans failed. Payment functionality will be limited.');
+        }
       }
 
       _initialized = true;
       return true;
     } catch (e) {
       debugPrint('Error initializing PaymentService: $e');
+      return false;
+    }
+  }
+
+  // Check basic internet connectivity
+  Future<bool> checkInternetConnection() async {
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      return false;
+    } catch (e) {
+      debugPrint('Error checking internet connection: $e');
+      return false;
+    }
+  }
+
+  // Method to ping Midtrans API using domain name
+  Future<bool> pingMidtransAPI() async {
+    try {
+      debugPrint('Pinging Midtrans API to verify connectivity...');
+
+      // Use a simple request to test connectivity
+      final String authString = base64.encode(utf8.encode('$serverKey:'));
+
+      // Try with a shorter timeout
+      final coreResponse = await http.get(
+        Uri.parse('$coreApiUrl/ping'),
+        headers: {
+          'Authorization': 'Basic $authString',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 3));
+
+      debugPrint('Core API ping response: ${coreResponse.statusCode}');
+      return coreResponse.statusCode < 500;
+    } on SocketException catch (e) {
+      debugPrint('Socket error pinging Midtrans API: $e');
+      return false;
+    } on TimeoutException catch (e) {
+      debugPrint('Timeout pinging Midtrans API: $e');
+      return false;
+    } catch (e) {
+      debugPrint('Error pinging Midtrans API: $e');
+      return false;
+    }
+  }
+
+  // Method to ping Midtrans API using IP address fallback
+  Future<bool> pingMidtransAPIFallback() async {
+    try {
+      debugPrint('Pinging Midtrans API via IP fallback...');
+
+      // Use a simple request to test connectivity to the IP address
+      final String authString = base64.encode(utf8.encode('$serverKey:'));
+
+      // Try with a shorter timeout
+      final coreResponse = await http.get(
+        Uri.parse('$coreApiUrlFallback/ping'),
+        headers: {
+          'Authorization': 'Basic $authString',
+          'Accept': 'application/json',
+          'Host':
+              'api.sandbox.midtrans.com', // Add host header for proper routing
+        },
+      ).timeout(const Duration(seconds: 3));
+
+      debugPrint('Core API fallback ping response: ${coreResponse.statusCode}');
+      return coreResponse.statusCode < 500;
+    } catch (e) {
+      debugPrint('Error pinging Midtrans API via fallback: $e');
       return false;
     }
   }
@@ -588,6 +683,21 @@ class PaymentService {
     String? selectedBank,
   }) async {
     try {
+      // First, check for internet connection
+      final hasInternet = await checkInternetConnection();
+      if (!hasInternet) {
+        return {
+          'success': false,
+          'message':
+              'No internet connection. Please check your network and try again.',
+        };
+      }
+
+      // Initialize payment service if not already initialized
+      if (!_initialized) {
+        await initialize();
+      }
+
       // Calculate total amount
       double totalAmount = 0;
       List<Map<String, dynamic>> itemDetails = [];
@@ -628,8 +738,72 @@ class PaymentService {
       final firstName = names.isNotEmpty ? names[0] : 'Customer';
       final lastName = names.length > 1 ? names.sublist(1).join(' ') : '';
 
+      // Get auth token for API calls
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      // First create the order in our own system to ensure it exists with waiting_for_payment status
+      try {
+        final orderResponse = await http
+            .post(
+              Uri.parse('$apiUrl/orders'),
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+              body: jsonEncode({
+                'id': orderId,
+                'items': items,
+                'deliveryAddress': {
+                  'name': '$firstName $lastName',
+                  'address': shippingAddress,
+                  'phone': phoneNumber,
+                },
+                'subtotal': totalAmount - shippingCost,
+                'shippingCost': shippingCost,
+                'total': totalAmount,
+                'paymentMethod': selectedBank ?? 'other',
+                'status': 'waiting_for_payment', // Explicitly set status
+              }),
+            )
+            .timeout(const Duration(seconds: 10));
+
+        if (orderResponse.statusCode != 201 &&
+            orderResponse.statusCode != 200) {
+          debugPrint(
+              'Warning: Failed to pre-create order: ${orderResponse.body}');
+          // Continue anyway, we'll retry this after payment
+        } else {
+          debugPrint(
+              '✓ Order pre-created successfully with waiting_for_payment status');
+        }
+      } catch (e) {
+        debugPrint('Warning: Failed to pre-create order: $e');
+        // Continue anyway, we'll retry this after payment
+      }
+
       // Prepare authentication for Midtrans
       final String authString = base64.encode(utf8.encode('$serverKey:'));
+
+      // Choose URL based on connectivity status (domain or IP fallback)
+      final String snapApiUrl = _useIpFallback ? snapUrlFallback : snapUrl;
+      final String coreApiEndpoint =
+          _useIpFallback ? coreApiUrlFallback : coreApiUrl;
+
+      // Prepare headers with host header if using IP fallback
+      final Map<String, String> headers = {
+        'Authorization': 'Basic $authString',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+
+      // Add host header if using IP fallback
+      if (_useIpFallback) {
+        headers['Host'] = selectedBank != null
+            ? 'api.sandbox.midtrans.com'
+            : 'app.sandbox.midtrans.com';
+      }
 
       // Decide which endpoint to use based on payment method
       Uri endpointUrl;
@@ -637,7 +811,7 @@ class PaymentService {
 
       if (selectedBank != null && selectedBank.isNotEmpty) {
         // For VA payments, use Core API direct charge
-        endpointUrl = Uri.parse('$coreApiUrl/charge');
+        endpointUrl = Uri.parse('$coreApiEndpoint/charge');
 
         requestBody = {
           'payment_type': 'bank_transfer',
@@ -664,7 +838,7 @@ class PaymentService {
         };
       } else {
         // For other payment methods, use Snap
-        endpointUrl = Uri.parse('$snapUrl/transactions');
+        endpointUrl = Uri.parse('$snapApiUrl/transactions');
 
         requestBody = {
           'transaction_details': {
@@ -696,16 +870,18 @@ class PaymentService {
         };
       }
 
-      // Make API request to Midtrans
-      final response = await http.post(
-        endpointUrl,
-        headers: {
-          'Authorization': 'Basic $authString',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(requestBody),
-      );
+      debugPrint('Making API request to Midtrans...');
+      debugPrint(
+          'Using ${_useIpFallback ? "IP fallback" : "domain"} URL: ${endpointUrl.toString()}');
+
+      // Make API request to Midtrans with shorter timeout
+      final response = await http
+          .post(
+            endpointUrl,
+            headers: headers,
+            body: jsonEncode(requestBody),
+          )
+          .timeout(const Duration(seconds: 10));
 
       debugPrint('Midtrans API URL: ${endpointUrl.toString()}');
       debugPrint('Midtrans response code: ${response.statusCode}');
@@ -759,6 +935,20 @@ class PaymentService {
           'message': 'Failed to create payment: ${response.statusCode}',
         };
       }
+    } on SocketException catch (e) {
+      debugPrint('Network error: $e');
+      return {
+        'success': false,
+        'message':
+            'Connection error: Unable to reach the payment server. Please check your internet connection and try again.',
+      };
+    } on TimeoutException catch (e) {
+      debugPrint('Request timed out: $e');
+      return {
+        'success': false,
+        'message':
+            'Request timed out. The payment server is taking too long to respond. Please try again later.',
+      };
     } catch (e) {
       debugPrint('Error creating Midtrans payment: $e');
       return {
@@ -769,7 +959,8 @@ class PaymentService {
   }
 
   // Get QR Code for payment
-  Future<Map<String, dynamic>> getQRCode(String orderId) async {
+  Future<Map<String, dynamic>> getQRCode(String orderId,
+      {double? amount}) async {
     try {
       // Get authentication token
       final String authString = base64.encode(utf8.encode('$serverKey:'));
@@ -783,13 +974,52 @@ class PaymentService {
           'Accept': 'application/json',
         },
       );
-
       debugPrint('Checking order status URL: ${statusUrl.toString()}');
+
+      // Get the amount for this transaction
+      double transactionAmount = amount ?? 0;
+
+      // Try to get the order details to extract the amount
+      try {
+        final orderResponse = await http.get(
+          Uri.parse('$apiUrl/orders/$orderId'),
+          headers: {'Content-Type': 'application/json'},
+        );
+
+        if (orderResponse.statusCode == 200) {
+          final orderData = jsonDecode(orderResponse.body);
+          if (orderData['total_amount'] != null) {
+            transactionAmount =
+                double.tryParse(orderData['total_amount'].toString()) ??
+                    transactionAmount;
+          }
+        }
+      } catch (e) {
+        debugPrint('Error fetching order details: $e');
+      }
+
+      if (statusResponse.statusCode == 200) {
+        // Transaction exists, get the amount from the response
+        final statusData = jsonDecode(statusResponse.body);
+        transactionAmount =
+            double.tryParse(statusData['gross_amount'].toString()) ??
+                transactionAmount;
+
+        // Make sure we have a valid amount
+        if (transactionAmount <= 0) {
+          transactionAmount = amount ?? 10000;
+        }
+      }
+
+      // Ensure we have a valid amount
+      if (transactionAmount <= 0) {
+        transactionAmount = 10000;
+      }
+      debugPrint('Using transaction amount: $transactionAmount');
 
       if (statusResponse.statusCode != 200) {
         debugPrint('Order not found or invalid: ${statusResponse.body}');
-
-        // Create a new QRIS transaction
+        // Create a new QRIS transaction with the correct amount
         final transaction = await http.post(
           Uri.parse('$coreApiUrl/charge'),
           headers: {
@@ -801,15 +1031,21 @@ class PaymentService {
             'payment_type': 'qris',
             'transaction_details': {
               'order_id': 'QRIS-$orderId',
-              'gross_amount': 10000, // Default amount if not specified
+              'gross_amount':
+                  transactionAmount.toInt(), // Use the correct amount
             },
-            'qris': {'acquirer': 'gopay'}
+            'qris': {'acquirer': 'gopay'},
+            'expiry': {'duration': 15, 'unit': 'minute'}
           }),
         );
-
         if (transaction.statusCode == 200 || transaction.statusCode == 201) {
           final responseData = jsonDecode(transaction.body);
 
+          // Add expiry time 15 minutes from now
+          final DateTime expiryTime =
+              DateTime.now().add(const Duration(minutes: 15));
+          final String expiryTimeStr =
+              responseData['expiry_time'] ?? expiryTime.toIso8601String();
           return {
             'qr_code_url': responseData['actions']?.firstWhere(
                   (action) => action['name'] == 'generate-qr-code',
@@ -818,18 +1054,24 @@ class PaymentService {
                 '',
             'qr_code_data':
                 responseData['qris_data'] ?? responseData['payment_code'] ?? '',
+            'expiry_time': expiryTimeStr,
+            'transaction_id': responseData['transaction_id'] ?? '',
+            'amount': transactionAmount,
           };
         } else {
           debugPrint('Failed to create QRIS transaction: ${transaction.body}');
-          return _createFallbackQR(orderId);
+          return _createFallbackQR(orderId, amount: transactionAmount);
         }
       }
-
       // Transaction exists, try to get the QR code information
       final statusData = jsonDecode(statusResponse.body);
-
       if (statusData['payment_type'] == 'qris') {
         // This is a QRIS transaction, extract QR data
+        final DateTime expiryTime =
+            DateTime.now().add(const Duration(minutes: 15));
+        final String expiryTimeStr =
+            statusData['expiry_time'] ?? expiryTime.toIso8601String();
+
         return {
           'qr_code_url': statusData['actions']?.firstWhere(
                 (action) => action['name'] == 'generate-qr-code',
@@ -838,9 +1080,12 @@ class PaymentService {
               '',
           'qr_code_data':
               statusData['qris_data'] ?? statusData['payment_code'] ?? '',
+          'expiry_time': expiryTimeStr,
+          'transaction_id': statusData['transaction_id'] ?? '',
+          'amount': transactionAmount,
         };
       } else {
-        // Create a new QRIS transaction for this order
+        // Create a new QRIS transaction for this order with the correct amount
         final qrisUrl = Uri.parse('$coreApiUrl/charge');
         final qrisResponse = await http.post(
           qrisUrl,
@@ -853,15 +1098,21 @@ class PaymentService {
             'payment_type': 'qris',
             'transaction_details': {
               'order_id': 'QRIS-$orderId',
-              'gross_amount': statusData['gross_amount'] ?? 10000,
+              'gross_amount':
+                  transactionAmount.toInt(), // Use transaction amount
             },
-            'qris': {'acquirer': 'gopay'}
+            'qris': {'acquirer': 'gopay'},
+            'expiry': {'duration': 15, 'unit': 'minute'}
           }),
         );
-
         if (qrisResponse.statusCode == 200 || qrisResponse.statusCode == 201) {
           final responseData = jsonDecode(qrisResponse.body);
 
+          // Add expiry time 15 minutes from now
+          final DateTime expiryTime =
+              DateTime.now().add(const Duration(minutes: 15));
+          final String expiryTimeStr =
+              responseData['expiry_time'] ?? expiryTime.toIso8601String();
           return {
             'qr_code_url': responseData['actions']?.firstWhere(
                   (action) => action['name'] == 'generate-qr-code',
@@ -870,24 +1121,30 @@ class PaymentService {
                 '',
             'qr_code_data':
                 responseData['qris_data'] ?? responseData['payment_code'] ?? '',
+            'expiry_time': expiryTimeStr,
+            'transaction_id': responseData['transaction_id'] ?? '',
+            'amount': transactionAmount,
           };
         }
       }
-
       // If all else fails, return fallback QR data
-      return _createFallbackQR(orderId);
+      return _createFallbackQR(orderId, amount: transactionAmount);
     } catch (e) {
       debugPrint('Error generating QR code: $e');
-      return _createFallbackQR(orderId);
+      return _createFallbackQR(orderId, amount: amount);
     }
   }
 
   // Helper method to create fallback QR data
-  Map<String, dynamic> _createFallbackQR(String orderId) {
+  Map<String, dynamic> _createFallbackQR(String orderId, {double? amount}) {
+    final amountStr = amount != null ? amount.toInt().toString() : '0';
+    final DateTime expiryTime = DateTime.now().add(const Duration(minutes: 15));
     return {
       'qr_code_url': '',
       'qr_code_data':
-          'QRIS.ID|ORDER.$orderId|TIME.${DateTime.now().millisecondsSinceEpoch}',
+          'QRIS.ID|ORDER.$orderId|AMOUNT.$amountStr|TIME.${DateTime.now().millisecondsSinceEpoch}',
+      'expiry_time': expiryTime.toIso8601String(),
+      'amount': amount ?? 0,
     };
   }
 
@@ -1094,48 +1351,6 @@ class PaymentService {
     } catch (e) {
       debugPrint('Error creating payment record: $e');
       return {'id': orderId, 'status': status};
-    }
-  }
-
-  // Method to ping Midtrans API and verify connectivity
-  Future<bool> pingMidtransAPI() async {
-    try {
-      debugPrint('Pinging Midtrans API to verify connectivity...');
-
-      // Use a simple request to test connectivity
-      final String authString = base64.encode(utf8.encode('$serverKey:'));
-
-      // Try Core API first
-      final coreResponse = await http.get(
-        Uri.parse('$coreApiUrl/ping'),
-        headers: {
-          'Authorization': 'Basic $authString',
-          'Accept': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 5));
-
-      debugPrint('Core API ping response: ${coreResponse.statusCode}');
-
-      if (coreResponse.statusCode < 500) {
-        // Even if it's 404, it means we can reach the server
-        return true;
-      }
-
-      // Try SNAP API
-      final snapResponse = await http.get(
-        Uri.parse('$snapUrl/ping'),
-        headers: {
-          'Authorization': 'Basic $authString',
-          'Accept': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 5));
-
-      debugPrint('SNAP API ping response: ${snapResponse.statusCode}');
-
-      return snapResponse.statusCode < 500;
-    } catch (e) {
-      debugPrint('Error pinging Midtrans API: $e');
-      return false;
     }
   }
 

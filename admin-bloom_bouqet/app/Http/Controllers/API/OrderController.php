@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Models\Order;
+use Carbon\Carbon;
 
 class OrderController extends Controller
 {
@@ -65,6 +67,14 @@ class OrderController extends Controller
             $user = $request->user();
             $userId = $user ? $user->id : null;
 
+            // Set payment deadline for QR payments (15 minutes from now)
+            $paymentDeadline = null;
+            if (strtolower($request->paymentMethod) === 'qris' || 
+                strtolower($request->paymentMethod) === 'qr' ||
+                strtolower($request->paymentMethod) === 'qr_code') {
+                $paymentDeadline = Carbon::now()->addMinutes(15);
+            }
+
             // Store order in database with fixed statuses
             $orderId = DB::table('orders')->insertGetId([
                 'order_id' => $request->id,
@@ -74,9 +84,11 @@ class OrderController extends Controller
                 'total_amount' => $request->total,
                 'shipping_cost' => $request->shippingCost,
                 'payment_method' => $request->paymentMethod,
-                'status' => 'pending', // Always set to pending
-                'payment_status' => 'pending', // Always set to pending
+                'status' => Order::STATUS_WAITING_FOR_PAYMENT,
+                'payment_status' => 'pending',
                 'qr_code_url' => $request->qrCodeUrl,
+                'is_read' => false,
+                'payment_deadline' => $paymentDeadline,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -115,6 +127,7 @@ class OrderController extends Controller
                 'orderStatus' => $order->status,
                 'createdAt' => $order->created_at,
                 'qrCodeUrl' => $order->qr_code_url,
+                'paymentDeadline' => $order->payment_deadline,
             ];
 
             return response()->json([
@@ -140,8 +153,8 @@ class OrderController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'status' => 'required|string|in:pending,processing,completed,cancelled',
-                'payment_status' => 'required|string|in:pending,success,failed,expired',
+                'status' => 'required|string|in:waiting_for_payment,processing,shipping,delivered,cancelled',
+                'payment_status' => 'required|string|in:pending,paid,failed,expired,refunded',
             ]);
 
             if ($validator->fails()) {

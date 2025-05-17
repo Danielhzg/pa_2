@@ -102,23 +102,20 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   final List<ChatMessage> _messages = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
-  bool _isTyping = false;
   bool _isSending = false;
-  Timer? _typingTimer;
-  Timer? _pollingTimer;
   User? _userData;
   AnimationController? _fabAnimationController;
   Animation<double>? _fabAnimation;
-  final bool _showFaq = true; // Changed to true by default
+  final bool _showFaq = true;
   final ChatService _chatService = ChatService();
   int _lastMessageId = 0;
 
   // Variables for draggable FAQ
   Offset _faqPosition = const Offset(20, 100);
-  bool _isDragging = false; // Changed to non-final to allow updating
+  bool _isDragging = false;
   bool _expandedFaq = false;
 
-  // List of frequently asked questions - updated with the new content
+  // List of frequently asked questions
   final List<FAQ> _faqs = [
     FAQ(
       question: "Berapa lama estimasi pengisian stok?",
@@ -184,27 +181,6 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     );
     _fabAnimationController!.forward();
 
-    // Automatically show FAQ for first time or when chat is empty
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted && _messages.isEmpty) {
-        setState(() {
-          _expandedFaq = true;
-        });
-
-        // Auto-hide FAQ panel after some time if user doesn't interact with it
-        Future.delayed(const Duration(seconds: 8), () {
-          if (mounted && _expandedFaq && _messages.isEmpty) {
-            setState(() {
-              _expandedFaq = false;
-            });
-          }
-        });
-      }
-    });
-
-    // Start polling for new messages
-    _startPolling();
-
     // Check for any pending messages set through static fields
     if (ChatPage.pendingInitialMessage != null) {
       // Get values from static fields
@@ -243,46 +219,6 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         widget.initialMessage!.isNotEmpty) {
       // Process immediately without delay
       _processInitialMessage();
-    }
-  }
-
-  void _startPolling() {
-    // Poll for new messages every 3 seconds
-    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (mounted) {
-        _fetchNewMessages();
-      }
-    });
-  }
-
-  Future<void> _fetchNewMessages() async {
-    try {
-      final newMessages = await _chatService.getNewMessages(_lastMessageId);
-      if (newMessages.isNotEmpty) {
-        setState(() {
-          _messages.addAll(newMessages);
-          // Update last message ID
-          if (newMessages.isNotEmpty) {
-            _lastMessageId = newMessages.last.id ?? _lastMessageId;
-          }
-        });
-
-        // Mark messages as read
-        _chatService.markMessagesAsRead();
-
-        // Scroll to bottom
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              0.0,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-            );
-          }
-        });
-      }
-    } catch (e) {
-      print('Error fetching new messages: $e');
     }
   }
 
@@ -404,6 +340,9 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           setState(() {
             _isLoading = false;
           });
+
+          // Show FAQ if no message history
+          _showFaqPanel();
         }
       } catch (e) {
         print('Error loading chat messages: $e');
@@ -424,6 +363,20 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     });
 
     try {
+      // Create a local message first to show immediately
+      final localMessage = ChatMessage(
+        message: message,
+        isFromUser: true,
+        timestamp: DateTime.now(),
+        productImageUrl: widget.productImageUrl,
+        productName: widget.productName,
+      );
+
+      setState(() {
+        _messages.add(localMessage);
+        _messageController.clear();
+      });
+
       // Send message through the chat service
       final newMessage = await _chatService.sendMessage(
         message,
@@ -433,43 +386,30 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
       if (newMessage != null) {
         setState(() {
+          // Replace local message with server message if needed
+          _messages.removeLast();
           _messages.add(newMessage);
           _lastMessageId = newMessage.id ?? _lastMessageId;
-          _messageController.clear();
           _isSending = false;
         });
 
         // Save messages locally as backup
         _chatService.saveChatMessagesLocally(_messages);
 
-        // Scroll to bottom
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              0.0,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-            );
-          }
-        });
+        // Auto-response for FAQ system
+        _provideFaqResponse(message);
       } else {
-        // If API call fails, add message locally temporarily
-        final localMessage = ChatMessage(
-          message: message,
-          isFromUser: true,
-          timestamp: DateTime.now(),
-          productImageUrl: widget.productImageUrl,
-          productName: widget.productName,
-        );
-
+        // If API call fails, keep the local message
         setState(() {
-          _messages.add(localMessage);
-          _messageController.clear();
           _isSending = false;
         });
 
         // Save messages locally as backup
         _chatService.saveChatMessagesLocally(_messages);
+
+        // Auto-response for FAQ system
+        _provideFaqResponse(message);
+      }
 
         // Scroll to bottom
         Future.delayed(const Duration(milliseconds: 100), () {
@@ -481,7 +421,6 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             );
           }
         });
-      }
     } catch (e) {
       print('Error sending message: $e');
       setState(() {
@@ -497,143 +436,152 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     }
   }
 
-  // Method to ask a FAQ
-  void _askFAQ(FAQ faq) {
-    // Hide the FAQ section after clicking a question
+  // Provide FAQ automatic response
+  void _provideFaqResponse(String userMessage) {
+    // Normalize user message for comparison
+    final normalizedMessage = userMessage.toLowerCase();
+
+    // Try to find a matching FAQ
+    FAQ? matchedFaq;
+    double highestMatch = 0;
+
+    for (var faq in _faqs) {
+      // Simple matching algorithm - can be improved
+      final questionWords = faq.question.toLowerCase().split(' ');
+      int matches = 0;
+
+      for (var word in questionWords) {
+        if (word.length > 3 && normalizedMessage.contains(word)) {
+          matches++;
+        }
+      }
+
+      final matchScore = matches / questionWords.length;
+      if (matchScore > 0.3 && matchScore > highestMatch) {
+        highestMatch = matchScore;
+        matchedFaq = faq;
+      }
+    }
+
+    // Add slight delay to simulate admin thinking
+    Future.delayed(const Duration(seconds: 1), () {
+      if (!mounted) return;
+
+      // Add response message
     setState(() {
-      _expandedFaq = false;
-    });
-
-    // Set the question to the input field
-    _messageController.text = faq.question;
-
-    // Send the message
-    _handleSendMessage();
-
-    // The response will be handled by the existing message system
-  }
-
-  // Method to handle sending a message
-  void _handleSendMessage() {
-    // Simply delegate to the existing _sendMessage method
-    _sendMessage();
-  }
-
-  // Method to handle product inquiry with product details
-  void handleProductInquiry(String productName, String productImageUrl) {
-    // Create a message with product details
-    final message =
-        'Hi Admin, I\'m interested in the product "$productName" but it\'s currently out of stock. When will it be available again?';
-
-    setState(() {
+        if (matchedFaq != null) {
+          // Found matching FAQ
       _messages.add(
         ChatMessage(
-          message: message,
-          isFromUser: true,
+              message: matchedFaq.answer,
+              isFromUser: false,
           timestamp: DateTime.now(),
           isDelivered: true,
-        ),
-      );
-    });
-
-    // Simulate typing
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
-        _simulateTyping();
-      }
-    });
-
-    // Simulate response with specific information about restocking
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          _isTyping = false;
+              isRead: true,
+            ),
+          );
+        } else {
+          // No matching FAQ found - standard response
           _messages.add(
             ChatMessage(
               message:
-                  "Terima kasih telah menghubungi kami mengenai produk \"$productName\" yang sedang kosong. Kami perkirakan produk tersebut akan tersedia kembali dalam 2-3 hari kerja. Kami sudah mencatat ketertarikan Anda dan akan segera memberitahu begitu stok tersedia. Apakah ada yang bisa kami bantu lainnya?",
+                  "Terima kasih atas pertanyaan Anda. Tim admin kami akan segera membalas pesan ini. Sementara itu, Anda dapat melihat FAQ kami untuk informasi umum.",
               isFromUser: false,
               timestamp: DateTime.now(),
               isDelivered: true,
               isRead: true,
             ),
           );
+        }
+
+        // Save locally
+        _chatService.saveChatMessagesLocally(_messages);
+      });
+
+      // Scroll to bottom
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            0.0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    });
+  }
+
+  // Method to ask a FAQ
+  void _askFAQ(FAQ faq) {
+    // Hide the FAQ section after clicking a question
+      setState(() {
+      _expandedFaq = false;
+    });
+
+    // Add the question as a user message
+    final userMessage = ChatMessage(
+      message: faq.question,
+      isFromUser: true,
+      timestamp: DateTime.now(),
+      isDelivered: true,
+      isRead: true,
+    );
+
+    // Add the answer as a system message
+    final systemMessage = ChatMessage(
+      message: faq.answer,
+      isFromUser: false,
+      timestamp: DateTime.now().add(const Duration(milliseconds: 800)),
+      isDelivered: true,
+      isRead: true,
+    );
+
+          setState(() {
+      _messages.add(userMessage);
+    });
+
+    // Scroll to bottom immediately after adding user message
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0.0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+
+    // Simulate typing delay for admin response
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) {
+      setState(() {
+          _messages.add(systemMessage);
+        });
+
+        // Save messages locally
+        _chatService.saveChatMessagesLocally(_messages);
+
+        // Scroll to bottom again after adding system message
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              0.0,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
         });
       }
     });
   }
 
-  // Simulate typing indicator
-  void _simulateTyping() {
-    if (mounted) {
+  // Show FAQ panel
+  void _showFaqPanel() {
+    if (mounted && _messages.isEmpty) {
       setState(() {
-        _isTyping = true;
-      });
-
-      // Automatically turn off typing indicator after some time
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) {
-          setState(() {
-            _isTyping = false;
-          });
-        }
+        _expandedFaq = true;
       });
     }
-  }
-
-  // Set user typing status and notify server
-  void _setTypingStatus(bool isTyping) {
-    if (mounted && _isTyping != isTyping) {
-      setState(() {
-        _isTyping = isTyping;
-      });
-
-      // Send typing status to server
-      _chatService.updateTypingStatus(isTyping).then((success) {
-        if (!success) {
-          print('Failed to update typing status on server');
-        }
-      });
-
-      // If typing, set a timeout to automatically set to false after inactivity
-      if (isTyping) {
-        if (_typingTimer != null) {
-          _typingTimer!.cancel();
-        }
-        _typingTimer = Timer(const Duration(seconds: 5), () {
-          if (mounted && _isTyping) {
-            _setTypingStatus(false);
-          }
-        });
-      }
-    }
-  }
-
-  // Build the animated typing indicator dots
-  Widget _buildTypingDots() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(3, (index) {
-        return TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0.0, end: 1.0),
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeInOut,
-          builder: (context, value, child) {
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              height: 8,
-              width: 8,
-              decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(
-                  0.4 + (0.6 * sin((value * 3 + index) * 3.14)),
-                ),
-                shape: BoxShape.circle,
-              ),
-            );
-          },
-        );
-      }),
-    );
   }
 
   // Process a pending message that was set through static fields
@@ -671,225 +619,297 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
 
   @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    _fabAnimationController?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (widget.initialMessage != null &&
-            widget.initialMessage!.isNotEmpty) {
-          return false;
-        }
-        return true;
-      },
-      child: Scaffold(
+    final theme = Theme.of(context);
+    const primaryColor = Color(0xFFFF87B2);
+    const secondaryColor = Color(0xFFFF5A8A);
+
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
         appBar: AppBar(
-          title: Column(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        centerTitle: false,
+        titleSpacing: 0,
+        leading: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [primaryColor, secondaryColor],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: primaryColor.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                )
+              ],
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.support_agent,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ),
+        ),
+        title: Padding(
+          padding: const EdgeInsets.only(left: 4.0),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Row(
+            children: [
               const Text(
-                'Customer Service',
+                    'FAQ',
                 style: TextStyle(
-                  fontFamily: 'Inter',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      color: Color(0xFFFF5A8A),
+                    ),
+                  ),
+                  const Text(
+                    ' & Bantuan',
+                    style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 16,
-                ),
-              ),
-              _isTyping
-                  ? const Text(
-                      'Typing...',
+                      color: Color(0xFF333333),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'New',
                       style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 12,
-                        color: Colors.lightGreen,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2E7D32),
                       ),
-                    )
-                  : const Text(
-                      'Online',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF64DD17),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Customer Service Online',
                       style: TextStyle(
-                        fontFamily: 'Inter',
                         fontSize: 12,
-                        color: Colors.lightGreen,
+                      color: Colors.grey[600],
                       ),
                     ),
             ],
+              ),
+            ],
+          ),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.help_outline),
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            child: IconButton(
+              icon: Icon(
+                _expandedFaq ? Icons.close : Icons.question_answer,
+                color: primaryColor,
+              ),
               onPressed: () {
                 setState(() {
                   _expandedFaq = !_expandedFaq;
                 });
               },
             ),
+            ),
           ],
         ),
         body: SafeArea(
           child: Stack(
             children: [
+            // Messages area
               Column(
                 children: [
-                  // Messages area
+                // Subtle divider
+                Container(
+                  height: 1,
+                  color: Colors.grey.withOpacity(0.1),
+                ),
+
                   Expanded(
                     child: _isLoading
-                        ? const Center(
-                            child: CircularProgressIndicator(),
-                          )
-                        : _messages.isEmpty
                             ? Center(
                                 child: Column(
-                                  mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    const Icon(
-                                      Icons.chat_bubble_outline,
-                                      size: 80,
-                                      color: Colors.black12,
-                                    ),
-                                    const SizedBox(height: 8),
+                              const SizedBox(
+                                width: 50,
+                                height: 50,
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      primaryColor),
+                                  strokeWidth: 3,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
                                     Text(
-                                      'Start a conversation',
+                                'Memuat pesan...',
                                       style: TextStyle(
-                                        fontFamily: 'Inter',
-                                        color: Colors.grey[600],
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'We typically reply within a few minutes',
-                                      style: TextStyle(
-                                        fontFamily: 'Inter',
-                                        color: Colors.grey[400],
-                                        fontSize: 14,
+                                  color: Colors.grey[500],
+                                  fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ],
                                 ),
                               )
-                            : ListView.builder(
-                                controller: _scrollController,
-                                reverse: true,
-                                padding: const EdgeInsets.all(10),
-                                itemCount: _messages.length,
-                                itemBuilder: (context, index) {
-                                  // Display messages in reverse order (newest at bottom)
-                                  final message =
-                                      _messages[_messages.length - 1 - index];
-                                  return _buildMessageBubble(message);
-                                },
-                              ),
-                  ),
+                      : _messages.isEmpty
+                          ? _buildEmptyState()
+                          : _buildMessagesList(),
+                ),
 
-                  // Typing indicator
-                  if (_isTyping)
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      alignment: Alignment.centerLeft,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
+                // Input bar
+                _buildInputBar(primaryColor, secondaryColor),
+              ],
+            ),
+
+            // Floating FAQ button - draggable
+            if (_showFaq && !_expandedFaq) _buildFloatingFaqButton(),
+
+            // Show expanded FAQ panel
+            if (_expandedFaq) _buildFaqPanel(context, primaryColor),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Building the empty state with animations
+  Widget _buildEmptyState() {
+    return Center(
+      child: AnimatedOpacity(
+        opacity: _messages.isEmpty ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 500),
+        child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            SizedBox(
-                              width: 40,
-                              child: _buildTypingDots(),
-                            ),
-                          ],
+            Container(
+              width: 120,
+              height: 120,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFE5EE),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: SizedBox(
+                  width: 70,
+                  height: 70,
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    fit: BoxFit.contain,
                         ),
                       ),
                     ),
-
-                  // Input bar
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          offset: const Offset(0, -1),
-                          blurRadius: 3,
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _messageController,
-                            decoration: InputDecoration(
-                              hintText: 'Type a message',
-                              hintStyle: TextStyle(
-                                fontFamily: 'Inter',
-                                color: Colors.grey[400],
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(24),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: Colors.grey[100],
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                            ),
-                            onChanged: (text) {
-                              // If the user is typing, send a typing indicator
-                              if (text.isNotEmpty && !_isTyping) {
-                                _setTypingStatus(true);
-                              } else if (text.isEmpty && _isTyping) {
-                                _setTypingStatus(false);
-                              }
-                            },
-                            keyboardType: TextInputType.multiline,
-                            textCapitalization: TextCapitalization.sentences,
-                            minLines: 1,
-                            maxLines: 5,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        InkWell(
-                          onTap: _isSending ? null : _sendMessage,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Ada yang bisa kami bantu?',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF333333),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tanyakan pertanyaan Anda di sini',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _expandedFaq = true;
+                });
+              },
+              icon: const Icon(Icons.help_outline),
+              label: const Text('Lihat Pertanyaan Umum'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF87B2),
+                foregroundColor: Colors.white,
+                elevation: 2,
+                shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30),
-                          child: Container(
-                            height: 48,
-                            width: 48,
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).primaryColor,
-                              shape: BoxShape.circle,
-                            ),
-                            child: _isSending
-                                ? const Center(
-                                    child: SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2,
-                                      ),
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.send,
-                                    color: Colors.white,
-                                  ),
+                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                           ),
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
+    );
+  }
 
-              // Floating FAQ button - draggable
-              if (_showFaq && !_expandedFaq)
-                Positioned(
-                  left: _faqPosition
-                      .dx, // Use X position from state for free positioning
-                  top: _faqPosition.dy, // Use Y position from state
+  // Building message list with improved UI
+  Widget _buildMessagesList() {
+    return ListView.builder(
+      controller: _scrollController,
+      reverse: true,
+      padding: const EdgeInsets.all(16),
+      physics: const BouncingScrollPhysics(),
+      itemCount: _messages.length,
+      itemBuilder: (context, index) {
+        final message = _messages[_messages.length - 1 - index];
+        final showAvatar = index == 0 ||
+            (_messages.length >= 2 &&
+                _messages[_messages.length - index - 2].isFromUser !=
+                    message.isFromUser);
+
+        return _buildEnhancedMessageBubble(message, showAvatar: showAvatar);
+      },
+    );
+  }
+
+  // Building the input bar
+  Widget _buildInputBar(Color primaryColor, Color secondaryColor) {
+    return Container(
+      height: 0,
+    );
+  }
+
+  // Building the floating FAQ button
+  Widget _buildFloatingFaqButton() {
+    return Positioned(
+      left: _faqPosition.dx,
+      top: _faqPosition.dy,
                   child: GestureDetector(
                     onTap: _isDragging
                         ? null
@@ -905,17 +925,15 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                     },
                     onPanUpdate: (details) {
                       setState(() {
-                        // Allow free movement in both X and Y directions
                         _faqPosition = Offset(
-                          (_faqPosition.dx + details.delta.dx).clamp(
-                              16, MediaQuery.of(context).size.width - 80),
-                          (_faqPosition.dy + details.delta.dy).clamp(
-                              80, MediaQuery.of(context).size.height - 200),
+              (_faqPosition.dx + details.delta.dx)
+                  .clamp(16, MediaQuery.of(context).size.width - 80),
+              (_faqPosition.dy + details.delta.dy)
+                  .clamp(80, MediaQuery.of(context).size.height - 200),
                         );
                       });
                     },
                     onPanEnd: (_) {
-                      // Small delay to prevent accidental tap when dragging ends
                       Future.delayed(const Duration(milliseconds: 100), () {
                         if (mounted) {
                           setState(() {
@@ -924,74 +942,10 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                         }
                       });
                     },
-                    child: _buildFaqIcon(),
-                  ),
-                ),
-
-              // Show expanded FAQ panel when needed - centered on screen
-              if (_expandedFaq)
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.black
-                        .withOpacity(0.3), // Semi-transparent overlay
-                    child: Center(
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0.8, end: 1.0),
+        child: AnimatedContainer(
+          width: 60,
+          height: 60,
                         duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOutBack,
-                        builder: (context, scale, child) {
-                          return Transform.scale(
-                            scale: scale,
-                            child: _buildVerticalFaqPanel(),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFaqIcon() {
-    return AnimatedBuilder(
-      animation: _fabAnimationController!,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _fabAnimation!.value,
-          child: Stack(
-            children: [
-              // Pulse animation for visibility
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.0, end: 1.0),
-                duration: const Duration(milliseconds: 2000),
-                curve: Curves.easeInOut,
-                builder: (context, value, child) {
-                  return Opacity(
-                    opacity: (1.0 - value) * 0.3,
-                    child: Transform.scale(
-                      scale: 1.0 + (value * 0.1),
-                      child: Container(
-                        width: 56,
-                        height: 56,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFFF87B2),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-
-              // Main button
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: 56,
-                height: 56,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
@@ -1001,442 +955,428 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFFF87B2).withOpacity(0.3),
-                      blurRadius: 12,
+                color: const Color(0xFFFF87B2).withOpacity(0.4),
+                blurRadius: _isDragging ? 18 : 12,
                       offset: const Offset(0, 4),
-                      spreadRadius: 2,
+                spreadRadius: _isDragging ? 4 : 2,
                     ),
                   ],
                 ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Subtle design elements
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    // Icon for FAQ
-                    const Icon(
-                      Icons.help_outline,
+          child: TweenAnimationBuilder<double>(
+            duration: const Duration(milliseconds: 300),
+            tween: Tween<double>(
+              begin: 0.0,
+              end: _isDragging ? 1.0 : 0.0,
+            ),
+            builder: (context, value, child) {
+              return Transform.rotate(
+                angle: value * 0.3, // Slight rotation when dragging
+                child: const Center(
+                  child: Icon(
+                    Icons.help_outline_rounded,
                       color: Colors.white,
                       size: 28,
                     ),
-                    // Hint animation to indicate it's clickable
-                    TweenAnimationBuilder<double>(
-                      tween: Tween(begin: 0.9, end: 1.0),
-                      duration: const Duration(milliseconds: 1500),
-                      curve: Curves.easeInOut,
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Building the FAQ panel
+  Widget _buildFaqPanel(BuildContext context, Color primaryColor) {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withOpacity(0.5),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          child: Center(
+            child: TweenAnimationBuilder<double>(
+              duration: const Duration(milliseconds: 300),
+              tween: Tween<double>(begin: 0.9, end: 1.0),
+              curve: Curves.easeOutCubic,
                       builder: (context, value, child) {
                         return Transform.scale(
                           scale: value,
                           child: Container(
-                            width: 16,
-                            height: 16,
+                    width: MediaQuery.of(context).size.width * 0.9,
+                    height: MediaQuery.of(context).size.height * 0.75,
                             decoration: BoxDecoration(
                               color: Colors.white,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: const Color(0xFFFF87B2),
-                                width: 2,
-                              ),
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                          spreadRadius: 5,
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        // Header
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [primaryColor, const Color(0xFFFF5A8A)],
                             ),
-                            child: const Center(
-                              child: Text(
-                                '?',
-                                style: TextStyle(
-                                  color: Color(0xFFFF87B2),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(24),
+                              topRight: Radius.circular(24),
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-
-              // Show drag icon only when dragging for better UX
-              if (_isDragging)
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
                 Container(
-                  width: 56,
-                  height: 56,
+                                        width: 42,
+                                        height: 42,
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
-                    shape: BoxShape.circle,
+                                          color: Colors.white24,
+                                          borderRadius:
+                                              BorderRadius.circular(12),
                   ),
                   child: const Center(
                     child: Icon(
-                      Icons.open_with,
+                                            Icons.question_answer_rounded,
                       color: Colors.white,
-                      size: 24,
+                                            size: 22,
                     ),
                   ),
                 ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildVerticalFaqPanel() {
-    final screenSize = MediaQuery.of(context).size;
-    // Use a centered panel with appropriate width
-    final double maxPanelWidth = min(screenSize.width * 0.9, 400.0);
-    final double maxPanelHeight = min(screenSize.height * 0.8, 600.0);
-
-    return Container(
-      width: maxPanelWidth,
-      constraints: BoxConstraints(
-        maxHeight: maxPanelHeight,
-      ),
-      decoration: BoxDecoration(
+                                      const SizedBox(width: 14),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Pertanyaan Populer',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 10,
-            offset: Offset(0, 5),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Row(
           children: [
-            // Header with close button
             Container(
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFFFF87B2), Color(0xFFFF5A8A)],
-                ),
-              ),
-              child: Row(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white30,
+                                                  borderRadius:
+                                                      BorderRadius.circular(20),
+                                                ),
+                                                child: const Row(
                 children: [
-                  const Icon(
-                    Icons.question_answer,
-                    size: 22,
+                                                    Icon(
+                                                      Icons.trending_up,
                     color: Colors.white,
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      "Pertanyaan Umum",
+                                                      size: 12,
+                                                    ),
+                                                    SizedBox(width: 4),
+                                                    Text(
+                                                      'Paling Ditanyakan',
                       style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                                                        fontSize: 10,
                         color: Colors.white,
                       ),
                     ),
-                  ),
-                  // Close button
-                  InkWell(
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  GestureDetector(
                     onTap: () {
                       setState(() {
                         _expandedFaq = false;
                       });
                     },
                     child: Container(
-                      padding: const EdgeInsets.all(8),
+                                      width: 36,
+                                      height: 36,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.3),
-                        shape: BoxShape.circle,
+                                        color: Colors.white24,
+                                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
+                                      child: const Center(
+                                        child: Icon(
                         Icons.close,
-                        size: 20,
                         color: Colors.white,
+                                          size: 18,
+                                        ),
                       ),
                     ),
+                                  ),
+                                ],
                   ),
                 ],
               ),
             ),
 
-            // FAQ list
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: _faqs.length,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                itemBuilder: (context, index) {
-                  // Create beautiful gradient color based on index
-                  final List<List<Color>> gradients = [
-                    [const Color(0xFFFF87B2), const Color(0xFFFF5A8A)], // Pink
-                    [const Color(0xFF90CAF9), const Color(0xFF42A5F5)], // Blue
-                    [const Color(0xFFA5D6A7), const Color(0xFF66BB6A)], // Green
-                    [
-                      const Color(0xFFFFCC80),
-                      const Color(0xFFFF9800)
-                    ], // Orange
-                    [
-                      const Color(0xFFCE93D8),
-                      const Color(0xFF9C27B0)
-                    ], // Purple
-                    [
-                      const Color(0xFFFFAB91),
-                      const Color(0xFFFF5722)
-                    ], // Deep Orange
-                    [
-                      const Color(0xFFB39DDB),
-                      const Color(0xFF673AB7)
-                    ], // Indigo
-                  ];
-
-                  final colorIndex = index % gradients.length;
-
-                  return AnimatedContainer(
-                    duration: Duration(milliseconds: 300 + (index * 30)),
-                    curve: Curves.easeOutQuad,
-                    transform: Matrix4.translationValues(0, 0, 0),
-                    margin: const EdgeInsets.only(bottom: 10),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => _askFAQ(_faqs[index]),
-                        borderRadius: BorderRadius.circular(15),
-                        child: Container(
+                        // Search box (decorative)
+                        Container(
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 16),
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
+                              horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.grey.shade200),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.05),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                )
+                              ]),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
+                                    colors: [
+                                      primaryColor,
+                                      const Color(0xFFFF5A8A)
+                                    ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
-                              colors: gradients[colorIndex],
-                            ),
-                            borderRadius: BorderRadius.circular(15),
-                            boxShadow: [
-                              BoxShadow(
-                                color:
-                                    gradients[colorIndex][0].withOpacity(0.2),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
+                                  ),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.more_horiz_rounded,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
                               ),
-                            ],
-                          ),
+                              const SizedBox(width: 14),
+                              Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 30,
-                                    height: 30,
-                                    decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        shape: BoxShape.circle,
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color:
-                                                Colors.black.withOpacity(0.1),
-                                            blurRadius: 2,
-                                            offset: const Offset(0, 1),
-                                          )
-                                        ]),
-                                    child: Center(
-                                      child: Text(
-                                        '${index + 1}',
+                                    Text(
+                                      'Topik Populer',
                                         style: TextStyle(
-                                          color: gradients[colorIndex][1],
+                                          color: Colors.grey.shade900,
                                           fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
+                                          fontWeight: FontWeight.w600),
                                     ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      _faqs[index].question,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Pilih dari daftar di bawah ini',
+                                      style: TextStyle(
+                                          color: Colors.grey.shade500,
+                                          fontSize: 12),
+                                    ),
+                                  ],
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 10),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
                                 ),
+
+                        // FAQ List
+                        Expanded(
+                          child: Container(
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.touch_app,
-                                      size: 14,
-                                      color: Colors.white,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      "Tap untuk melihat jawaban",
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.white.withOpacity(0.9),
-                                      ),
-                                    ),
-                                  ],
+                              color: Colors.grey.shade50,
+                              borderRadius: const BorderRadius.only(
+                                bottomLeft: Radius.circular(24),
+                                bottomRight: Radius.circular(24),
+                              ),
+                            ),
+                            child: ListView.builder(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: _faqs.length,
+                              physics: const BouncingScrollPhysics(),
+                              itemBuilder: (context, index) {
+                                return _buildFaqItem(_faqs[index], index);
+                              },
+                            ),
                                 ),
                               ),
                             ],
-                          ),
-                        ),
                       ),
                     ),
                   );
                 },
               ),
             ),
-          ],
         ),
       ),
     );
   }
 
-  Widget _buildMessageBubble(ChatMessage message) {
-    return GestureDetector(
-      onLongPress: () {
-        // Show options
-        showModalBottomSheet(
-          context: context,
-          builder: (context) => SafeArea(
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 16.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+  // Enhanced message bubble with avatar for admin
+  Widget _buildEnhancedMessageBubble(ChatMessage message,
+      {required bool showAvatar}) {
+    const primaryColor = Color(0xFFFF87B2);
+
+    return Padding(
+      padding: EdgeInsets.only(
+        top: 8.0,
+        bottom: 8.0,
+        left: message.isFromUser ? 60 : 0,
+        right: message.isFromUser ? 0 : 60,
+      ),
+      child: Row(
+        mainAxisAlignment: message.isFromUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  ListTile(
-                    leading: const Icon(Icons.copy),
-                    title: const Text('Copy Text'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      // Copy message text
-                    },
-                  ),
-                  message.isFromUser
-                      ? ListTile(
-                          leading: const Icon(Icons.delete_outline),
-                          title: const Text('Delete'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            // Delete message
-                          },
-                        )
-                      : const SizedBox.shrink(),
+          // Admin avatar
+          if (!message.isFromUser && showAvatar)
+            Container(
+              width: 32,
+              height: 32,
+              margin: const EdgeInsets.only(right: 8.0),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [primaryColor, Color(0xFFFF5A8A)],
+                ),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: primaryColor.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  )
                 ],
               ),
-            ),
-          ),
-        );
-      },
+              child: const Center(
+                child: Icon(
+                  Icons.support_agent,
+                  color: Colors.white,
+                  size: 18,
+                ),
+              ),
+            )
+          else if (!message.isFromUser)
+            const SizedBox(width: 40),
+
+          // Message content
+          Flexible(
       child: Container(
-        margin: EdgeInsets.only(
-          top: 4,
-          bottom: 4,
-          left: message.isFromUser ? 80 : 10,
-          right: message.isFromUser ? 10 : 80,
-        ),
         decoration: BoxDecoration(
+                color: message.isFromUser ? primaryColor : Colors.white,
           borderRadius: BorderRadius.only(
-            topLeft: message.isFromUser
-                ? const Radius.circular(16)
+                  topLeft: const Radius.circular(18),
+                  topRight: const Radius.circular(18),
+                  bottomLeft: message.isFromUser
+                      ? const Radius.circular(18)
                 : const Radius.circular(4),
-            topRight: message.isFromUser
+                  bottomRight: message.isFromUser
                 ? const Radius.circular(4)
-                : const Radius.circular(16),
-            bottomLeft: const Radius.circular(16),
-            bottomRight: const Radius.circular(16),
+                      : const Radius.circular(18),
           ),
-          color: message.isFromUser
-              ? Theme.of(context).primaryColor.withOpacity(0.9)
-              : Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 4,
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 5,
               offset: const Offset(0, 2),
             ),
           ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(10.0),
+                border: !message.isFromUser
+                    ? Border.all(
+                        color: Colors.grey.shade200,
+                        width: 1,
+                      )
+                    : null,
+              ),
+              padding: const EdgeInsets.all(12.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Product Image (if available)
               if (message.productImageUrl != null &&
                   message.productImageUrl!.isNotEmpty)
-                Container(
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 4,
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 5,
                         offset: const Offset(0, 2),
                       ),
                     ],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
                     child: Image.network(
                       message.productImageUrl!,
-                      height: 150,
+                          height: 160,
                       width: double.infinity,
                       fit: BoxFit.cover,
                       loadingBuilder: (BuildContext context, Widget child,
                           ImageChunkEvent? loadingProgress) {
                         if (loadingProgress == null) return child;
                         return Container(
-                          height: 150,
+                              height: 160,
                           width: double.infinity,
-                          color: Colors.grey[300],
+                              color: Colors.grey[200],
                           child: Center(
                             child: CircularProgressIndicator(
-                              value: loadingProgress.expectedTotalBytes != null
+                                  value: loadingProgress.expectedTotalBytes !=
+                                          null
                                   ? loadingProgress.cumulativeBytesLoaded /
                                       loadingProgress.expectedTotalBytes!
                                   : null,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  Theme.of(context).primaryColor),
+                                  valueColor:
+                                      const AlwaysStoppedAnimation<Color>(
+                                          primaryColor),
+                                  strokeWidth: 2,
                             ),
                           ),
                         );
                       },
                       errorBuilder: (context, error, stackTrace) {
                         return Container(
-                          height: 150,
+                              height: 160,
                           width: double.infinity,
-                          color: Colors.grey[300],
+                              color: Colors.grey[200],
                           child: Center(
-                            child: Icon(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
                               Icons.error_outline,
-                              color: Colors.red[300],
-                              size: 40,
+                                      color: Colors.red,
+                                      size: 32,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      "Gagal memuat gambar",
+                                      style: TextStyle(color: Colors.grey[600]),
+                                    ),
+                                  ],
                             ),
                           ),
                         );
@@ -1449,26 +1389,24 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
               Text(
                 message.message,
                 style: TextStyle(
-                  fontFamily: 'Inter',
-                  color: message.isFromUser ? Colors.white : Colors.black87,
-                  fontSize: 14,
+                      color: message.isFromUser ? Colors.white : Colors.black,
+                      fontSize: 15,
                 ),
               ),
 
               // Timestamp and delivery status
+                  const SizedBox(height: 4),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  const SizedBox(width: 5),
                   Text(
                     _formatDateTime(message.timestamp),
                     style: TextStyle(
-                      fontFamily: 'Inter',
                       fontSize: 10,
                       color: message.isFromUser
                           ? Colors.white.withOpacity(0.7)
-                          : Colors.black54,
+                              : Colors.grey[400],
                     ),
                   ),
                   if (message.isFromUser) ...[
@@ -1478,10 +1416,10 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                           ? Icons.done_all
                           : (message.isDelivered
                               ? Icons.done
-                              : Icons.access_time),
-                      size: 12,
+                                  : Icons.schedule),
+                          size: 10,
                       color: message.isRead
-                          ? Colors.lightBlueAccent
+                              ? Colors.blue[100]
                           : Colors.white.withOpacity(0.7),
                     ),
                   ],
@@ -1489,6 +1427,184 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
               ),
             ],
           ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Enhanced FAQ item with colorful designs
+  Widget _buildFaqItem(FAQ faq, int index) {
+    // Enhanced list of gradient colors for FAQ cards with more vibrant options
+    final List<List<Color>> cardGradients = [
+      [const Color(0xFFFF6B6B), const Color(0xFFFAD0C4)], // Red to Yellow
+      [const Color(0xFF4E65FF), const Color(0xFF92EFFD)], // Blue to Cyan
+      [const Color(0xFFA651FE), const Color(0xFFFC5CFF)], // Purple to Pink
+      [
+        const Color(0xFF11998E),
+        const Color(0xFF38EF7D)
+      ], // Deep Green to Light Green
+      [const Color(0xFFFF8008), const Color(0xFFFFC837)], // Orange to Yellow
+      [const Color(0xFFEC008C), const Color(0xFFFC6767)], // Magenta to Coral
+      [const Color(0xFF00C6FF), const Color(0xFF0072FF)], // Light Blue to Blue
+      [const Color(0xFFFF4E50), const Color(0xFFF9D423)], // Red to Yellow
+    ];
+
+    // Get gradient for this card (cycle through the list)
+    final cardGradient = cardGradients[index % cardGradients.length];
+
+    // Icon selection based on index
+    final List<IconData> icons = [
+      Icons.shopping_bag_outlined,
+      Icons.emergency_outlined,
+      Icons.credit_card,
+      Icons.local_shipping_outlined,
+      Icons.calendar_month_outlined,
+      Icons.schedule,
+      Icons.card_giftcard,
+      Icons.inventory_2_outlined,
+    ];
+
+    final IconData cardIcon = icons[index % icons.length];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Transform.translate(
+        offset: Offset(0, index * 5.0), // Staggered animation effect
+        child: TweenAnimationBuilder<double>(
+          duration: Duration(milliseconds: 300 + (index * 50)),
+          tween: Tween<double>(begin: 0.5, end: 1.0),
+          curve: Curves.easeOutBack,
+          builder: (context, value, child) {
+            return Transform.scale(
+              scale: value,
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  splashColor: cardGradient[1].withOpacity(0.4),
+                  highlightColor: cardGradient[0].withOpacity(0.3),
+                  onTap: () => _askFAQ(faq),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          cardGradient[0].withOpacity(0.7),
+                          cardGradient[1].withOpacity(0.5),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      border: Border.all(
+                        color: cardGradient[0].withOpacity(0.5),
+                        width: 1.5,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: cardGradient[0].withOpacity(0.3),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        // Icon with gradient background
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                cardGradient[1],
+                                cardGradient[0],
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: cardGradient[0].withOpacity(0.4),
+                                blurRadius: 5,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            cardIcon,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                faq.question,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: Colors.white,
+                                  shadows: [
+                                    Shadow(
+                                      offset: Offset(0, 1),
+                                      blurRadius: 2,
+                                      color: Color(0x80000000),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.touch_app,
+                                      color: Colors.white,
+                                      size: 14,
+                                    ),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Tap untuk lihat jawaban',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(
+                          Icons.arrow_forward_ios,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -1503,22 +1619,14 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       return DateFormat('HH:mm').format(dateTime);
     } else if (difference.inDays == 1) {
       // Yesterday: Yesterday, 14:30
-      return 'Yesterday, ${DateFormat('HH:mm').format(dateTime)}';
+      return 'Kemarin, ${DateFormat('HH:mm').format(dateTime)}';
     } else if (difference.inDays < 7) {
       // Within a week: Monday, 14:30
-      return DateFormat('EEEE, HH:mm').format(dateTime);
+      return DateFormat('EEEE, HH:mm', 'id_ID').format(dateTime);
     } else {
       // Older: 2023-01-01, 14:30
-      return DateFormat('yyyy-MM-dd, HH:mm').format(dateTime);
+      return DateFormat('dd/MM/yyyy, HH:mm').format(dateTime);
     }
   }
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    _typingTimer?.cancel();
-    _fabAnimationController?.dispose();
-    super.dispose();
-  }
 }
+

@@ -42,26 +42,26 @@
 
     <!-- Order Stats -->
     <div class="row mb-4 dashboard-stats">
-        <div class="col-md-3 mb-4">
+        <div class="col-md-2 mb-4">
             <div class="card stat-card pending-card">
                 <div class="card-body d-flex align-items-center">
                     <div class="stat-icon-container pending-icon">
                         <i class="fas fa-clock stat-icon"></i>
                     </div>
                     <div class="ms-3 stat-details">
-                        <h2 class="stat-value">{{ $pendingCount ?? 0 }}</h2>
-                        <p class="stat-label mb-0">Menunggu</p>
+                        <h2 class="stat-value">{{ $waitingForPaymentCount ?? 0 }}</h2>
+                        <p class="stat-label mb-0">Menunggu Pembayaran</p>
                     </div>
                 </div>
                 <div class="card-footer">
-                    <a href="{{ route('admin.orders.index', ['status' => 'pending']) }}" class="text-decoration-none">
+                    <a href="{{ route('admin.orders.index', ['status' => 'waiting_for_payment']) }}" class="text-decoration-none">
                         <small>Lihat Semua <i class="fas fa-arrow-right ms-1"></i></small>
                     </a>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-3 mb-4">
+        <div class="col-md-2 mb-4">
             <div class="card stat-card processing-card">
                 <div class="card-body d-flex align-items-center">
                     <div class="stat-icon-container processing-icon">
@@ -69,7 +69,7 @@
                     </div>
                     <div class="ms-3 stat-details">
                         <h2 class="stat-value">{{ $processingCount ?? 0 }}</h2>
-                        <p class="stat-label mb-0">Diproses</p>
+                        <p class="stat-label mb-0">Pesanan Diproses</p>
                     </div>
                 </div>
                 <div class="card-footer">
@@ -79,27 +79,46 @@
                 </div>
             </div>
         </div>
-
-        <div class="col-md-3 mb-4">
-            <div class="card stat-card completed-card">
+        
+        <div class="col-md-2 mb-4">
+            <div class="card stat-card shipping-card">
                 <div class="card-body d-flex align-items-center">
-                    <div class="stat-icon-container completed-icon">
-                        <i class="fas fa-check-circle stat-icon"></i>
+                    <div class="stat-icon-container shipping-icon">
+                        <i class="fas fa-truck stat-icon"></i>
                     </div>
                     <div class="ms-3 stat-details">
-                        <h2 class="stat-value">{{ $completedCount ?? 0 }}</h2>
-                        <p class="stat-label mb-0">Selesai</p>
+                        <h2 class="stat-value">{{ $shippingCount ?? 0 }}</h2>
+                        <p class="stat-label mb-0">Dalam Pengiriman</p>
                     </div>
                 </div>
                 <div class="card-footer">
-                    <a href="{{ route('admin.orders.index', ['status' => 'completed']) }}" class="text-decoration-none">
+                    <a href="{{ route('admin.orders.index', ['status' => 'shipping']) }}" class="text-decoration-none">
                         <small>Lihat Semua <i class="fas fa-arrow-right ms-1"></i></small>
                     </a>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-3 mb-4">
+        <div class="col-md-2 mb-4">
+            <div class="card stat-card completed-card">
+                <div class="card-body d-flex align-items-center">
+                    <div class="stat-icon-container completed-icon">
+                        <i class="fas fa-check-circle stat-icon"></i>
+                    </div>
+                    <div class="ms-3 stat-details">
+                        <h2 class="stat-value">{{ $deliveredCount ?? 0 }}</h2>
+                        <p class="stat-label mb-0">Pesanan Selesai</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <a href="{{ route('admin.orders.index', ['status' => 'delivered']) }}" class="text-decoration-none">
+                        <small>Lihat Semua <i class="fas fa-arrow-right ms-1"></i></small>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-2 mb-4">
             <div class="card stat-card cancelled-card">
                 <div class="card-body d-flex align-items-center">
                     <div class="stat-icon-container cancelled-icon">
@@ -132,8 +151,11 @@
                             <input type="text" id="searchInput" class="form-control" placeholder="Cari pesanan...">
                             <i class="fas fa-search search-icon"></i>
                         </div>
+                        <button id="refreshOrdersBtn" class="btn btn-sm btn-outline-primary me-2" title="Refresh Orders">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
                         <a href="{{ route('admin.orders.index') }}" class="btn btn-sm btn-outline-secondary">
-                            <i class="fas fa-sync"></i> Reset
+                            <i class="fas fa-times"></i> Reset
                         </a>
                     </div>
                 </div>
@@ -168,17 +190,17 @@
                                     <td>
                                         <select class="form-select form-select-sm order-status-select"
                                                 data-order-id="{{ $order->id }}">
-                                            <option value="pending" {{ $order->status == 'pending' ? 'selected' : '' }}>
-                                                Menunggu
+                                            <option value="waiting_for_payment" {{ $order->status == 'waiting_for_payment' ? 'selected' : '' }}>
+                                                Menunggu Pembayaran
                                             </option>
                                             <option value="processing" {{ $order->status == 'processing' ? 'selected' : '' }}>
-                                                Diproses
+                                                Pesanan Diproses
                                             </option>
-                                            <option value="shipped" {{ $order->status == 'shipped' ? 'selected' : '' }}>
-                                                Dikirim
+                                            <option value="shipping" {{ $order->status == 'shipping' ? 'selected' : '' }}>
+                                                Dalam Pengiriman
                                             </option>
-                                            <option value="completed" {{ $order->status == 'completed' ? 'selected' : '' }}>
-                                                Selesai
+                                            <option value="delivered" {{ $order->status == 'delivered' ? 'selected' : '' }}>
+                                                Pesanan Selesai
                                             </option>
                                             <option value="cancelled" {{ $order->status == 'cancelled' ? 'selected' : '' }}>
                                                 Dibatalkan
@@ -234,10 +256,10 @@
                         <label for="status" class="form-label">Status</label>
                         <select class="form-select" id="status" name="status">
                             <option value="">Semua Status</option>
-                            <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>Menunggu</option>
-                            <option value="processing" {{ request('status') == 'processing' ? 'selected' : '' }}>Diproses</option>
-                            <option value="shipped" {{ request('status') == 'shipped' ? 'selected' : '' }}>Dikirim</option>
-                            <option value="completed" {{ request('status') == 'completed' ? 'selected' : '' }}>Selesai</option>
+                            <option value="waiting_for_payment" {{ request('status') == 'waiting_for_payment' ? 'selected' : '' }}>Menunggu Pembayaran</option>
+                            <option value="processing" {{ request('status') == 'processing' ? 'selected' : '' }}>Pesanan Diproses</option>
+                            <option value="shipping" {{ request('status') == 'shipping' ? 'selected' : '' }}>Dalam Pengiriman</option>
+                            <option value="delivered" {{ request('status') == 'delivered' ? 'selected' : '' }}>Pesanan Selesai</option>
                             <option value="cancelled" {{ request('status') == 'cancelled' ? 'selected' : '' }}>Dibatalkan</option>
                         </select>
                     </div>
@@ -344,6 +366,10 @@
     
     .processing-icon {
         background-color: #17A2B8;
+    }
+    
+    .shipping-icon {
+        background-color: #9C27B0; /* Purple color for shipping */
     }
     
     .completed-icon {
@@ -545,6 +571,58 @@
     .modal-footer {
         border-top: 1px solid rgba(0,0,0,0.05);
     }
+
+    /* Styling for specific status cards */
+    .pending-card::before {
+        background: linear-gradient(45deg, #FFC107, #FF9800);
+    }
+    
+    .processing-card::before {
+        background: linear-gradient(45deg, #17A2B8, #0097A7);
+    }
+    
+    .shipping-card::before {
+        background: linear-gradient(45deg, #9C27B0, #7B1FA2);
+    }
+    
+    .completed-card::before {
+        background: linear-gradient(45deg, #28A745, #218838);
+    }
+    
+    .cancelled-card::before {
+        background: linear-gradient(45deg, #DC3545, #C82333);
+    }
+
+    /* Animation for new orders */
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+    }
+    
+    .new-order-indicator {
+        animation: pulse 1.5s infinite;
+        background-color: var(--primary-color) !important;
+        color: white !important;
+        border-color: var(--primary-color) !important;
+    }
+    
+    /* Unread order highlighting */
+    tr.unread-order {
+        background-color: rgba(255, 135, 178, 0.1) !important;
+        font-weight: 500;
+        position: relative;
+    }
+    
+    tr.unread-order::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: 4px;
+        background-color: var(--primary-color);
+    }
 </style>
 
 @endsection
@@ -616,6 +694,87 @@
                     row.style.display = text.includes(searchText) ? '' : 'none';
                 });
             });
+        }
+        
+        // Auto-refresh orders functionality
+        let autoRefreshInterval;
+        const refreshOrdersBtn = document.getElementById('refreshOrdersBtn');
+        
+        if (refreshOrdersBtn) {
+            // Manual refresh on button click
+            refreshOrdersBtn.addEventListener('click', function() {
+                const icon = this.querySelector('i');
+                icon.classList.add('fa-spin');
+                this.disabled = true;
+                
+                // Reload the page
+                window.location.reload();
+            });
+            
+            // Start auto-refresh every 60 seconds
+            autoRefreshInterval = setInterval(checkForNewOrders, 60000);
+        }
+        
+        // Function to check for new orders
+        function checkForNewOrders() {
+            fetch('{{ route('admin.orders.check-new') }}')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.new_orders_count > 0) {
+                        // Add pulse animation to refresh button
+                        refreshOrdersBtn.classList.add('new-order-indicator');
+                        
+                        // Show toast notification
+                        showNewOrdersNotification(data.new_orders_count);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking for new orders:', error);
+                });
+        }
+        
+        // Function to show notification for new orders
+        function showNewOrdersNotification(count) {
+            const toastId = 'toast-' + Date.now();
+            const toast = `
+                <div id="${toastId}" class="toast align-items-center bg-white border-start border-4 border-danger" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            <strong class="text-danger">Pesanan Baru!</strong>
+                            <p class="mb-0">Ada ${count} pesanan baru yang menunggu perhatian Anda.</p>
+                        </div>
+                        <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                </div>
+            `;
+            
+            // Create toast container if it doesn't exist
+            if (!document.getElementById('notification-container')) {
+                const container = document.createElement('div');
+                container.id = 'notification-container';
+                container.style.position = 'fixed';
+                container.style.top = '80px';
+                container.style.right = '20px';
+                container.style.zIndex = '9999';
+                document.body.appendChild(container);
+            }
+            
+            // Add toast to container
+            document.getElementById('notification-container').innerHTML += toast;
+            
+            // Show toast
+            const toastElement = new bootstrap.Toast(document.getElementById(toastId), {
+                delay: 5000
+            });
+            toastElement.show();
+            
+            // Play notification sound if available
+            try {
+                const notificationSound = new Audio('{{ asset('sounds/notification.mp3') }}');
+                notificationSound.play();
+            } catch (e) {
+                console.error('Error playing notification sound:', e);
+            }
         }
     });
 </script>

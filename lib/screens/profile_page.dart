@@ -8,9 +8,12 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'dart:math';
 import '../models/user.dart'; // Import for User model
+import '../models/order_status.dart'; // Import for OrderStatus
 import 'package:image_picker/image_picker.dart'; // Import for image picker
 import 'package:path/path.dart' as path; // Import for path manipulation
 import 'chat_page.dart'; // Import for chat page
+import 'order_list_screen.dart'; // Import for order list screen
+import '../services/order_service.dart'; // Import for OrderService
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -621,8 +624,8 @@ class _ProfilePageState extends State<ProfilePage>
                                   // Birth Date card
                                   _buildProfileInfoCard(
                                     icon: Icons.cake_outlined,
-                                    iconBgColor: const Color(0xFFE0F2F1),
-                                    iconColor: Colors.teal,
+                                    iconBgColor: const Color(0xFFF3E5F5),
+                                    iconColor: Colors.purple,
                                     label: 'Birth Date',
                                     value: userData.birth_date != null
                                         ? DateFormat('dd MMMM yyyy')
@@ -632,9 +635,20 @@ class _ProfilePageState extends State<ProfilePage>
 
                                   const SizedBox(height: 24),
 
-                                  // App settings section
+                                  // Orders Section
                                   _buildSectionHeader(
-                                    title: "App Settings",
+                                    title: "My Orders",
+                                    icon: Icons.shopping_bag_outlined,
+                                  ),
+
+                                  // Order Cards
+                                  _buildOrdersCard(),
+
+                                  const SizedBox(height: 24),
+
+                                  // Account Actions section
+                                  _buildSectionHeader(
+                                    title: "Account Actions",
                                     icon: Icons.settings_outlined,
                                   ),
 
@@ -961,6 +975,37 @@ class _ProfilePageState extends State<ProfilePage>
                                 ),
 
                                 const SizedBox(height: 30),
+
+                                // My Orders button
+                                ListTile(
+                                  leading: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .primaryColor
+                                          .withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      Icons.shopping_bag_outlined,
+                                      color: Theme.of(context).primaryColor,
+                                    ),
+                                  ),
+                                  title: const Text('Pesanan Saya'),
+                                  trailing: Icon(
+                                    Icons.arrow_forward_ios,
+                                    size: 16,
+                                    color: Colors.grey[400],
+                                  ),
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (ctx) =>
+                                            const OrderListScreen(),
+                                      ),
+                                    );
+                                  },
+                                ),
                               ],
                             ),
                           ),
@@ -1454,6 +1499,86 @@ class _ProfilePageState extends State<ProfilePage>
         }
       }
     });
+  }
+
+  // Method to build orders card with quick access to different order statuses
+  Widget _buildOrdersCard() {
+    return Consumer<OrderService>(
+      builder: (context, orderService, child) {
+        // Try to fetch orders if not already loaded
+        if (orderService.orders.isEmpty && !orderService.isLoading && mounted) {
+          // Use Future.microtask to avoid build phase issues
+          Future.microtask(() => orderService.fetchOrders());
+        }
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.08),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: InkWell(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (ctx) => const OrderListScreen()),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFECB3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.receipt_long,
+                        color: Colors.amber, size: 24),
+                  ),
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Text(
+                      'All My Orders',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  if (orderService.isLoading)
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(Color(0xFFFF87B2)),
+                      ),
+                    )
+                  else
+                    Text(
+                      '${orderService.orders.length} orders',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.arrow_forward_ios,
+                      size: 16, color: Colors.grey),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

@@ -11,9 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('chat_messages', function (Blueprint $table) {
-            if (!Schema::hasColumn('chat_messages', 'is_system')) {
-                $table->boolean('is_system')->default(false)->after('is_admin');
+        Schema::table('orders', function (Blueprint $table) {
+            if (!Schema::hasColumn('orders', 'payment_deadline')) {
+                $table->timestamp('payment_deadline')->nullable()->after('cancelled_at');
             }
         });
     }
@@ -23,9 +23,9 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('chat_messages', function (Blueprint $table) {
-            if (Schema::hasColumn('chat_messages', 'is_system')) {
-                $table->dropColumn('is_system');
+        Schema::table('orders', function (Blueprint $table) {
+            if (Schema::hasColumn('orders', 'payment_deadline')) {
+                $table->dropColumn('payment_deadline');
             }
         });
     }

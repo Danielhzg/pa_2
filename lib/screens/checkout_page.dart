@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/cart_provider.dart';
@@ -43,7 +45,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   List<dynamic> _paymentMethods = [];
 
   final PaymentService _paymentService = PaymentService();
-  final OrderService _orderService = OrderService();
+  late OrderService _orderService;
 
   // Custom currency formatter
   final formatCurrency = (double amount) {
@@ -53,6 +55,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   @override
   void initState() {
     super.initState();
+    _orderService = Provider.of<OrderService>(context, listen: false);
     _initCheckout();
   }
 
@@ -795,6 +798,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
       return;
     }
 
+    // Check internet connection first
+    try {
+      bool hasConnection = await _checkInternetConnection();
+      if (!hasConnection) {
+        _showNetworkErrorDialog(context, 'No Internet Connection',
+            'Please check your internet connection and try again.');
+        return;
+      }
+    } catch (e) {
+      debugPrint('Error checking internet connection: $e');
+    }
+
     // Show loading indicator
     showDialog(
       context: context,
@@ -887,7 +902,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       if (!result['success']) {
         debugPrint('❌ Midtrans API error: ${result['message']}');
-        throw Exception(result['message']);
+        _showNetworkErrorDialog(
+            context,
+            'Payment Error',
+            result['message'] ??
+                'Failed to create payment. Please try again later.');
+        return;
       }
 
       final orderId = result['data']['order_id'];
@@ -912,6 +932,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       debugPrint('Payment Method: $_paymentMethod');
       debugPrint('==========================================');
+
+      // Refresh the OrderService to show the new order in "My Orders"
+      try {
+        final orderService = Provider.of<OrderService>(context, listen: false);
+        await orderService.fetchOrders();
+        debugPrint(
+            '✓ Orders refreshed - new order should appear in My Orders with waiting_for_payment status');
+      } catch (e) {
+        debugPrint('Warning: Failed to refresh orders: $e');
+      }
+
+      // Clear selected items from cart
+      cartProvider.removeSelectedItems();
 
       // Jika ini pembayaran virtual account, tampilkan dialog dengan informasi VA
       if (vaNumber != null) {
@@ -1151,21 +1184,30 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                         final String autoMessage =
                                             'Halo Admin, saya ingin menanyakan ketersediaan produk "$productName" yang ingin saya beli sebanyak $requested buah, namun stok hanya tersedia $available. Mohon informasinya, terima kasih.';
 
-                                        // Buka ChatPage
-                                        _navigateToChatPage(
+                                        // Navigate to chat page with product info
+                                        Navigator.push(
                                           context,
-                                          initialMessage: autoMessage,
-                                          productName: productName,
-                                          productImageUrl: productImageUrl,
-                                          productStock: available,
-                                          requestedQuantity: requested,
+                                          MaterialPageRoute(
+                                            builder: (context) => ChatPage(
+                                              showBottomNav: true,
+                                              initialMessage: autoMessage,
+                                              productName: productName,
+                                              productImageUrl: productImageUrl,
+                                              productStock: available,
+                                              requestedQuantity: requested,
+                                            ),
+                                          ),
                                         );
                                       } else {
                                         // Fallback if no insufficientItems
-                                        _navigateToChatPage(
+                                        Navigator.push(
                                           context,
-                                          initialMessage:
-                                              "Halo Admin, saya ingin menanyakan tentang ketersediaan produk di toko Anda.",
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                const ChatPage(
+                                              showBottomNav: true,
+                                            ),
+                                          ),
                                         );
                                       }
                                     },
@@ -1264,21 +1306,30 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                         final String autoMessage =
                                             'Halo Admin, saya ingin menanyakan ketersediaan produk "$productName" yang ingin saya beli sebanyak $requested buah, namun stok hanya tersedia $available. Mohon informasinya, terima kasih.';
 
-                                        // Buka ChatPage
-                                        _navigateToChatPage(
+                                        // Navigate to chat page with product info
+                                        Navigator.push(
                                           context,
-                                          initialMessage: autoMessage,
-                                          productName: productName,
-                                          productImageUrl: productImageUrl,
-                                          productStock: available,
-                                          requestedQuantity: requested,
+                                          MaterialPageRoute(
+                                            builder: (context) => ChatPage(
+                                              showBottomNav: true,
+                                              initialMessage: autoMessage,
+                                              productName: productName,
+                                              productImageUrl: productImageUrl,
+                                              productStock: available,
+                                              requestedQuantity: requested,
+                                            ),
+                                          ),
                                         );
                                       } else {
                                         // Fallback if no insufficientItems
-                                        _navigateToChatPage(
+                                        Navigator.push(
                                           context,
-                                          initialMessage:
-                                              "Halo Admin, saya ingin menanyakan tentang ketersediaan produk di toko Anda.",
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                const ChatPage(
+                                              showBottomNav: true,
+                                            ),
+                                          ),
                                         );
                                       }
                                     },
@@ -1415,12 +1466,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
         Navigator.pop(context);
       }
 
-      // Show error message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to place order: $e'),
-          backgroundColor: Colors.red,
-        ),
+      // Show error message with better UI
+      _showNetworkErrorDialog(
+        context,
+        'Payment Error',
+        'An error occurred while processing your payment: ${e.toString().replaceAll('Exception: ', '')}',
       );
     }
   }
@@ -1471,11 +1521,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
       // Return true if payment was successful
       return webViewResult == true;
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error processing payment: $e'),
-          backgroundColor: Colors.red,
-        ),
+      // Show error message with better UI
+      _showNetworkErrorDialog(
+        context,
+        'Payment Error',
+        'Error processing payment: ${e.toString()}',
       );
       return false;
     }
@@ -1525,12 +1575,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
         }
       } else {
         // API request failed, show error message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content:
-                Text('Failed to check stock availability. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
+        _showNetworkErrorDialog(
+          context,
+          'Stock Check Failed',
+          'Failed to check stock availability. Please try again.',
         );
         return false;
       }
@@ -1800,21 +1848,29 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                     final String autoMessage =
                                         'Halo Admin, saya ingin menanyakan ketersediaan produk "$productName" yang ingin saya beli sebanyak $requested buah, namun stok hanya tersedia $available. Mohon informasinya, terima kasih.';
 
-                                    // Buka ChatPage
-                                    _navigateToChatPage(
+                                    // Navigate to chat page with product info
+                                    Navigator.push(
                                       context,
-                                      initialMessage: autoMessage,
-                                      productName: productName,
-                                      productImageUrl: productImageUrl,
-                                      productStock: available,
-                                      requestedQuantity: requested,
+                                      MaterialPageRoute(
+                                        builder: (context) => ChatPage(
+                                          showBottomNav: true,
+                                          initialMessage: autoMessage,
+                                          productName: productName,
+                                          productImageUrl: productImageUrl,
+                                          productStock: available,
+                                          requestedQuantity: requested,
+                                        ),
+                                      ),
                                     );
                                   } else {
                                     // Fallback if no insufficientItems
-                                    _navigateToChatPage(
+                                    Navigator.push(
                                       context,
-                                      initialMessage:
-                                          "Halo Admin, saya ingin menanyakan tentang ketersediaan produk di toko Anda.",
+                                      MaterialPageRoute(
+                                        builder: (context) => const ChatPage(
+                                          showBottomNav: true,
+                                        ),
+                                      ),
                                     );
                                   }
                                 },
@@ -1910,21 +1966,29 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                     final String autoMessage =
                                         'Halo Admin, saya ingin menanyakan ketersediaan produk "$productName" yang ingin saya beli sebanyak $requested buah, namun stok hanya tersedia $available. Mohon informasinya, terima kasih.';
 
-                                    // Buka ChatPage
-                                    _navigateToChatPage(
+                                    // Navigate to chat page with product info
+                                    Navigator.push(
                                       context,
-                                      initialMessage: autoMessage,
-                                      productName: productName,
-                                      productImageUrl: productImageUrl,
-                                      productStock: available,
-                                      requestedQuantity: requested,
+                                      MaterialPageRoute(
+                                        builder: (context) => ChatPage(
+                                          showBottomNav: true,
+                                          initialMessage: autoMessage,
+                                          productName: productName,
+                                          productImageUrl: productImageUrl,
+                                          productStock: available,
+                                          requestedQuantity: requested,
+                                        ),
+                                      ),
                                     );
                                   } else {
                                     // Fallback if no insufficientItems
-                                    _navigateToChatPage(
+                                    Navigator.push(
                                       context,
-                                      initialMessage:
-                                          "Halo Admin, saya ingin menanyakan tentang ketersediaan produk di toko Anda.",
+                                      MaterialPageRoute(
+                                        builder: (context) => const ChatPage(
+                                          showBottomNav: true,
+                                        ),
+                                      ),
                                     );
                                   }
                                 },
@@ -2027,36 +2091,79 @@ class _CheckoutPageState extends State<CheckoutPage> {
     );
   }
 
-  // Method to navigate to chat page in main navigation
-  void _navigateToChatPage(
-    BuildContext context, {
-    required String initialMessage,
-    String? productName,
-    String? productImageUrl,
-    int? productStock,
-    int? requestedQuantity,
-  }) {
-    // Set the static values in ChatPage to be picked up when loaded
-    ChatPage.pendingInitialMessage = initialMessage;
-    ChatPage.pendingProductName = productName;
-    ChatPage.pendingProductImageUrl = productImageUrl;
-    ChatPage.pendingProductStock = productStock;
-    ChatPage.pendingRequestedQuantity = requestedQuantity;
+  // Check internet connectivity
+  Future<bool> _checkInternetConnection() async {
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      return false;
+    }
+  }
 
-    // Navigate to home page
-    Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
-
-    // Show a toast guiding the user to the Chat tab
-    Future.delayed(const Duration(milliseconds: 500), () {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'Silakan lihat percakapan di tab Chat (klik ikon Chat di bagian bawah)'),
-          duration: Duration(seconds: 3),
-          backgroundColor: Color(0xFFFF87B2),
+  // Show network error dialog with retry option
+  void _showNetworkErrorDialog(
+      BuildContext context, String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
         ),
-      );
-    });
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.signal_wifi_off,
+                color: Colors.red[400],
+                size: 50,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

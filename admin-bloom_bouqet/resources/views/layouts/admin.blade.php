@@ -534,8 +534,7 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link {{ Request::is('admin/chats*') ? 'active' : '' }}" href="{{ route('admin.chats.index') }}">
-                        <i class="fas fa-comments"></i> Chats
+                    <!-- Chat functionality removed -->
                     </a>
                 </li>
                 <li class="nav-item">
@@ -628,6 +627,79 @@
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
         var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
             return new bootstrap.Tooltip(tooltipTriggerEl)
+        });
+
+        // Order Notification System
+        $(document).ready(function() {
+            // Add notification badge to Orders menu
+            const orderNavLink = $('a.nav-link[href="{{ route('admin.orders.index') }}"]');
+            orderNavLink.append('<span class="order-badge ms-auto badge bg-danger rounded-pill" style="display: none;">0</span>');
+            
+            // Create notification sound
+            const notificationSound = new Audio('{{ asset('sounds/notification.mp3') }}');
+            
+            // Create toast container
+            if ($('#notification-container').length === 0) {
+                $('body').append(`
+                    <div id="notification-container" style="position: fixed; top: 80px; right: 20px; z-index: 9999;"></div>
+                `);
+            }
+
+            // Check for new orders every 30 seconds
+            function checkNewOrders() {
+                $.ajax({
+                    url: '{{ route('admin.orders.check-new') }}',
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.new_orders_count > 0) {
+                            // Update badge
+                            const orderBadge = $('.order-badge');
+                            orderBadge.text(response.new_orders_count).show();
+                            
+                            // Show toast notification
+                            showNotification('New Order Received!', `You have ${response.new_orders_count} new order(s) waiting for review.`);
+                            
+                            // Play sound
+                            notificationSound.play();
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error checking for new orders:', error);
+                    }
+                });
+            }
+            
+            // Create toast notification
+            function showNotification(title, message) {
+                const toastId = 'toast-' + Date.now();
+                const toast = `
+                    <div id="${toastId}" class="toast align-items-center bg-white border-start border-4 border-danger" role="alert" aria-live="assertive" aria-atomic="true">
+                        <div class="d-flex">
+                            <div class="toast-body">
+                                <strong class="text-danger">${title}</strong>
+                                <p class="mb-0">${message}</p>
+                            </div>
+                            <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                        </div>
+                    </div>
+                `;
+                
+                $('#notification-container').append(toast);
+                const toastElement = new bootstrap.Toast(document.getElementById(toastId), {
+                    delay: 5000
+                });
+                toastElement.show();
+                
+                // Redirect to orders page when clicked
+                $(`#${toastId}`).on('click', function() {
+                    window.location.href = '{{ route('admin.orders.index') }}';
+                });
+            }
+            
+            // Initial check and start interval
+            checkNewOrders();
+            setInterval(checkNewOrders, 30000); // Check every 30 seconds
         });
     </script>
     

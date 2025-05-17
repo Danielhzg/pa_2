@@ -1,173 +1,158 @@
-import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../models/order.dart';
-import '../models/cart_item.dart';
-import '../models/delivery_address.dart';
+import '../utils/constants.dart';
+import '../models/order_status.dart';
 import 'auth_service.dart';
 
-class OrderService {
-  final String baseUrl = 'http://10.0.2.2:8000/api';
-  final AuthService _authService = AuthService();
+class OrderService with ChangeNotifier {
+  final AuthService _authService;
+  List<Order> _orders = [];
+  bool _isLoading = false;
+  String? _errorMessage;
+  DateTime? _lastRefresh;
 
-  // Get auth headers
-  Future<Map<String, String>> _getHeaders() async {
-    final token = await _authService.getToken();
-    return {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    };
-  }
+  OrderService(this._authService);
 
-  // Create a new order
-  Future<Order> createOrder({
-    required String orderId,
-    required List<CartItem> items,
-    required DeliveryAddress deliveryAddress,
-    required double subtotal,
-    required double shippingCost,
-    required double total,
-    required String paymentMethod,
-    required String paymentStatus,
-    String? qrCodeUrl,
-  }) async {
-    try {
-      final headers = await _getHeaders();
+  List<Order> get orders => _orders;
+  bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/v1/orders'),
-        headers: headers,
-        body: json.encode({
-          'id': orderId,
-          'items': items.map((item) => item.toJson()).toList(),
-          'deliveryAddress': deliveryAddress.toJson(),
-          'subtotal': subtotal,
-          'shippingCost': shippingCost,
-          'total': total,
-          'paymentMethod': paymentMethod,
-          'paymentStatus': paymentStatus,
-          'orderStatus': 'pending',
-          'qrCodeUrl': qrCodeUrl,
-        }),
-      );
-
-      if (response.statusCode == 201) {
-        final data = json.decode(response.body);
-        if (data['success'] == true && data['data'] != null) {
-          return Order.fromJson(data['data']);
-        } else {
-          throw Exception('Failed to create order: ${data['message']}');
-        }
-      } else if (response.statusCode == 401) {
-        throw Exception('Unauthorized: Please login again');
-      } else {
-        final error = json.decode(response.body);
-        throw Exception(
-            'Failed to create order: ${error['message'] ?? response.statusCode}');
-      }
-    } catch (e) {
-      print('Error creating order: $e');
-      throw Exception('Failed to create order: $e');
+  // Get all orders for the current user with auto-refresh capability
+  Future<bool> fetchOrders({bool forceRefresh = false}) async {
+    // Check if we need to refresh (only refresh if it's been more than 1 minute or forced)
+    if (!forceRefresh &&
+        _lastRefresh != null &&
+        DateTime.now().difference(_lastRefresh!).inMinutes < 1 &&
+        _orders.isNotEmpty) {
+      return true; // Use cached data if it's recent
     }
-  }
 
-  // Update order status after payment
-  Future<Order> updateOrderStatus({
-    required String orderId,
-    required String paymentStatus,
-    String? orderStatus,
-  }) async {
-    try {
-      final headers = await _getHeaders();
-
-      final response = await http.put(
-        Uri.parse('$baseUrl/v1/orders/$orderId/status'),
-        headers: headers,
-        body: json.encode({
-          'payment_status': paymentStatus,
-          'status': orderStatus,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success'] == true && data['data'] != null) {
-          return Order.fromJson(data['data']);
-        } else {
-          throw Exception('Failed to update order: ${data['message']}');
-        }
-      } else if (response.statusCode == 401) {
-        throw Exception('Unauthorized: Please login again');
-      } else {
-        final error = json.decode(response.body);
-        throw Exception(
-            'Failed to update order: ${error['message'] ?? response.statusCode}');
-      }
-    } catch (e) {
-      print('Error updating order: $e');
-      throw Exception('Failed to update order: $e');
+    if (!_authService.isLoggedIn) {
+      _errorMessage = 'Anda belum login';
+      notifyListeners();
+      return false;
     }
-  }
 
-  // Get order by ID
-  Future<Order> getOrderById(String orderId) async {
     try {
-      final headers = await _getHeaders();
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
 
+      final token = _authService.token;
       final response = await http.get(
-        Uri.parse('$baseUrl/v1/orders/$orderId'),
-        headers: headers,
-      );
+        Uri.parse('${ApiConstants.baseUrl}/api/orders'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true && data['data'] != null) {
-          return Order.fromJson(data['data']);
+          _orders = List<Order>.from(
+            data['data'].map((order) => Order.fromJson(order)),
+          );
+          _lastRefresh = DateTime.now();
+          _isLoading = false;
+          notifyListeners();
+          return true;
         } else {
-          throw Exception('Failed to get order: ${data['message']}');
+          _errorMessage = data['message'] ?? 'Failed to fetch orders';
+          _isLoading = false;
+          notifyListeners();
+          return false;
         }
-      } else if (response.statusCode == 401) {
-        throw Exception('Unauthorized: Please login again');
       } else {
-        final error = json.decode(response.body);
-        throw Exception(
-            'Failed to get order: ${error['message'] ?? response.statusCode}');
+        _errorMessage = 'Error: ${response.statusCode}';
+        _isLoading = false;
+        notifyListeners();
+        return false;
       }
     } catch (e) {
-      print('Error getting order: $e');
-      throw Exception('Failed to get order: $e');
+      _errorMessage = 'Error fetching orders: ${e.toString()}';
+      _isLoading = false;
+      notifyListeners();
+      return false;
     }
   }
 
-  // Get user orders
-  Future<List<Order>> getUserOrders() async {
-    try {
-      final headers = await _getHeaders();
+  // Get a single order by ID
+  Future<Order?> fetchOrderById(String orderId) async {
+    if (!_authService.isLoggedIn) {
+      _errorMessage = 'Anda belum login';
+      notifyListeners();
+      return null;
+    }
 
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
+      final token = _authService.token;
       final response = await http.get(
-        Uri.parse('$baseUrl/v1/orders'),
-        headers: headers,
-      );
+        Uri.parse('${ApiConstants.baseUrl}/api/orders/$orderId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true && data['data'] != null) {
-          return (data['data'] as List)
-              .map((order) => Order.fromJson(order))
-              .toList();
+          final order = Order.fromJson(data['data']);
+
+          // Update local cache if this order exists in it
+          final existingOrderIndex = _orders.indexWhere((o) => o.id == orderId);
+          if (existingOrderIndex >= 0) {
+            _orders[existingOrderIndex] = order;
+            notifyListeners();
+          }
+
+          _isLoading = false;
+          return order;
         } else {
-          throw Exception('Failed to get orders: ${data['message']}');
+          _errorMessage = data['message'] ?? 'Failed to fetch order';
+          _isLoading = false;
+          notifyListeners();
+          return null;
         }
-      } else if (response.statusCode == 401) {
-        throw Exception('Unauthorized: Please login again');
       } else {
-        final error = json.decode(response.body);
-        throw Exception(
-            'Failed to get orders: ${error['message'] ?? response.statusCode}');
+        _errorMessage = 'Error: ${response.statusCode}';
+        _isLoading = false;
+        notifyListeners();
+        return null;
       }
     } catch (e) {
-      print('Error getting orders: $e');
-      throw Exception('Failed to get orders: $e');
+      _errorMessage = 'Error fetching order: ${e.toString()}';
+      _isLoading = false;
+      notifyListeners();
+      return null;
     }
+  }
+
+  // Filter orders by status
+  List<Order> getOrdersByStatus(OrderStatus status) {
+    return _orders.where((order) => order.status == status).toList();
+  }
+
+  // Get count of orders by status
+  int getOrderCountByStatus(OrderStatus status) {
+    return _orders.where((order) => order.status == status).length;
+  }
+
+  // Clear any error messages
+  void clearError() {
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  // Force a refresh of orders data
+  Future<bool> refreshOrders() {
+    return fetchOrders(forceRefresh: true);
   }
 }
