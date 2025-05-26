@@ -34,8 +34,20 @@ class Product {
   factory Product.fromJson(Map<String, dynamic> json) {
     String imageUrl = 'assets/images/contoh.jpg'; // Default fallback
 
-    if (json.containsKey('image') && json['image'] != null) {
-      // Gunakan ImageUrlHelper untuk membuat URL gambar yang benar
+    // Check for different image field names that might be used in the API
+    if (json.containsKey('imageUrl') &&
+        json['imageUrl'] != null &&
+        json['imageUrl'].toString().isNotEmpty) {
+      imageUrl = json['imageUrl'].toString();
+      print('Original imageUrl: $imageUrl');
+
+      // Ensure it's a full URL
+      imageUrl = ImageUrlHelper.buildImageUrl(imageUrl);
+      print('Final URL used: $imageUrl');
+    } else if (json.containsKey('main_image') && json['main_image'] != null) {
+      // Use ImageUrlHelper to build the correct image URL
+      imageUrl = ImageUrlHelper.buildImageUrl(json['main_image'].toString());
+    } else if (json.containsKey('image') && json['image'] != null) {
       imageUrl = ImageUrlHelper.buildImageUrl(json['image'].toString());
     }
 
@@ -52,7 +64,7 @@ class Product {
       rating: json['rating']?.toDouble() ?? 0.0,
       isFeatured: json['is_featured'] == 1 || json['is_featured'] == true,
       isOnSale: json['is_on_sale'] == 1 || json['is_on_sale'] == true,
-      discount: json['discount'] ?? 0,
+      discount: json['discount_percent'] ?? json['discount'] ?? 0,
       stock: json['stock'] ?? 0, // Parse stock dari JSON
       isFavorited: json['is_favorited'] == true, // Parse favorite status
     );

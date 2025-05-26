@@ -12,7 +12,7 @@ class Carousel extends Model
     protected $fillable = [
         'title',
         'description',
-        'image',
+        'image_url',
         'is_active',
         'admin_id',
     ];
@@ -24,18 +24,34 @@ class Carousel extends Model
     /**
      * Get full image URL for API responses
      */
-    protected $appends = ['image_url'];
+    protected $appends = ['full_image_url'];
+    
+    /**
+     * The attributes that should be visible in arrays.
+     *
+     * @var array
+     */
+    protected $visible = [
+        'id',
+        'title',
+        'description',
+        'image_url',
+        'full_image_url',
+        'is_active',
+        'created_at',
+        'updated_at',
+    ];
     
     /**
      * Get the full URL for the image
      */
-    public function getImageUrlAttribute()
+    public function getFullImageUrlAttribute()
     {
-        if (!$this->image) {
+        if (!$this->image_url) {
             return null;
         }
         
-        return url('storage/' . $this->image);
+        return url('storage/' . $this->image_url);
     }
 
     /**

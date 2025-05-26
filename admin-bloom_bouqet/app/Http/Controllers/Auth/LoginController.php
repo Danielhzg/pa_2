@@ -144,37 +144,26 @@ class LoginController extends Controller
         $email = $request->input('email');
         $password = $request->input('password');
         
-        // Handle Admin@gmail.com / admin@gmail.com case insensitively
-        if (strtolower($email) === 'admin@gmail.com' && $password === 'adminbloom') {
+        // Handle bloombouqet0@gmail.com case insensitively
+        if (strtolower($email) === 'bloombouqet0@gmail.com' && $password === 'adminbloom') {
             // Find admin by case-insensitive email
-            $admin = Admin::whereRaw('LOWER(email) = ?', ['admin@gmail.com'])->first();
+            $admin = Admin::whereRaw('LOWER(email) = ?', ['bloombouqet0@gmail.com'])->first();
             
             if (!$admin) {
-                // Check if admin exists with username 'Admin'
-                $adminByUsername = Admin::where('username', 'Admin')->first();
-                
-                if ($adminByUsername) {
-                    // Update existing admin by username
-                    $adminByUsername->email = 'Admin@gmail.com';
-                    $adminByUsername->password = Hash::make('adminbloom');
-                    $adminByUsername->save();
-                    
-                    $admin = $adminByUsername;
-                } else {
-                    // Find a unique username
-                    $uniqueUsername = $this->generateUniqueAdminUsername();
-                    
-                    // Create new admin
-                    $admin = Admin::create([
-                        'username' => $uniqueUsername,
-                        'email' => 'Admin@gmail.com',
-                        'password' => Hash::make('adminbloom'),
-                    ]);
-                }
+                // Create new admin
+                $admin = Admin::create([
+                    'username' => 'admin',
+                    'email' => 'bloombouqet0@gmail.com',
+                    'password' => Hash::make('adminbloom'),
+                    'role' => 'super-admin',
+                    'is_active' => true
+                ]);
             } else {
-                // Update existing admin password
-                $admin->password = Hash::make('adminbloom');
-                $admin->save();
+                // Update existing admin password if needed
+                if (!Hash::check('adminbloom', $admin->password)) {
+                    $admin->password = Hash::make('adminbloom');
+                    $admin->save();
+                }
             }
             
             // Login the admin

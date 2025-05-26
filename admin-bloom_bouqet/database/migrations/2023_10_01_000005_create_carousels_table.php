@@ -6,28 +6,32 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**ssssss
+    /**
      * Run the migrations.
      */
     public function up(): void
     {
         Schema::create('carousels', function (Blueprint $table) {
-            $table->id();
-            $table->string('title');
+            $table->increments('id');
+            $table->string('title')->nullable();
             $table->text('description')->nullable();
-            $table->string('image');
+            $table->string('image_url');
             $table->boolean('is_active')->default(true);
-            $table->unsignedBigInteger('admin_id')->nullable();
+            $table->integer('admin_id')->unsigned()->nullable();
             $table->timestamps();
             
             // Indexes
             $table->index('is_active');
-            
-            // Foreign key constraints
+            $table->index('admin_id');
+        });
+
+        // Add foreign key after table creation to prevent constraint issues
+        Schema::table('carousels', function (Blueprint $table) {
+            // Foreign keys
             $table->foreign('admin_id')
-                  ->references('id')
-                  ->on('admins')
-                  ->onDelete('set null');
+                ->references('id')
+                ->on('admins')
+                ->nullOnDelete();
         });
     }
 

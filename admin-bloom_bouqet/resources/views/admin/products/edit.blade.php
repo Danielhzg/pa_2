@@ -165,12 +165,12 @@
                             <div class="input-group">
                                 <input 
                                     type="file" 
-                                    name="image" 
-                                    id="image"
-                                    class="form-control @error('image') is-invalid @enderror" 
+                                    name="main_image" 
+                                    id="main_image"
+                                    class="form-control @error('main_image') is-invalid @enderror" 
                                     accept="image/*"
                                 >
-                                @error('image')
+                                @error('main_image')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
@@ -181,7 +181,7 @@
 
                 <div class="form-actions mt-4">
                     <button type="submit" class="btn save-btn">
-                        <i class="fas fa-save me-2"></i>Update Produk
+                        <i class="fas fa-save me-2"></i><span class="text-emphasis">Update Produk</span>
                     </button>
                     <a href="{{ route('admin.products.index') }}" class="btn cancel-btn ms-2">
                         <i class="fas fa-times me-2"></i>Batal
@@ -233,8 +233,34 @@
         box-shadow: 0 0 0 0.25rem rgba(255,105,180,0.25);
     }
     
+    /* Text emphasis for the "Update Produk" button */
+    .text-emphasis {
+        color: #ffffff;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        position: relative;
+        transition: all 0.3s ease;
+    }
+    
+    /* Add a subtle underline animation on hover */
+    .text-emphasis::after {
+        content: '';
+        position: absolute;
+        width: 0;
+        height: 2px;
+        bottom: -2px;
+        left: 0;
+        background-color: #FFE5EE;
+        transition: width 0.3s ease;
+    }
+    
+    .save-btn:hover .text-emphasis::after {
+        width: 100%;
+    }
+    
     .save-btn {
-        background: linear-gradient(45deg, var(--pink-primary), var(--pink-dark));
+        background: linear-gradient(45deg, #FF87B2, #D46A9F);
         color: white;
         border-radius: 10px;
         padding: 0.6rem 1.2rem;
@@ -244,7 +270,7 @@
     }
     
     .save-btn:hover {
-        background: linear-gradient(45deg, var(--pink-dark), var(--pink-primary));
+        background: linear-gradient(45deg, #D46A9F, #FF87B2);
         transform: translateY(-2px);
         color: white;
         box-shadow: 0 6px 12px rgba(255,105,180,0.4);
@@ -340,7 +366,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Image preview functionality
-    const imageInput = document.getElementById('image');
+    const imageInput = document.getElementById('main_image');
     if (imageInput) {
         imageInput.addEventListener('change', function() {
             if (this.files && this.files[0]) {

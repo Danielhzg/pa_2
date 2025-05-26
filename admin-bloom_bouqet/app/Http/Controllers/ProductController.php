@@ -47,29 +47,31 @@ class ProductController extends Controller
             'price' => 'required|numeric',
             'stock' => 'required|integer',
             'category_id' => 'required|exists:categories,id',
-            'image' => 'required|image|mimes:jpeg,png,jpg|max:2048',
+            'main_image' => 'required|image|mimes:jpeg,png,jpg|max:2048',
             'additional_images.*' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
         ]);
 
         // Handle primary image
-        if ($request->hasFile('image')) {
-            $image = $request->file('image');
+        if ($request->hasFile('main_image')) {
+            $image = $request->file('main_image');
             $imageName = time() . '.' . $image->getClientOriginalExtension();
             $image->storeAs('public/products', $imageName);
-            $validated['image'] = 'products/' . $imageName;
-            $validated['is_primary_image'] = true;
+            $validated['main_image'] = 'products/' . $imageName;
         }
 
         // Handle additional images
-        $additionalImages = [];
+        $galleryImages = [];
         if ($request->hasFile('additional_images')) {
             foreach ($request->file('additional_images') as $image) {
                 $imageName = time() . '_' . rand(1000, 9999) . '.' . $image->getClientOriginalExtension();
                 $image->storeAs('public/products', $imageName);
-                $additionalImages[] = 'products/' . $imageName;
+                $galleryImages[] = 'products/' . $imageName;
             }
-            $validated['additional_images'] = $additionalImages;
+            $validated['gallery_images'] = $galleryImages;
         }
+
+        // Set admin_id to the current authenticated admin
+        $validated['admin_id'] = auth()->guard('admin')->id();
 
         $product = Product::create($validated);
 
@@ -128,52 +130,56 @@ class ProductController extends Controller
             'price' => 'required|numeric|min:0',
             'stock' => 'required|integer|min:0',
             'category_id' => 'required|exists:categories,id',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            'main_image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
             'additional_images.*' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
             'remove_images' => 'nullable|array',
         ]);
 
         // Handle primary image upload
-        if ($request->hasFile('image')) {
-            if ($product->image) {
-                Storage::delete('public/' . $product->image);
+        if ($request->hasFile('main_image')) {
+            if ($product->main_image) {
+                Storage::delete('public/' . $product->main_image);
             }
 
-            $image = $request->file('image');
+            $image = $request->file('main_image');
             $imageName = time() . '.' . $image->getClientOriginalExtension();
             $image->storeAs('public/products', $imageName);
-            $validated['image'] = 'products/' . $imageName;
-            $validated['is_primary_image'] = true;
+            $validated['main_image'] = 'products/' . $imageName;
         }
 
-        // Handle removing images from additional_images
+        // Handle removing images from gallery_images
         if ($request->has('remove_images') && is_array($request->remove_images)) {
-            $currentAdditionalImages = $product->additional_images ?? [];
-            $newAdditionalImages = [];
+            $currentGalleryImages = $product->gallery_images ?? [];
+            $newGalleryImages = [];
             
-            foreach ($currentAdditionalImages as $imagePath) {
+            foreach ($currentGalleryImages as $imagePath) {
                 if (!in_array($imagePath, $request->remove_images)) {
-                    $newAdditionalImages[] = $imagePath;
+                    $newGalleryImages[] = $imagePath;
                 } else {
                     // Delete the removed image file
                     Storage::delete('public/' . $imagePath);
                 }
             }
             
-            $validated['additional_images'] = $newAdditionalImages;
+            $validated['gallery_images'] = $newGalleryImages;
         }
 
         // Handle additional images upload
         if ($request->hasFile('additional_images')) {
-            $currentAdditionalImages = $validated['additional_images'] ?? $product->additional_images ?? [];
+            $currentGalleryImages = $validated['gallery_images'] ?? $product->gallery_images ?? [];
             
             foreach ($request->file('additional_images') as $image) {
                 $imageName = time() . '_' . rand(1000, 9999) . '.' . $image->getClientOriginalExtension();
                 $image->storeAs('public/products', $imageName);
-                $currentAdditionalImages[] = 'products/' . $imageName;
+                $currentGalleryImages[] = 'products/' . $imageName;
             }
             
-            $validated['additional_images'] = $currentAdditionalImages;
+            $validated['gallery_images'] = $currentGalleryImages;
+        }
+
+        // Set admin_id if it's not already set
+        if (!$product->admin_id) {
+            $validated['admin_id'] = auth()->guard('admin')->id();
         }
 
         $product->update($validated);
@@ -197,13 +203,13 @@ class ProductController extends Controller
         $product = Product::findOrFail($id);
         
         // Delete primary image if exists
-        if ($product->image) {
-            Storage::delete('public/' . $product->image);
+        if ($product->main_image) {
+            Storage::delete('public/' . $product->main_image);
         }
         
-        // Delete additional images if they exist
-        if (!empty($product->additional_images) && is_array($product->additional_images)) {
-            foreach ($product->additional_images as $imagePath) {
+        // Delete gallery images if they exist
+        if (!empty($product->gallery_images) && is_array($product->gallery_images)) {
+            foreach ($product->gallery_images as $imagePath) {
                 Storage::delete('public/' . $imagePath);
             }
         }

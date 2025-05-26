@@ -103,6 +103,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
   bool _isSending = false;
+  bool _isTyping = false;
+  bool _showScrollToBottomButton = false;
   User? _userData;
   AnimationController? _fabAnimationController;
   Animation<double>? _fabAnimation;
@@ -180,6 +182,15 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       curve: Curves.easeOut,
     );
     _fabAnimationController!.forward();
+    
+    // Monitor scroll to show/hide scroll-to-bottom button
+    _scrollController.addListener(() {
+      if (_scrollController.hasClients) {
+        setState(() {
+          _showScrollToBottomButton = _scrollController.offset > 300;
+        });
+      }
+    });
 
     // Check for any pending messages set through static fields
     if (ChatPage.pendingInitialMessage != null) {
@@ -219,6 +230,38 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         widget.initialMessage!.isNotEmpty) {
       // Process immediately without delay
       _processInitialMessage();
+    }
+    
+    // Simulate typing periodically (for demo purposes)
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted) _simulateTyping();
+    });
+  }
+  
+  // Simulate typing indicator (for demo purposes only)
+  void _simulateTyping() {
+    // Don't show typing if there are no messages yet
+    if (_messages.isEmpty) return;
+    
+    // Random typing simulation
+    if (mounted) {
+      setState(() {
+        _isTyping = true;
+      });
+    
+      // Hide typing after a random duration
+      Future.delayed(Duration(seconds: 2 + Random().nextInt(3)), () {
+        if (mounted) {
+          setState(() {
+            _isTyping = false;
+          });
+          
+          // Schedule next typing indication
+          Future.delayed(Duration(seconds: 10 + Random().nextInt(20)), () {
+            if (mounted) _simulateTyping();
+          });
+        }
+      });
     }
   }
 
@@ -628,7 +671,6 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     const primaryColor = Color(0xFFFF87B2);
     const secondaryColor = Color(0xFFFF5A8A);
 
@@ -810,98 +852,573 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
   // Building the empty state with animations
   Widget _buildEmptyState() {
-    return Center(
-      child: AnimatedOpacity(
-        opacity: _messages.isEmpty ? 1.0 : 0.0,
-        duration: const Duration(milliseconds: 500),
-        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFE5EE),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: SizedBox(
-                  width: 70,
-                  height: 70,
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    fit: BoxFit.contain,
+    return SingleChildScrollView(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+          child: AnimatedOpacity(
+            opacity: _messages.isEmpty ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 500),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 30),
+                // Animated logo with pulsing effect
+                TweenAnimationBuilder<double>(
+                  duration: const Duration(milliseconds: 2000),
+                  curve: Curves.easeInOut,
+                  tween: Tween<double>(begin: 0.9, end: 1.1),
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: value,
+                      child: Container(
+                        width: 130,
+                        height: 130,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFE5EE),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFF87B2).withOpacity(0.3),
+                              blurRadius: 20,
+                              spreadRadius: 5,
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Ada yang bisa kami bantu?',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF333333),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Tanyakan pertanyaan Anda di sini',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _expandedFaq = true;
-                });
-              },
-              icon: const Icon(Icons.help_outline),
-              label: const Text('Lihat Pertanyaan Umum'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF87B2),
-                foregroundColor: Colors.white,
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        child: Center(
+                          child: SizedBox(
+                            width: 80,
+                            height: 80,
+                            child: Image.asset(
+                              'assets/images/logo.png',
+                              fit: BoxFit.contain,
+                            ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 30),
+                const Text(
+                  'Ada yang bisa kami bantu?',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF333333),
                   ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Tanyakan pertanyaan seputar produk dan layanan kami. Tim customer service kami siap membantu Anda.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 15,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Quick access chat cards
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildQuickAccessCard(
+                        'Produk',
+                        Icons.shopping_bag_outlined,
+                        Colors.blue,
+                        'Saya ingin bertanya tentang produk',
+                      ),
+                      const SizedBox(width: 16),
+                      _buildQuickAccessCard(
+                        'Pesanan',
+                        Icons.local_shipping_outlined,
+                        Colors.orange,
+                        'Bagaimana status pesanan saya?',
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildQuickAccessCard(
+                        'Pembayaran',
+                        Icons.payment_outlined,
+                        Colors.green,
+                        'Saya ingin bertanya tentang pembayaran',
+                      ),
+                      const SizedBox(width: 16),
+                      _buildQuickAccessCard(
+                        'Bantuan',
+                        Icons.help_outline_rounded,
+                        Colors.purple,
+                        'Saya butuh bantuan customer service',
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _expandedFaq = true;
+                    });
+                  },
+                  icon: const Icon(Icons.help_outline),
+                  label: const Text('Lihat Pertanyaan Umum'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF87B2),
+                    foregroundColor: Colors.white,
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 30),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  
+  // Quick access card for common questions
+  Widget _buildQuickAccessCard(String title, IconData icon, Color color, String message) {
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            _messageController.text = message;
+            _sendMessage();
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    color: color,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   // Building message list with improved UI
   Widget _buildMessagesList() {
-    return ListView.builder(
-      controller: _scrollController,
-      reverse: true,
-      padding: const EdgeInsets.all(16),
-      physics: const BouncingScrollPhysics(),
-      itemCount: _messages.length,
-      itemBuilder: (context, index) {
-        final message = _messages[_messages.length - 1 - index];
-        final showAvatar = index == 0 ||
-            (_messages.length >= 2 &&
-                _messages[_messages.length - index - 2].isFromUser !=
-                    message.isFromUser);
+    return Stack(
+      children: [
+        // Chat background - subtle pattern
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.grey[50],
+            image: const DecorationImage(
+              image: AssetImage('assets/images/logo.png'),
+              opacity: 0.03,
+              repeat: ImageRepeat.repeat,
+              scale: 10.0,
+            ),
+          ),
+        ),
+        
+        // Message list
+        ListView.builder(
+          controller: _scrollController,
+          reverse: true,
+          padding: const EdgeInsets.all(16),
+          physics: const BouncingScrollPhysics(),
+          itemCount: _messages.length + 1, // +1 for the date header
+          itemBuilder: (context, index) {
+            // Show "Today" date header at the top
+            if (index == _messages.length) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 20.0, top: 10.0),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      _getCurrentDateLabel(),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+            
+            final messageIndex = index;
+            final message = _messages[_messages.length - 1 - messageIndex];
+            
+            // Determine if we should show the avatar (first message in a group)
+            bool showAvatar = messageIndex == 0;
+            
+            if (messageIndex > 0) {
+              final previousMessage = _messages[_messages.length - messageIndex];
+              // Show avatar if this message is from a different sender than the previous one
+              // or if messages are separated by more than 5 minutes
+              showAvatar = previousMessage.isFromUser != message.isFromUser ||
+                  previousMessage.timestamp
+                          .difference(message.timestamp)
+                          .inMinutes
+                          .abs() > 5;
+            }
+            
+            // Check if we need to show a date divider
+            Widget? dateDivider;
+            if (messageIndex < _messages.length - 1) {
+              final nextMessage = _messages[_messages.length - 2 - messageIndex];
+              if (!_isSameDay(message.timestamp, nextMessage.timestamp)) {
+                dateDivider = Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16.0),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _formatDateHeader(nextMessage.timestamp),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }
+            }
 
-        return _buildEnhancedMessageBubble(message, showAvatar: showAvatar);
-      },
+            return Column(
+              children: [
+                _buildEnhancedMessageBubble(message, showAvatar: showAvatar),
+                if (dateDivider != null) dateDivider,
+              ],
+            );
+          },
+        ),
+        
+        // "New messages" indicator when scrolled up
+        if (_messages.length > 10)
+          Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: AnimatedOpacity(
+                opacity: _showScrollToBottomButton ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: GestureDetector(
+                  onTap: () {
+                    if (_scrollController.hasClients) {
+                      _scrollController.animateTo(
+                        0.0,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                      );
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF87B2),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.arrow_downward, color: Colors.white, size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          'Lihat pesan terbaru',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
+        // Optional: Typing indicator
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: AnimatedOpacity(
+            opacity: _isTyping ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 300),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    margin: const EdgeInsets.only(right: 10.0),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFFFF87B2), Color(0xFFFF5A8A)],
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFFF87B2).withOpacity(0.3),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        )
+                      ],
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.support_agent,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 5,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        _buildTypingIndicator(),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Customer Service sedang mengetik...',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
+  }
+  
+  // Helper to build the typing indicator animation
+  Widget _buildTypingIndicator() {
+    return SizedBox(
+      width: 30,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: List.generate(3, (index) {
+          return TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: 1),
+            duration: Duration(milliseconds: 600 + (index * 200)),
+            curve: Curves.easeInOut,
+            builder: (context, value, child) {
+              return Transform.translate(
+                offset: Offset(0, -3 * sin(value * 3.14)),
+                child: Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF87B2),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              );
+            },
+          );
+        }),
+      ),
+    );
+  }
+  
+  // Get current date for the header
+  String _getCurrentDateLabel() {
+    final now = DateTime.now();
+    return _formatDateHeader(now);
+  }
+  
+  // Format date for header
+  String _formatDateHeader(DateTime date) {
+    final now = DateTime.now();
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+    
+    if (_isSameDay(date, now)) {
+      return 'Hari Ini';
+    } else if (_isSameDay(date, yesterday)) {
+      return 'Kemarin';
+    } else {
+      return DateFormat('d MMMM yyyy', 'id_ID').format(date);
+    }
+  }
+  
+  // Check if two dates are the same day
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
   // Building the input bar
   Widget _buildInputBar(Color primaryColor, Color secondaryColor) {
     return Container(
-      height: 0,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            offset: const Offset(0, -3),
+            blurRadius: 5,
+            color: Colors.black.withOpacity(0.05),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () {
+              // Show attachment options
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Fitur attachment akan segera tersedia'),
+                  backgroundColor: Color(0xFFFF87B2),
+                ),
+              );
+            },
+            icon: const Icon(Icons.attach_file_rounded, color: Color(0xFFFF87B2)),
+          ),
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      decoration: const InputDecoration(
+                        hintText: 'Ketik pesan...',
+                        hintStyle: TextStyle(color: Colors.grey),
+                        border: InputBorder.none,
+                      ),
+                      minLines: 1,
+                      maxLines: 5,
+                      textCapitalization: TextCapitalization.sentences,
+                      onChanged: (text) {
+                        // Could add typing status update here
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: _messageController.text.trim().isEmpty
+                ? Colors.grey.shade300
+                : primaryColor,
+            borderRadius: BorderRadius.circular(50),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(50),
+              onTap: _messageController.text.trim().isEmpty ? null : _sendMessage,
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(50),
+                  gradient: _messageController.text.trim().isEmpty
+                      ? null
+                      : const LinearGradient(
+                          colors: [Color(0xFFFF87B2), Color(0xFFFF5A8A)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                ),
+                child: Icon(
+                  _isSending ? Icons.hourglass_bottom : Icons.send_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1235,200 +1752,312 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   Widget _buildEnhancedMessageBubble(ChatMessage message,
       {required bool showAvatar}) {
     const primaryColor = Color(0xFFFF87B2);
+    final timeStr = _formatDateTime(message.timestamp);
 
     return Padding(
       padding: EdgeInsets.only(
         top: 8.0,
         bottom: 8.0,
-        left: message.isFromUser ? 60 : 0,
-        right: message.isFromUser ? 0 : 60,
+        left: message.isFromUser ? 60 : 10,
+        right: message.isFromUser ? 10 : 60,
       ),
-      child: Row(
-        mainAxisAlignment: message.isFromUser
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-          // Admin avatar
-          if (!message.isFromUser && showAvatar)
-            Container(
-              width: 32,
-              height: 32,
-              margin: const EdgeInsets.only(right: 8.0),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [primaryColor, Color(0xFFFF5A8A)],
-                ),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: primaryColor.withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  )
-                ],
-              ),
-              child: const Center(
-                child: Icon(
-                  Icons.support_agent,
-                  color: Colors.white,
-                  size: 18,
+      child: Column(
+        crossAxisAlignment: message.isFromUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          // Render the status info at the top for time
+          if (showAvatar && !message.isFromUser) 
+            Padding(
+              padding: const EdgeInsets.only(left: 48, bottom: 4),
+              child: Text(
+                'Customer Service',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-            )
-          else if (!message.isFromUser)
-            const SizedBox(width: 40),
-
-          // Message content
-          Flexible(
-      child: Container(
-        decoration: BoxDecoration(
-                color: message.isFromUser ? primaryColor : Colors.white,
-          borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: message.isFromUser
-                      ? const Radius.circular(18)
-                : const Radius.circular(4),
-                  bottomRight: message.isFromUser
-                ? const Radius.circular(4)
-                      : const Radius.circular(18),
-          ),
-          boxShadow: [
-            BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 5,
-              offset: const Offset(0, 2),
             ),
-          ],
-                border: !message.isFromUser
-                    ? Border.all(
-                        color: Colors.grey.shade200,
-                        width: 1,
-                      )
-                    : null,
-              ),
-              padding: const EdgeInsets.all(12.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            
+          Row(
+            mainAxisAlignment: message.isFromUser
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Product Image (if available)
-              if (message.productImageUrl != null &&
-                  message.productImageUrl!.isNotEmpty)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                  margin: const EdgeInsets.only(bottom: 8),
+              // Admin avatar
+              if (!message.isFromUser && showAvatar)
+                Container(
+                  width: 38,
+                  height: 38,
+                  margin: const EdgeInsets.only(right: 10.0),
                   decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [primaryColor, Color(0xFFFF5A8A)],
+                    ),
+                    shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 5,
+                        color: primaryColor.withOpacity(0.3),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      )
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.support_agent,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                )
+              else if (!message.isFromUser)
+                const SizedBox(width: 48),
+
+              // Message content
+              Flexible(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: message.isFromUser 
+                        ? primaryColor 
+                        : Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: message.isFromUser
+                          ? const Radius.circular(18)
+                          : showAvatar
+                              ? const Radius.circular(4)
+                              : const Radius.circular(18),
+                      topRight: message.isFromUser
+                          ? showAvatar
+                              ? const Radius.circular(4)
+                              : const Radius.circular(18)
+                          : const Radius.circular(18),
+                      bottomLeft: const Radius.circular(18),
+                      bottomRight: const Radius.circular(18),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 5,
                         offset: const Offset(0, 2),
+                        spreadRadius: 1,
+                      ),
+                    ],
+                    border: !message.isFromUser
+                        ? Border.all(
+                            color: Colors.grey.shade200,
+                            width: 1,
+                          )
+                        : null,
+                  ),
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Product Image (if available)
+                      if (message.productImageUrl != null &&
+                          message.productImageUrl!.isNotEmpty)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 5,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Image.network(
+                              message.productImageUrl!,
+                              height: 160,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              loadingBuilder: (BuildContext context, Widget child,
+                                  ImageChunkEvent? loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Container(
+                                  height: 160,
+                                  width: double.infinity,
+                                  color: Colors.grey[200],
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      value: loadingProgress.expectedTotalBytes !=
+                                              null
+                                          ? loadingProgress.cumulativeBytesLoaded /
+                                              loadingProgress.expectedTotalBytes!
+                                          : null,
+                                      valueColor:
+                                          const AlwaysStoppedAnimation<Color>(
+                                              primaryColor),
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  height: 160,
+                                  width: double.infinity,
+                                  color: Colors.grey[200],
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.error_outline,
+                                          color: Colors.red,
+                                          size: 32,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          "Gagal memuat gambar",
+                                          style: TextStyle(color: Colors.grey[600]),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+
+                      // Product Name (if available)
+                      if (message.productName != null &&
+                          message.productName!.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: message.isFromUser 
+                                ? Colors.white.withOpacity(0.2) 
+                                : primaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.shopping_bag_outlined,
+                                size: 16,
+                                color: message.isFromUser ? Colors.white : primaryColor,
+                              ),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  message.productName!,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: message.isFromUser ? Colors.white : primaryColor,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      // Message Text
+                      Text(
+                        message.message,
+                        style: TextStyle(
+                          color: message.isFromUser ? Colors.white : Colors.black87,
+                          fontSize: 15,
+                          height: 1.3,
+                        ),
+                      ),
+
+                      // Timestamp and delivery status
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            timeStr,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: message.isFromUser
+                                  ? Colors.white.withOpacity(0.7)
+                                  : Colors.grey[400],
+                            ),
+                          ),
+                          if (message.isFromUser) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              message.isRead
+                                  ? Icons.done_all
+                                  : (message.isDelivered
+                                      ? Icons.done
+                                      : Icons.schedule),
+                              size: 12,
+                              color: message.isRead
+                                  ? Colors.blue[100]
+                                  : Colors.white.withOpacity(0.7),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
-                    child: Image.network(
-                      message.productImageUrl!,
-                          height: 160,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (BuildContext context, Widget child,
-                          ImageChunkEvent? loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Container(
-                              height: 160,
-                          width: double.infinity,
-                              color: Colors.grey[200],
-                          child: Center(
-                            child: CircularProgressIndicator(
-                                  value: loadingProgress.expectedTotalBytes !=
-                                          null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                                  valueColor:
-                                      const AlwaysStoppedAnimation<Color>(
-                                          primaryColor),
-                                  strokeWidth: 2,
-                            ),
-                          ),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                              height: 160,
-                          width: double.infinity,
-                              color: Colors.grey[200],
-                          child: Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                              Icons.error_outline,
-                                      color: Colors.red,
-                                      size: 32,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      "Gagal memuat gambar",
-                                      style: TextStyle(color: Colors.grey[600]),
-                                    ),
-                                  ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-
-              // Message Text
-              Text(
-                message.message,
-                style: TextStyle(
-                      color: message.isFromUser ? Colors.white : Colors.black,
-                      fontSize: 15,
                 ),
               ),
 
-              // Timestamp and delivery status
-                  const SizedBox(height: 4),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    _formatDateTime(message.timestamp),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: message.isFromUser
-                          ? Colors.white.withOpacity(0.7)
-                              : Colors.grey[400],
+              // User avatar (optional - shows only on first message in a group)
+              if (message.isFromUser && showAvatar)
+                Container(
+                  width: 38,
+                  height: 38,
+                  margin: const EdgeInsets.only(left: 10.0),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 5,
+                        offset: const Offset(0, 2),
+                      )
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      _userData?.name?.isNotEmpty == true 
+                          ? _userData!.name![0].toUpperCase() 
+                          : 'U',
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
-                  if (message.isFromUser) ...[
-                    const SizedBox(width: 4),
-                    Icon(
-                      message.isRead
-                          ? Icons.done_all
-                          : (message.isDelivered
-                              ? Icons.done
-                                  : Icons.schedule),
-                          size: 10,
-                      color: message.isRead
-                              ? Colors.blue[100]
-                          : Colors.white.withOpacity(0.7),
-                    ),
-                  ],
-                ],
-              ),
+                )
+              else if (message.isFromUser)
+                const SizedBox(width: 0),
             ],
           ),
+              
+          // Show user name for first message in a group
+          if (showAvatar && message.isFromUser) 
+            Padding(
+              padding: const EdgeInsets.only(right: 48, top: 4),
+              child: Text(
+                'Anda',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -1629,4 +2258,5 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     }
   }
 }
+
 

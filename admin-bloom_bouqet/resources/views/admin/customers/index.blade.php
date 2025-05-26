@@ -84,6 +84,7 @@
                     </thead>
                     <tbody>
                         @foreach($customers as $customer)
+                            @if(!str_contains($customer->email ?? '', '@guestgmail.com'))
                             <tr class="category-item">
                                 <td>{{ $customer->id }}</td>
                                 <td>
@@ -109,6 +110,7 @@
                                     </div>
                                 </td>
                             </tr>
+                            @endif
                         @endforeach
                     </tbody>
                 </table>
@@ -150,6 +152,7 @@
                             </thead>
                             <tbody>
                                 @foreach($statistics['top_spending_customers'] as $topCustomer)
+                                @if(!str_contains($topCustomer->email ?? '', '@guestgmail.com'))
                                 <tr class="category-item">
                                     <td>
                                         <div class="d-flex align-items-center">
@@ -167,6 +170,7 @@
                                         </a>
                                     </td>
                                 </tr>
+                                @endif
                                 @endforeach
                             </tbody>
                         </table>
@@ -194,6 +198,7 @@
                             </thead>
                             <tbody>
                                 @foreach($statistics['most_active_customers'] as $activeCustomer)
+                                @if(!str_contains($activeCustomer->email ?? '', '@guestgmail.com'))
                                 <tr class="category-item">
                                     <td>
                                         <div class="d-flex align-items-center">
@@ -204,8 +209,8 @@
                                         </div>
                                     </td>
                                     <td>{{ $activeCustomer->email }}</td>
-                                    <td>
-                                        <span class="badge product-count-badge">{{ $activeCustomer->orders_count ?? 0 }}</span>
+                                    <td class="text-center">
+                                        <span class="badge product-count-badge">{{ $activeCustomer->orders_count }}</span>
                                     </td>
                                     <td>
                                         <a href="{{ route('admin.customers.show', $activeCustomer->id) }}" class="btn action-btn info-btn">
@@ -213,6 +218,7 @@
                                         </a>
                                     </td>
                                 </tr>
+                                @endif
                                 @endforeach
                             </tbody>
                         </table>

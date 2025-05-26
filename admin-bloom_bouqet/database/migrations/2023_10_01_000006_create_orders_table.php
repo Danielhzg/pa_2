@@ -11,11 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Drop the order_items table if it exists
+        Schema::dropIfExists('order_items');
+        
         Schema::create('orders', function (Blueprint $table) {
-            $table->id();
+            $table->increments('id'); // Changed from id() to increments() to use int
             $table->string('order_id')->unique()->comment('External order ID for reference (e.g., INV-20241001-001)');
-            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('admin_id')->nullable()->constrained('admins')->nullOnDelete()->comment('Admin who processed this order');
+            $table->integer('user_id')->unsigned()->nullable()->comment('User who placed the order, can be null for guest orders'); // Changed to unsigned integer
+            $table->integer('admin_id')->unsigned()->nullable()->comment('Admin who processed this order'); // Changed to unsigned integer
             $table->text('shipping_address');
             $table->string('phone_number');
             $table->decimal('subtotal', 10, 2)->comment('Sum of all items before shipping');
@@ -42,7 +45,9 @@ return new class extends Migration
             $table->text('qr_code_data')->nullable()->comment('JSON encoded data for QR code');
             $table->string('qr_code_url')->nullable()->comment('URL to the QR code image if stored');
             $table->text('notes')->nullable();
-            $table->json('order_items')->nullable()->comment('JSON encoded order items data');
+            $table->json('order_items')->comment('JSON array of order items')->default('[]');
+            $table->boolean('is_read')->default(false)->comment('Flag to indicate if the order has been read by admin');
+            $table->timestamp('payment_deadline')->nullable()->comment('Deadline for payment to be received');
             $table->timestamp('paid_at')->nullable();
             $table->timestamp('shipped_at')->nullable();
             $table->timestamp('delivered_at')->nullable();
@@ -56,6 +61,47 @@ return new class extends Migration
             $table->index('user_id');
             $table->index('admin_id');
         });
+        
+        // Create the order_items table
+        Schema::create('order_items', function (Blueprint $table) {
+            $table->increments('id');
+            $table->integer('order_id')->unsigned();
+            $table->integer('product_id')->unsigned()->nullable();
+            $table->string('name');
+            $table->decimal('price', 10, 2);
+            $table->integer('quantity')->default(1);
+            $table->timestamps();
+            
+            // Add indexes
+            $table->index('order_id');
+            $table->index('product_id');
+        });
+        
+        // Add foreign key constraints after table creation
+        Schema::table('orders', function (Blueprint $table) {
+            $table->foreign('user_id')
+                ->references('id')
+                ->on('users')
+                ->nullOnDelete();
+                
+            $table->foreign('admin_id')
+                ->references('id')
+                ->on('admins')
+                ->nullOnDelete();
+        });
+        
+        // Add foreign key constraints for order_items
+        Schema::table('order_items', function (Blueprint $table) {
+            $table->foreign('order_id')
+                ->references('id')
+                ->on('orders')
+                ->onDelete('cascade');
+                
+            $table->foreign('product_id')
+                ->references('id')
+                ->on('products')
+                ->nullOnDelete();
+        });
     }
 
     /**
@@ -63,6 +109,7 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::dropIfExists('order_items');
         Schema::dropIfExists('orders');
     }
 }; 

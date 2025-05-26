@@ -52,7 +52,7 @@
                             <tr class="category-item">
                                 <td>{{ $loop->iteration }}</td>
                                 <td>
-                                    <img src="{{ $product->image ? asset('storage/' . $product->image) : asset('images/default-product.png') }}" 
+                                    <img src="{{ $product->main_image ? asset('storage/' . $product->main_image) : asset('images/default-product.png') }}" 
                                          alt="{{ $product->name }}" 
                                          style="width: 50px; height: 50px; object-fit: cover;">
                                 </td>
@@ -76,13 +76,11 @@
                                         <a href="{{ route('admin.products.edit', $product) }}" class="btn action-btn edit-btn" title="Edit">
                                             <i class="fas fa-edit"></i>
                                         </a>
-                                        <form action="{{ route('admin.products.delete', $product) }}" method="POST" style="display:inline;">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="submit" class="btn action-btn delete-btn" title="Delete" onclick="return confirm('Apakah Anda yakin ingin menghapus produk \"{{ $product->name }}\"? Tindakan ini tidak dapat dibatalkan.')">
-                                                <i class="fas fa-trash"></i>
-                                            </button>
-                                        </form>
+                                        <button type="button" class="btn action-btn delete-btn" 
+                                               onclick="openDeleteModal('{{ $product->id }}', '{{ $product->name }}', 'produk', 'admin/products')"
+                                               title="Delete">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -105,6 +103,9 @@
         </div>
     </div>
 </div>
+
+<!-- Include Delete Confirmation Modal -->
+@include('partials.delete-confirmation-modal')
 
 <style>
     .content-header {
@@ -284,74 +285,60 @@
         color: white;
     }
     
-    .empty-state-icon {
-        font-size: 3rem;
-        color: rgba(255,135,178,0.3);
-    }
-    
-    .modal-content {
-        border-radius: 15px;
-        border: none;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-    }
-    
-    .modal-header {
-        background-color: rgba(255,105,180,0.05);
-        border-bottom: 1px solid rgba(255,105,180,0.1);
-    }
-    
-    .modal-title {
-        color: var(--pink-dark);
-    }
-    
-    @media (max-width: 768px) {
-        .content-header .d-flex {
-            flex-direction: column;
-            gap: 1rem;
-        }
-        
-        .card-header .row {
-            flex-direction: column;
-            gap: 1rem;
-        }
-        
-        .action-buttons {
-            flex-wrap: nowrap;
-        }
-    }
-    
-    /* Status Indicators */
-    .status-indicators {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-    }
-    
     .status-badge {
-        font-size: 0.75rem;
-        font-weight: 500;
-        padding: 0.25rem 0.5rem;
-        border-radius: 12px;
         display: inline-block;
-        text-align: center;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
     }
     
     .status-active {
-        background-color: rgba(40, 167, 69, 0.15);
+        background-color: rgba(40, 167, 69, 0.1);
         color: #28a745;
-        border: 1px solid rgba(40, 167, 69, 0.3);
     }
     
     .status-inactive {
-        background-color: rgba(108, 117, 125, 0.15);
+        background-color: rgba(108, 117, 125, 0.1);
         color: #6c757d;
-        border: 1px solid rgba(108, 117, 125, 0.3);
     }
     
     .status-sale {
-        background-color: rgba(253, 126, 20, 0.15);
+        background-color: rgba(255, 193, 7, 0.1);
         color: #fd7e14;
-        border: 1px solid rgba(253, 126, 20, 0.3);
+        margin-left: 5px;
+    }
+    
+    .status-indicators {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+    
+    .empty-state-icon {
+        font-size: 3rem;
+        color: rgba(255,105,180,0.3);
+    }
+
+    /* Fix for modal display */
+    .modal {
+        z-index: 9999 !important;
+    }
+    .modal-dialog {
+        z-index: 10000 !important;
+        pointer-events: auto !important;
+    }
+    .modal-backdrop {
+        z-index: 9990 !important;
+    }
+    body.modal-open {
+        overflow: hidden;
+        padding-right: 0px !important;
+    }
+
+    /* Tooltip fix */
+    .tooltip {
+        z-index: 10050 !important;
     }
 </style>
 
@@ -366,8 +353,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         productItems.forEach(item => {
             const productName = item.querySelector('td:nth-child(3)').textContent.toLowerCase();
+            const categoryName = item.querySelector('td:nth-child(5)').textContent.toLowerCase();
             
-            if (productName.includes(searchValue)) {
+            if (productName.includes(searchValue) || categoryName.includes(searchValue)) {
                 item.style.display = 'table-row';
             } else {
                 item.style.display = 'none';
@@ -375,14 +363,49 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Autofade alerts
-    const alerts = document.querySelectorAll('.custom-alert');
-    alerts.forEach(alert => {
-        setTimeout(() => {
-            const bsAlert = new bootstrap.Alert(alert);
-            bsAlert.close();
-        }, 5000);
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl, {
+            container: 'body',
+            trigger: 'hover'
+        });
     });
 });
 </script>
+
+@section('scripts')
+<script>
+    // Additional modal handling for product deletion
+    document.addEventListener('DOMContentLoaded', function() {
+        // Force modals to be top-level by moving them to the body
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            // Move modal to body to prevent stacking context issues
+            document.body.appendChild(modal);
+            
+            // Ensure high z-index
+            modal.style.zIndex = '9999';
+            
+            // Fix pointer events
+            const modalDialog = modal.querySelector('.modal-dialog');
+            if (modalDialog) {
+                modalDialog.style.zIndex = '10000';
+                modalDialog.style.pointerEvents = 'auto';
+            }
+        });
+        
+        // Ensure the body can't be scrolled when modal is open
+        document.addEventListener('show.bs.modal', function() {
+            document.body.style.overflow = 'hidden';
+        });
+        
+        document.addEventListener('hidden.bs.modal', function() {
+            if (!document.querySelector('.modal.show')) {
+                document.body.style.overflow = '';
+            }
+        });
+    });
+</script>
+@endsection
 @endsection

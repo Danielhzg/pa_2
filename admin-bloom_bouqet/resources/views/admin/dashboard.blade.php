@@ -146,37 +146,46 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @forelse($recentOrders ?? [] as $order)
-                                <tr class="{{ $order->is_read ? '' : 'unread-order' }}">
-                                    <td>#{{ $order->id }}</td>
-                                    <td>{{ $order->user->username ?? 'Guest' }}</td>
-                                    <td>Rp {{ number_format($order->total_amount, 0, ',', '.') }}</td>
-                                    <td>
-                                        @if($order->status == Order::STATUS_DELIVERED)
-                                            <span class="badge bg-success">Pesanan Selesai</span>
-                                        @elseif($order->status == Order::STATUS_PROCESSING)
-                                            <span class="badge bg-primary">Pesanan Diproses</span>
-                                        @elseif($order->status == Order::STATUS_WAITING_FOR_PAYMENT)
-                                            <span class="badge bg-warning">Menunggu Pembayaran</span>
-                                        @elseif($order->status == Order::STATUS_SHIPPING)
-                                            <span class="badge bg-info">Dalam Pengiriman</span>
-                                        @elseif($order->status == Order::STATUS_CANCELLED)
-                                            <span class="badge bg-danger">Dibatalkan</span>
-                                        @else
-                                            <span class="badge bg-secondary">{{ ucfirst($order->status) }}</span>
-                                        @endif
-                                        @if(!$order->is_read)
-                                            <span class="badge bg-danger ms-1">Baru</span>
-                                        @endif
-                                    </td>
-                                    <td>{{ $order->created_at->format('d M Y') }}</td>
-                                </tr>
+                                @forelse($recentOrders as $order)
+                                    <tr>
+                                        <td>{{ $order->order_id }}</td>
+                                        <td>
+                                            @if($order->user)
+                                                <div class="d-flex align-items-center">
+                                                    <div class="avatar avatar-sm me-2">
+                                                        <div class="avatar-initial rounded-circle bg-pink-light">
+                                                            {{ substr($order->user->full_name ?? 'U', 0, 1) }}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <span class="fw-medium">{{ $order->user->full_name }}</span>
+                                                        <small class="text-muted d-block">{{ $order->user->email }}</small>
+                                                    </div>
+                                                </div>
+                                            @else
+                                                <span class="text-muted">Guest</span>
+                                            @endif
+                                        </td>
+                                        <td>Rp {{ number_format($order->total_amount, 0, ',', '.') }}</td>
+                                        <td>
+                                            @php
+                                                $statusClass = 'secondary';
+                                                switch($order->status) {
+                                                    case 'waiting_for_payment': $statusClass = 'warning'; break;
+                                                    case 'processing': $statusClass = 'info'; break;
+                                                    case 'shipping': $statusClass = 'primary'; break;
+                                                    case 'delivered': $statusClass = 'success'; break;
+                                                    case 'cancelled': $statusClass = 'danger'; break;
+                                                }
+                                            @endphp
+                                            <span class="badge bg-{{ $statusClass }}">{{ $order->status_label }}</span>
+                                        </td>
+                                        <td>{{ $order->created_at->format('d M Y') }}</td>
+                                    </tr>
                                 @empty
-                                <tr>
-                                    <td colspan="5" class="text-center py-4">
-                                        <p class="text-muted mb-0"><i class="fas fa-info-circle me-1"></i> No recent orders found.</p>
-                                    </td>
-                                </tr>
+                                    <tr>
+                                        <td colspan="5" class="text-center py-3">No recent orders</td>
+                                    </tr>
                                 @endforelse
                             </tbody>
                         </table>

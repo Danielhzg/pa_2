@@ -26,6 +26,8 @@ class AdminSeeder extends Seeder
                 'username' => 'admin',
                 'email' => 'bloombouqet0@gmail.com',
                 'password' => Hash::make('adminbloom'),
+                'role' => 'super-admin',
+                'is_active' => true,
             ]);
             
             $this->command->info('Admin user created with username: admin, email: bloombouqet0@gmail.com, password: adminbloom');
@@ -34,6 +36,8 @@ class AdminSeeder extends Seeder
             $adminExists->username = 'admin';
             $adminExists->email = 'bloombouqet0@gmail.com';
             $adminExists->password = Hash::make('adminbloom');
+            $adminExists->role = 'super-admin';
+            $adminExists->is_active = true;
             $adminExists->save();
             
             $this->command->info('Admin user updated with username: admin, email: bloombouqet0@gmail.com, password: adminbloom');

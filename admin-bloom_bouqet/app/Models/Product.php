@@ -15,21 +15,21 @@ class Product extends Model
 
     protected $fillable = [
         'name', 'slug', 'description', 'price', 'stock', 'category_id', 
-        'image', 'images', 'admin_id', 'is_active', 'is_on_sale',
-        'discount', 'rating', 'total_reviews', 'reviews', 'featured_until'
+        'main_image', 'gallery_images', 'admin_id', 'is_active', 'sku',
+        'discount', 'specifications', 'options', 'view_count', 'sales_count', 'is_on_sale'
     ];
 
     protected $casts = [
-        'images' => 'array',
-        'reviews' => 'array',
+        'gallery_images' => 'array',
+        'specifications' => 'array',
+        'options' => 'array',
         'price' => 'float',
         'stock' => 'integer',
         'discount' => 'integer',
-        'rating' => 'float',
-        'total_reviews' => 'integer',
         'is_active' => 'boolean',
         'is_on_sale' => 'boolean',
-        'featured_until' => 'datetime',
+        'view_count' => 'integer',
+        'sales_count' => 'integer',
     ];
 
     public function category()
@@ -52,13 +52,13 @@ class Product extends Model
      */
     public function getPrimaryImage()
     {
-        // First try to get from images array
-        if (!empty($this->images) && is_array($this->images) && count($this->images) > 0) {
-            return $this->images[0];
+        // First try to get from gallery_images array
+        if (!empty($this->gallery_images) && is_array($this->gallery_images) && count($this->gallery_images) > 0) {
+            return $this->gallery_images[0];
         }
         
-        // Fall back to the legacy image field
-        return $this->image;
+        // Fall back to the main_image field
+        return $this->main_image;
     }
 
     /**
@@ -68,8 +68,8 @@ class Product extends Model
      */
     public function getAdditionalImages()
     {
-        if (!empty($this->images) && is_array($this->images) && count($this->images) > 1) {
-            return array_slice($this->images, 1);
+        if (!empty($this->gallery_images) && is_array($this->gallery_images) && count($this->gallery_images) > 1) {
+            return array_slice($this->gallery_images, 1);
         }
         
         return [];
@@ -82,12 +82,12 @@ class Product extends Model
      */
     public function getAllImages()
     {
-        if (!empty($this->images) && is_array($this->images)) {
-            return $this->images;
+        if (!empty($this->gallery_images) && is_array($this->gallery_images)) {
+            return $this->gallery_images;
         }
         
-        // Fall back to the legacy image field
-        return $this->image ? [$this->image] : [];
+        // Fall back to the main_image field
+        return $this->main_image ? [$this->main_image] : [];
     }
 
     /**
@@ -132,6 +132,17 @@ class Product extends Model
     public function isInStock()
     {
         return $this->stock > 0;
+    }
+
+    /**
+     * Check if there is enough stock for a specific quantity.
+     *
+     * @param int $quantity
+     * @return bool
+     */
+    public function hasEnoughStock($quantity)
+    {
+        return $this->stock >= $quantity;
     }
 
     /**

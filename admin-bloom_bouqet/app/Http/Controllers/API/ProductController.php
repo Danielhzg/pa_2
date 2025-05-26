@@ -171,6 +171,7 @@ class ProductController extends Controller
         $primaryImage = $product->getPrimaryImage();
         
         if ($primaryImage) {
+            // Ensure we return a full URL with domain
             return url('storage/' . $primaryImage);
         }
         

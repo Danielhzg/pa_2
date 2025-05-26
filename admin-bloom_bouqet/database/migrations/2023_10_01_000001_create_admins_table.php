@@ -12,11 +12,17 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('admins', function (Blueprint $table) {
-            $table->id();
+            $table->increments('id');
             $table->string('username')->unique();
             $table->string('email')->unique();
             $table->string('password');
+            $table->string('role')->default('admin')->comment('admin, super-admin, editor, etc.');
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
+            
+            // Add index for common queries
+            $table->index('role');
+            $table->index('is_active');
         });
     }
 

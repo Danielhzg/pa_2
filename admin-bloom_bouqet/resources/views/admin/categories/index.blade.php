@@ -8,9 +8,11 @@
                 <h3 class="page-title">Kategori</h3>
                 <p class="text-muted">Kelola kategori produk toko Anda</p>
             </div>
-            <a href="{{ route('admin.categories.create') }}" class="btn add-new-btn">
-                <i class="fas fa-plus me-2"></i> <span class="text-emphasis">Tambah Kategori Baru</span>
-            </a>
+            <div>
+                <a href="{{ route('admin.categories.create') }}" class="btn add-new-btn">
+                    <i class="fas fa-plus me-2"></i> <span class="text-emphasis">Tambah Kategori Baru</span>
+                </a>
+            </div>
         </div>
     </div>
     
@@ -34,9 +36,10 @@
                 <table class="table category-table">
                     <thead>
                         <tr>
-                            <th>ID Kategori</th>
+                            <th>ID</th>
                             <th>Nama Kategori</th>
                             <th>Jumlah Produk</th>
+                            <th>Status</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>
@@ -60,6 +63,15 @@
                                     @endif
                                 </td>
                                 <td>
+                                    <div class="status-indicators">
+                                        @if($category->products->count() > 0)
+                                            <span class="status-badge status-active">Digunakan</span>
+                                        @else
+                                            <span class="status-badge status-inactive">Tidak Digunakan</span>
+                                        @endif
+                                    </div>
+                                </td>
+                                <td>
                                     <div class="action-buttons">
                                         <a href="{{ route('admin.categories.edit', $category) }}" class="btn action-btn edit-btn" title="Edit">
                                             <i class="fas fa-edit"></i>
@@ -67,15 +79,18 @@
                                         
                                         @if($category->products->count() > 0)
                                             <button type="button" class="btn action-btn delete-btn-disabled" 
-                                                    data-bs-toggle="tooltip" 
-                                                    data-bs-placement="top" 
-                                                    title="Kategori ini memiliki {{ $category->products->count() }} produk terkait. Pindahkan produk terlebih dahulu.">
+                                                   data-bs-toggle="tooltip" 
+                                                   data-bs-placement="top"
+                                                   title="Kategori dengan produk tidak dapat dihapus langsung"
+                                                   onclick="openDeleteWithProductsModal('{{ $category->id }}', '{{ $category->name }}', {{ $category->products->count() }})">
                                                 <i class="fas fa-trash"></i>
                                             </button>
                                         @else
                                             <button type="button" class="btn action-btn delete-btn" 
-                                                   onclick="openDeleteModal('{{ $category->id }}', '{{ $category->name }}')"
-                                                   title="Delete">
+                                                   onclick="openDeleteModal('{{ $category->id }}', '{{ $category->name }}', 'kategori', 'admin/categories')"
+                                                   data-bs-toggle="tooltip"
+                                                   data-bs-placement="top"
+                                                   title="Hapus Kategori">
                                                 <i class="fas fa-trash"></i>
                                             </button>
                                         @endif
@@ -102,25 +117,56 @@
     </div>
 </div>
 
-<!-- Global Delete Modal -->
-<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+<!-- Include Delete Confirmation Modal -->
+@include('partials.delete-confirmation-modal')
+
+<!-- Delete with Products Modal -->
+<div class="modal fade delete-with-products-modal" id="deleteWithProductsModal" tabindex="-1" aria-labelledby="deleteWithProductsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="deleteModalLabel">Konfirmasi Hapus</h5>
+                <h5 class="modal-title" id="deleteWithProductsModalLabel">Konfirmasi Hapus Kategori</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p>Apakah Anda yakin ingin menghapus kategori <strong id="categoryName"></strong>?</p>
-                <p class="text-danger"><small>Tindakan ini tidak dapat dibatalkan.</small></p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                <form id="deleteForm" action="" method="POST">
+                <div class="alert alert-warning">
+                    <h5><i class="fas fa-exclamation-circle me-2"></i> Kategori ini memiliki <span id="productCount"></span> produk terkait</h5>
+                    <p>Anda tidak dapat menghapus kategori ini tanpa memindahkan produk terlebih dahulu. Silakan pilih kategori lain untuk memindahkan produk-produk ini.</p>
+                </div>
+                
+                <div class="category-info mb-4">
+                    <h6>Detail Kategori:</h6>
+                    <ul>
+                        <li><strong>Nama:</strong> <span id="categoryNameDetail"></span></li>
+                        <li><strong>Jumlah Produk:</strong> <span id="productCountDetail"></span></li>
+                    </ul>
+                </div>
+                
+                <form id="deleteWithProductsForm" action="" method="POST">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" class="btn btn-danger">Hapus</button>
+                    
+                    <div class="mb-4">
+                        <label for="target_category_id" class="form-label">Pindahkan produk ke kategori:</label>
+                        <select name="target_category_id" id="target_category_id" class="form-select" required>
+                            <option value="">-- Pilih Kategori --</option>
+                            @foreach($categories as $targetCategory)
+                                <option value="{{ $targetCategory->id }}">{{ $targetCategory->name }}</option>
+                            @endforeach
+                        </select>
+                        <div class="invalid-feedback">
+                            Silakan pilih kategori tujuan untuk memindahkan produk.
+                        </div>
+                    </div>
                 </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i> Batal
+                </button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteWithProducts">
+                    <i class="fas fa-trash me-2"></i> Hapus Kategori dan Pindahkan Produk
+                </button>
             </div>
         </div>
     </div>
@@ -132,7 +178,7 @@
     }
     
     .page-title {
-        color: var(--pink-dark);
+        color: #D46A9F;
         font-weight: 600;
         margin-bottom: 0.25rem;
     }
@@ -163,6 +209,7 @@
         width: 100%;
     }
     
+    /* Make button text larger and more visible */
     .add-new-btn {
         background: linear-gradient(45deg, #FF87B2, #D46A9F);
         color: white;
@@ -181,6 +228,18 @@
         box-shadow: 0 6px 12px rgba(255,105,180,0.4);
     }
     
+    .custom-alert {
+        border-radius: 10px;
+        border: none;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        padding: 1rem;
+    }
+    
+    .alert-success {
+        background-color: rgba(40, 167, 69, 0.1);
+        color: #28a745;
+    }
+    
     .table-card {
         border-radius: 15px;
         border: none;
@@ -195,7 +254,7 @@
     }
     
     .card-title {
-        color: var(--pink-dark);
+        color: #D46A9F;
         font-weight: 600;
     }
     
@@ -218,7 +277,7 @@
     }
     
     .search-box input:focus {
-        border-color: var(--pink-primary);
+        border-color: #FF87B2;
         box-shadow: 0 0 0 0.2rem rgba(255,105,180,0.25);
     }
     
@@ -227,8 +286,8 @@
     }
     
     .category-table thead th {
-        background-color: rgba(255,105,180,0.05);
-        color: var(--pink-dark);
+        background-color: rgba(255,135,178,0.05);
+        color: #D46A9F;
         font-weight: 600;
         border: none;
         padding: 1rem 1.5rem;
@@ -246,172 +305,308 @@
         width: 30px;
         height: 30px;
         border-radius: 8px;
-        background-color: rgba(255,105,180,0.1);
+        background-color: rgba(255,135,178,0.1);
         display: flex;
         align-items: center;
         justify-content: center;
-        color: var(--pink-primary);
+        color: #FF87B2;
     }
     
     .action-buttons {
         display: flex;
-        gap: 8px;
+        gap: 0.5rem;
     }
     
     .action-btn {
-        width: 32px;
-        height: 32px;
+        width: 35px;
+        height: 35px;
         border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 0;
         transition: all 0.2s;
+        color: white;
+        padding: 0;
     }
     
     .edit-btn {
-        background-color: rgba(255,193,7,0.1);
-        color: #ffc107;
-        border: none;
+        background-color: #ffc107;
+        box-shadow: 0 2px 6px rgba(255, 193, 7, 0.3);
     }
     
     .edit-btn:hover {
-        background-color: #ffc107;
+        background-color: #e0a800;
+        box-shadow: 0 4px 8px rgba(255, 193, 7, 0.4);
         color: white;
     }
     
     .delete-btn {
-        background-color: rgba(220,53,69,0.1);
-        color: #dc3545;
-        border: none;
+        background-color: #FF5757;
+        box-shadow: 0 2px 6px rgba(255, 87, 87, 0.3);
     }
     
     .delete-btn:hover {
-        background-color: #dc3545;
+        background-color: #EE4646;
+        box-shadow: 0 4px 8px rgba(255, 87, 87, 0.4);
         color: white;
     }
     
     .delete-btn-disabled {
-        background-color: rgba(108, 117, 125, 0.1);
-        color: #9aa0a5;
-        border: none;
+        background-color: #F5F5F5;
+        color: #AAAAAA;
         cursor: not-allowed;
-        position: relative;
-        overflow: hidden;
+        box-shadow: none;
     }
     
-    .delete-btn-disabled:hover {
-        background-color: rgba(108, 117, 125, 0.2);
+    .status-indicators {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 0.35rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    .status-active {
+        background-color: rgba(40, 167, 69, 0.1);
+        color: #28a745;
+    }
+    
+    .status-inactive {
+        background-color: rgba(108, 117, 125, 0.1);
         color: #6c757d;
     }
     
-    .delete-btn-disabled::after {
-        content: '';
-        position: absolute;
-        width: 100%;
-        height: 2px;
-        background-color: rgba(108, 117, 125, 0.3);
-        bottom: 0;
-        left: 0;
-        transform: rotate(-45deg) translateY(11px);
+    .status-sale {
+        background-color: rgba(255, 87, 178, 0.1);
+        color: #FF57B2;
     }
     
     .product-count-badge {
-        background-color: #fd7e14;
-        color: white;
-        padding: 4px 8px;
-        border-radius: 10px;
-        font-size: 0.75rem;
+        background-color: rgba(255, 87, 178, 0.1);
+        color: #FF57B2;
+        padding: 0.35rem 0.75rem;
+        border-radius: 20px;
+        font-weight: 600;
+    }
+    
+    .empty-state {
+        padding: 3rem 0;
     }
     
     .empty-state-icon {
         font-size: 3rem;
-        color: rgba(255,105,180,0.3);
+        color: rgba(255, 105, 180, 0.3);
     }
     
+    /* Modal styles improved */
     .modal-content {
         border-radius: 15px;
-        border: none;
         box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        border: none;
+        overflow: hidden;
     }
     
     .modal-header {
-        background-color: rgba(255,105,180,0.05);
-        border-bottom: 1px solid rgba(255,105,180,0.1);
+        background-color: #D46A9F;
+        color: white;
+        border-bottom: none;
     }
     
     .modal-title {
-        color: var(--pink-dark);
+        font-weight: 600;
     }
     
-    @media (max-width: 768px) {
-        .content-header .d-flex {
-            flex-direction: column;
-            gap: 1rem;
-        }
-        
-        .card-header .row {
-            flex-direction: column;
-            gap: 1rem;
-        }
-        
-        .action-buttons {
-            flex-wrap: nowrap;
-        }
+    .modal-footer {
+        border-top: 1px solid rgba(0,0,0,0.05);
     }
     
-    .move-btn {
-        background-color: rgba(0, 123, 255, 0.1);
-        color: #0d6efd;
+    .btn-outline-secondary {
+        border-color: #D9D9D9;
+        color: #777;
+    }
+    
+    .btn-outline-secondary:hover {
+        background-color: #F5F5F5;
+        color: #555;
+    }
+    
+    .btn-danger {
+        background-color: #FF5757;
         border: none;
     }
     
-    .move-btn:hover {
-        background-color: #0d6efd;
-        color: white;
+    .btn-danger:hover {
+        background-color: #EE4646;
+    }
+    
+    .alert-warning {
+        background-color: rgba(255, 193, 7, 0.1);
+        border-left: 4px solid #ffc107;
+        border-radius: 5px;
+    }
+    
+    /* Fix for modal display */
+    .modal {
+        z-index: 9999 !important;
+    }
+    .modal-dialog {
+        z-index: 10000 !important;
+        pointer-events: auto !important;
+    }
+    .modal-backdrop {
+        z-index: 9990 !important;
+    }
+    body.modal-open {
+        overflow: hidden;
+        padding-right: 0px !important;
+    }
+    
+    /* Tooltip fix */
+    .tooltip {
+        z-index: 10050 !important;
+    }
+    
+    /* Form elements style improvements */
+    .form-select {
+        border-radius: 10px;
+        padding: 0.6rem 1rem;
+        border: 1px solid rgba(0,0,0,0.1);
+        transition: all 0.3s;
+    }
+    
+    .form-select:focus {
+        border-color: #FF87B2;
+        box-shadow: 0 0 0 0.25rem rgba(255,135,178,0.25);
+    }
+    
+    .delete-with-products-modal {
+        z-index: 9999 !important;
+    }
+    
+    /* Ensure the modal appears above all other elements */
+    #deleteWithProductsModal {
+        z-index: 9999 !important; 
+    }
+    
+    #deleteWithProductsModal .modal-dialog {
+        z-index: 10000 !important;
     }
 </style>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize tooltips
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl)
-    });
-    
-    // Initialize the delete modal
-    window.deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
-    
-    // Search functionality
-    const searchInput = document.getElementById('searchInput');
-    const categoryItems = document.querySelectorAll('.category-item');
-    
-    searchInput.addEventListener('keyup', function() {
-        const searchValue = this.value.toLowerCase();
-        
-        categoryItems.forEach(item => {
-            const categoryName = item.querySelector('td:nth-child(2)').textContent.toLowerCase();
+    // Additional modal handling for category deletion
+    document.addEventListener('DOMContentLoaded', function() {
+        // Force modals to be top-level by moving them to the body
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            // Move modal to body to prevent stacking context issues
+            document.body.appendChild(modal);
             
-            if (categoryName.includes(searchValue)) {
-                item.style.display = 'table-row';
-            } else {
-                item.style.display = 'none';
+            // Ensure high z-index
+            modal.style.zIndex = '9999';
+            
+            // Fix pointer events
+            const modalDialog = modal.querySelector('.modal-dialog');
+            if (modalDialog) {
+                modalDialog.style.zIndex = '10000';
+                modalDialog.style.pointerEvents = 'auto';
+            }
+        });
+        
+        // Initialize tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl, {
+                container: 'body',
+                trigger: 'hover'
+            });
+        });
+        
+        // Ensure the body can't be scrolled when modal is open
+        document.addEventListener('show.bs.modal', function() {
+            document.body.style.overflow = 'hidden';
+        });
+        
+        document.addEventListener('hidden.bs.modal', function() {
+            if (!document.querySelector('.modal.show')) {
+                document.body.style.overflow = '';
             }
         });
     });
+
+function openDeleteWithProductsModal(categoryId, categoryName, productCount) {
+    // Set up modal details
+    document.getElementById('categoryNameDetail').textContent = categoryName;
+    document.getElementById('productCount').textContent = productCount;
+    document.getElementById('productCountDetail').textContent = productCount;
+    
+    // Set up form action
+    const form = document.getElementById('deleteWithProductsForm');
+    form.action = `/admin/categories/${categoryId}`;
+    
+    // Remove the current category from the target selection
+    const targetSelect = document.getElementById('target_category_id');
+    Array.from(targetSelect.options).forEach(option => {
+        if (option.value === categoryId) {
+            option.disabled = true;
+        } else {
+            option.disabled = false;
+        }
+    });
+    
+    // Reset selection
+    targetSelect.value = '';
+    
+    // Fix any existing modal backdrops
+    document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
+        backdrop.style.zIndex = '9990';
+    });
+    
+    // Show modal
+    const modalElement = document.getElementById('deleteWithProductsModal');
+    modalElement.style.zIndex = '9999';
+    const modalDialog = modalElement.querySelector('.modal-dialog');
+    if (modalDialog) {
+        modalDialog.style.zIndex = '10000';
+        modalDialog.style.pointerEvents = 'auto';
+    }
+    
+    const modal = new bootstrap.Modal(document.getElementById('deleteWithProductsModal'));
+    modal.show();
+}
+
+// Handle form submission
+document.getElementById('confirmDeleteWithProducts').addEventListener('click', function() {
+    const form = document.getElementById('deleteWithProductsForm');
+    const targetCategory = document.getElementById('target_category_id');
+    
+    if (!targetCategory.value) {
+        targetCategory.classList.add('is-invalid');
+        return;
+    }
+    
+    form.submit();
 });
 
-// Function to open delete modal
-function openDeleteModal(categoryId, categoryName) {
-    // Set the category name in the modal
-    document.getElementById('categoryName').textContent = categoryName;
+// Search functionality
+document.getElementById('searchInput').addEventListener('keyup', function() {
+    const searchText = this.value.toLowerCase();
+    const rows = document.querySelectorAll('.category-item');
     
-    // Set the form action
-    document.getElementById('deleteForm').action = `{{ url('admin/categories') }}/${categoryId}`;
-    
-    // Show the modal immediately
-    window.deleteModal.show();
-}
+    rows.forEach(row => {
+        const categoryName = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
+        if (categoryName.includes(searchText)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
 </script>
 @endsection

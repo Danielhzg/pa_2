@@ -1,7 +1,16 @@
 class ApiConstants {
   // Base URL for the API
-  static const String baseUrl =
-      "https://your-server-url.com"; // Replace with your actual API URL
+  static const String baseUrl = "http://10.0.2.2:8000"; // For Android emulator
+  // Alternative URLs for different environments
+  static const String localUrl = "http://localhost:8000";
+  static const String networkUrl =
+      "http://192.168.1.5:8000"; // Adjust to your network IP
+
+  // Helper method to get the appropriate URL based on environment
+  static String getBaseUrl() {
+    // You can implement logic to detect environment and return appropriate URL
+    return baseUrl;
+  }
 
   // API endpoints
   static const String login = "/api/v1/login";

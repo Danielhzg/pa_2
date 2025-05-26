@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Carousel;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
 class CarouselController extends Controller
@@ -25,16 +26,17 @@ class CarouselController extends Controller
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'image' => 'required|image',
+            'image_url' => 'required|image',
         ]);
 
-        $imagePath = $request->file('image')->store('carousels', 'public');
+        $imagePath = $request->file('image_url')->store('carousels', 'public');
 
         Carousel::create([
             'title' => $request->title,
             'description' => $request->description,
-            'image' => $imagePath,
+            'image_url' => $imagePath,
             'is_active' => $request->has('is_active'),
+            'admin_id' => Auth::guard('admin')->id(),
         ]);
 
         return redirect()->route('admin.carousels.index')->with('success', 'Carousel "'.$request->title.'" berhasil ditambahkan');
@@ -50,7 +52,7 @@ class CarouselController extends Controller
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'image' => 'nullable|image',
+            'image_url' => 'nullable|image',
         ]);
 
         $oldTitle = $carousel->title;
@@ -61,14 +63,19 @@ class CarouselController extends Controller
             'is_active' => $request->has('is_active'),
         ];
 
-        if ($request->hasFile('image')) {
+        if ($request->hasFile('image_url')) {
             // Delete old image if exists
-            if ($carousel->image && Storage::disk('public')->exists($carousel->image)) {
-                Storage::disk('public')->delete($carousel->image);
+            if ($carousel->image_url && Storage::disk('public')->exists($carousel->image_url)) {
+                Storage::disk('public')->delete($carousel->image_url);
             }
             
-            $imagePath = $request->file('image')->store('carousels', 'public');
-            $data['image'] = $imagePath;
+            $imagePath = $request->file('image_url')->store('carousels', 'public');
+            $data['image_url'] = $imagePath;
+        }
+
+        // If admin_id is null, set it to current admin
+        if (!$carousel->admin_id) {
+            $data['admin_id'] = Auth::guard('admin')->id();
         }
 
         $carousel->update($data);
@@ -79,8 +86,8 @@ class CarouselController extends Controller
     public function destroy(Carousel $carousel)
     {
         // Delete image if exists
-        if ($carousel->image && Storage::disk('public')->exists($carousel->image)) {
-            Storage::disk('public')->delete($carousel->image);
+        if ($carousel->image_url && Storage::disk('public')->exists($carousel->image_url)) {
+            Storage::disk('public')->delete($carousel->image_url);
         }
         
         $carouselTitle = $carousel->title;

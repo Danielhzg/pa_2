@@ -10,7 +10,7 @@ class Category extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'slug', 'admin_id', 'is_active', 'description', 'image', 'parent_id', 'sort_order'];
+    protected $fillable = ['name', 'slug', 'admin_id', 'is_active'];
 
     /**
      * Boot the model.
@@ -49,21 +49,5 @@ class Category extends Model
     public function admin()
     {
         return $this->belongsTo(Admin::class);
-    }
-
-    /**
-     * Get the parent category if any.
-     */
-    public function parent()
-    {
-        return $this->belongsTo(Category::class, 'parent_id');
-    }
-
-    /**
-     * Get the subcategories of this category.
-     */
-    public function subcategories()
-    {
-        return $this->hasMany(Category::class, 'parent_id');
     }
 }

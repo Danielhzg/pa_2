@@ -17,16 +17,32 @@ return new class extends Migration
         
         // Create the new favorites table
         Schema::create('favorites', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('product_id')->constrained('products')->onDelete('cascade');
+            $table->increments('id'); // Changed from id() to increments() to use int
+            $table->integer('user_id')->unsigned(); // Changed to unsigned integer
+            $table->integer('product_id')->unsigned(); // Changed to unsigned integer
             $table->timestamps();
             
-            // Add unique constraint to prevent duplicate favorites
+            // Unique constraint to prevent duplicate favorites
             $table->unique(['user_id', 'product_id']);
             
-            // Add index for quick lookups
+            // Indexes for better query performance
             $table->index('user_id');
+            $table->index('product_id');
+            $table->index('created_at');
+        });
+        
+        // Add foreign keys after table creation to prevent constraint issues
+        Schema::table('favorites', function (Blueprint $table) {
+            // Foreign keys
+            $table->foreign('user_id')
+                ->references('id')
+                ->on('users')
+                ->cascadeOnDelete();
+                
+            $table->foreign('product_id')
+                ->references('id')
+                ->on('products')
+                ->cascadeOnDelete();
         });
     }
 

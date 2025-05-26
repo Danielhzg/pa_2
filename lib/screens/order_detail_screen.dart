@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../services/order_service.dart';
 import '../models/order.dart';
 import '../models/order_status.dart';
+import 'dart:async';
 
 class OrderDetailScreen extends StatefulWidget {
   final String orderId;
@@ -18,35 +19,55 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   bool _isLoading = true;
   Order? _order;
   String? _error;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadOrderDetails();
+
+    // Set up a timer to refresh order status every 30 seconds
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        _loadOrderDetails(showLoading: false);
+      }
+    });
   }
 
-  Future<void> _loadOrderDetails() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadOrderDetails({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     try {
       final orderService = Provider.of<OrderService>(context, listen: false);
       final order = await orderService.fetchOrderById(widget.orderId);
 
-      setState(() {
-        _isLoading = false;
-        _order = order;
-        if (order == null) {
-          _error = 'Tidak dapat menemukan pesanan';
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _order = order;
+          if (order == null) {
+            _error = 'Tidak dapat menemukan pesanan';
+          }
+        });
+      }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _error = 'Terjadi kesalahan: ${e.toString()}';
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Terjadi kesalahan: ${e.toString()}';
+        });
+      }
     }
   }
 

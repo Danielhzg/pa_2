@@ -95,18 +95,14 @@ return [
     | Failed Queue Jobs
     |--------------------------------------------------------------------------
     |
-    | These options configure the behavior of failed queue job logging so you
-    | can control how and where failed jobs are stored. Laravel ships with
-    | support for storing failed jobs in a simple file or in a database.
-    |
-    | Supported drivers: "database-uuids", "dynamodb", "file", "null"
+    | These options configure the behavior of failed queue job logging.
+    | Konfigurasi ini menggunakan driver 'null' karena tabel failed_jobs dihapus
+    | untuk optimasi database.
     |
     */
 
     'failed' => [
-        'driver' => env('QUEUE_FAILED_DRIVER', 'database-uuids'),
-        'database' => env('DB_CONNECTION', 'sqlite'),
-        'table' => 'failed_jobs',
+        'driver' => 'null', // Diubah menjadi 'null' karena tabel failed_jobs dihapus
     ],
 
 ];

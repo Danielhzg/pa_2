@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/carousel.dart';
 import '../services/carousel_service.dart';
+import '../utils/image_url_helper.dart';
 
 class CarouselSliderWidget extends StatefulWidget {
   const CarouselSliderWidget({Key? key}) : super(key: key);
@@ -27,15 +29,25 @@ class _CarouselSliderWidgetState extends State<CarouselSliderWidget> {
     try {
       setState(() {
         _isLoading = true;
+        _errorMessage = '';
       });
 
+      print("[CAROUSEL] Loading carousels from API");
       List<Carousel> carousels = await _carouselService.getCarousels();
+
+      print("[CAROUSEL] Loaded ${carousels.length} carousels");
+      // Log each carousel's URL for debugging
+      for (var carousel in carousels) {
+        print(
+            "[CAROUSEL] Carousel ${carousel.id}: ${carousel.title}, URL: ${carousel.imageUrl}");
+      }
 
       setState(() {
         _carousels = carousels;
         _isLoading = false;
       });
     } catch (e) {
+      print("[CAROUSEL] Error loading carousels: $e");
       setState(() {
         _errorMessage = e.toString();
         _isLoading = false;
@@ -100,6 +112,10 @@ class _CarouselSliderWidgetState extends State<CarouselSliderWidget> {
             },
           ),
           items: _carousels.map((carousel) {
+            // Log the image URL for debugging
+            print(
+                "[CAROUSEL WIDGET] Using image URL: ${carousel.imageUrl} for carousel: ${carousel.title}");
+
             return Builder(
               builder: (BuildContext context) {
                 return Container(
@@ -120,33 +136,73 @@ class _CarouselSliderWidgetState extends State<CarouselSliderWidget> {
                     borderRadius: BorderRadius.circular(10),
                     child: Stack(
                       children: [
-                        // Image
-                        Image.network(
-                          carousel.imageUrl,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) return child;
-                            return Center(
-                              child: CircularProgressIndicator(
-                                value: loadingProgress.expectedTotalBytes !=
-                                        null
-                                    ? loadingProgress.cumulativeBytesLoaded /
-                                        loadingProgress.expectedTotalBytes!
-                                    : null,
-                              ),
-                            );
-                          },
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: Colors.grey[200],
-                              child: const Center(
-                                child:
-                                    Icon(Icons.image_not_supported, size: 50),
-                              ),
-                            );
-                          },
+                        // Image - Using CachedNetworkImage instead of Image.network
+                        Positioned.fill(
+                          child: CachedNetworkImage(
+                            imageUrl: carousel.imageUrl,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            placeholder: (context, url) => const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                            errorWidget: (context, url, error) {
+                              // Log the error for debugging
+                              print(
+                                  '[CAROUSEL ERROR] Error loading carousel image: $error');
+                              print(
+                                  '[CAROUSEL ERROR] Image URL was: ${carousel.imageUrl}');
+
+                              // Try all possible URLs one by one
+                              List<String> alternateUrls =
+                                  ImageUrlHelper.getAllPossibleImageUrls(
+                                      carousel.imageUrl);
+                              print(
+                                  '[CAROUSEL ERROR] Trying alternate URLs: $alternateUrls');
+
+                              // Try the first alternate URL
+                              return CachedNetworkImage(
+                                imageUrl: alternateUrls.isNotEmpty
+                                    ? alternateUrls[0]
+                                    : ImageUrlHelper.placeholderUrl,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                placeholder: (context, url) => const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                                errorWidget: (context, url, error) {
+                                  // If first alternate URL fails, show placeholder
+                                  return Container(
+                                    color: Colors.grey[200],
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.image_not_supported,
+                                              size: 40,
+                                              color: Colors.grey[400]),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Image not available',
+                                            style: TextStyle(
+                                                color: Colors.grey[600]),
+                                          ),
+                                          Text(
+                                            carousel.title,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                                color: Colors.grey[600],
+                                                fontSize: 12),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
                         ),
                         // Gradient overlay
                         Positioned.fill(
@@ -180,20 +236,19 @@ class _CarouselSliderWidgetState extends State<CarouselSliderWidget> {
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
                                   ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 if (carousel.description != null &&
                                     carousel.description!.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4.0),
-                                    child: Text(
-                                      carousel.description!,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
+                                  Text(
+                                    carousel.description!,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
                                     ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                               ],
                             ),
@@ -208,19 +263,20 @@ class _CarouselSliderWidgetState extends State<CarouselSliderWidget> {
           }).toList(),
         ),
         const SizedBox(height: 10),
-        // Carousel indicators
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: _carousels.asMap().entries.map((entry) {
             return Container(
               width: 8.0,
               height: 8.0,
-              margin: const EdgeInsets.symmetric(horizontal: 4.0),
+              margin:
+                  const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.pink.withOpacity(
-                  _currentIndex == entry.key ? 0.9 : 0.4,
-                ),
+                color: (Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : Colors.black)
+                    .withOpacity(_currentIndex == entry.key ? 0.9 : 0.4),
               ),
             );
           }).toList(),

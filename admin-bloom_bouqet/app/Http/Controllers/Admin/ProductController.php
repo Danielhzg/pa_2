@@ -40,7 +40,7 @@ class ProductController extends Controller
             'price' => 'required|numeric|min:0',
             'stock' => 'required|integer|min:0',
             'category_id' => 'required|exists:categories,id',
-            'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'main_image' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
             'discount' => 'nullable|integer|min:0|max:100',
         ]);
 
@@ -56,8 +56,8 @@ class ProductController extends Controller
 
         // Handle primary image
         $imagePath = null;
-        if ($request->hasFile('image')) {
-            $imagePath = $request->file('image')->store('products', 'public');
+        if ($request->hasFile('main_image')) {
+            $imagePath = $request->file('main_image')->store('products', 'public');
         }
 
         // Create the product
@@ -68,12 +68,12 @@ class ProductController extends Controller
             'price' => $request->price,
             'stock' => $request->stock,
             'category_id' => $request->category_id,
-            'image' => $imagePath,
-            'images' => [$imagePath], // Store single image in images array for model compatibility
+            'main_image' => $imagePath,
+            'gallery_images' => [$imagePath], // Store single image in gallery_images array for model compatibility
             'is_active' => $request->has('is_active'),
             'is_on_sale' => $request->has('is_on_sale'),
-            'discount' => $request->discount ?? 0,
-            'admin_id' => auth()->check() ? auth()->id() : null,
+            'discount' => $request->has('is_on_sale') ? ($request->discount ?? 0) : 0,
+            'admin_id' => auth()->guard('admin')->id(),
         ]);
 
         return redirect()->route('admin.products.index')
@@ -108,7 +108,7 @@ class ProductController extends Controller
             'price' => 'required|numeric|min:0',
             'stock' => 'required|integer|min:0',
             'category_id' => 'required|exists:categories,id',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'main_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'discount' => 'nullable|integer|min:0|max:100',
         ]);
 
@@ -129,16 +129,16 @@ class ProductController extends Controller
         }
         
         // Handle image
-        $imagePath = $product->image;
+        $imagePath = $product->main_image;
         
         // Handle primary image upload
-        if ($request->hasFile('image')) {
+        if ($request->hasFile('main_image')) {
             // Delete old image if exists
-            if ($product->image && Storage::disk('public')->exists($product->image)) {
-                Storage::disk('public')->delete($product->image);
+            if ($product->main_image && Storage::disk('public')->exists($product->main_image)) {
+                Storage::disk('public')->delete($product->main_image);
             }
             
-            $imagePath = $request->file('image')->store('products', 'public');
+            $imagePath = $request->file('main_image')->store('products', 'public');
         }
 
         // Update the product
@@ -148,11 +148,11 @@ class ProductController extends Controller
             'price' => $request->price,
             'stock' => $request->stock,
             'category_id' => $request->category_id,
-            'image' => $imagePath,
-            'images' => [$imagePath], // Update images array with single image
+            'main_image' => $imagePath,
+            'gallery_images' => [$imagePath], // Update gallery_images array with single image
             'is_active' => $request->has('is_active'),
             'is_on_sale' => $request->has('is_on_sale'),
-            'discount' => $request->discount ?? 0,
+            'discount' => $request->has('is_on_sale') ? ($request->discount ?? 0) : 0,
         ]);
 
         return redirect()->route('admin.products.index')
@@ -165,8 +165,8 @@ class ProductController extends Controller
     public function destroy(Product $product)
     {
         // Delete image if exists
-        if ($product->image && Storage::disk('public')->exists($product->image)) {
-            Storage::disk('public')->delete($product->image);
+        if ($product->main_image && Storage::disk('public')->exists($product->main_image)) {
+            Storage::disk('public')->delete($product->main_image);
         }
         
         $productName = $product->name;

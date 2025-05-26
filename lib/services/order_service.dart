@@ -88,9 +88,16 @@ class OrderService with ChangeNotifier {
     }
 
     try {
-      _isLoading = true;
-      _errorMessage = null;
-      notifyListeners();
+      final isRefresh = _orders.any((o) => o.id == orderId);
+
+      if (isRefresh) {
+        // Don't show loading indicator for refreshes
+        _errorMessage = null;
+      } else {
+        _isLoading = true;
+        _errorMessage = null;
+        notifyListeners();
+      }
 
       final token = _authService.token;
       final response = await http.get(
@@ -109,7 +116,19 @@ class OrderService with ChangeNotifier {
           // Update local cache if this order exists in it
           final existingOrderIndex = _orders.indexWhere((o) => o.id == orderId);
           if (existingOrderIndex >= 0) {
+            final oldOrder = _orders[existingOrderIndex];
+
+            // Check if status changed
+            final statusChanged = oldOrder.status != order.status ||
+                oldOrder.paymentStatus != order.paymentStatus;
+
             _orders[existingOrderIndex] = order;
+
+            if (statusChanged) {
+              debugPrint(
+                  'Order status changed: ${oldOrder.status.value} -> ${order.status.value}');
+            }
+
             notifyListeners();
           }
 
@@ -154,5 +173,38 @@ class OrderService with ChangeNotifier {
   // Force a refresh of orders data
   Future<bool> refreshOrders() {
     return fetchOrders(forceRefresh: true);
+  }
+
+  // Utility method to check if payment is successful
+  bool isPaymentSuccessful(String status) {
+    return status.toLowerCase() == 'paid';
+  }
+
+  // Show a notification status
+  void showOrderStatusNotification(
+      BuildContext context, Order oldOrder, Order newOrder) {
+    if (oldOrder.status != newOrder.status) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Status pesanan #${newOrder.id} berubah menjadi: ${newOrder.status.title}',
+          ),
+          backgroundColor: newOrder.status.color,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Lihat',
+            textColor: Colors.white,
+            onPressed: () {
+              // Navigate to order detail
+              Navigator.pushNamed(
+                context,
+                '/order-detail',
+                arguments: newOrder.id,
+              );
+            },
+          ),
+        ),
+      );
+    }
   }
 }

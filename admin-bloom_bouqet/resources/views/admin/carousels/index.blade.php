@@ -34,7 +34,7 @@
                     <td>{{ $carousel->title }}</td>
                     <td>{{ Str::limit($carousel->description, 50) }}</td>
                     <td>
-                        <img src="{{ asset('storage/' . $carousel->image) }}" alt="{{ $carousel->title }}" class="img-thumbnail" style="width: 100px; height: auto;">
+                        <img src="{{ asset('storage/' . $carousel->image_url) }}" alt="{{ $carousel->title }}" class="img-thumbnail" style="width: 100px; height: auto;">
                     </td>
                     <td>
                         <span class="badge {{ $carousel->is_active ? 'bg-success' : 'bg-danger' }}">
@@ -47,13 +47,11 @@
                                 <i class="fas fa-edit"></i>
                             </a>
                             
-                            <form action="{{ route('admin.carousels.destroy', $carousel) }}" method="POST" style="display:inline;" onsubmit="return confirm('Apakah Anda yakin ingin menghapus carousel \"{{ $carousel->title }}\"? Tindakan ini tidak dapat dibatalkan.');">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn action-btn delete-btn" title="Delete">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </form>
+                            <button type="button" class="btn action-btn delete-btn" 
+                                   onclick="openDeleteModal('{{ $carousel->id }}', '{{ $carousel->title }}', 'carousel', 'admin/carousels')"
+                                   title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -62,6 +60,9 @@
         </table>
     </div>
 </div>
+
+<!-- Include Delete Confirmation Modal -->
+@include('partials.delete-confirmation-modal')
 
 <style>
     .content-header {
@@ -229,6 +230,27 @@
         background-color: #dc3545;
         color: white;
     }
+
+    /* Fix for modal display */
+    .modal {
+        z-index: 9999 !important;
+    }
+    .modal-dialog {
+        z-index: 10000 !important;
+        pointer-events: auto !important;
+    }
+    .modal-backdrop {
+        z-index: 9990 !important;
+    }
+    body.modal-open {
+        overflow: hidden;
+        padding-right: 0px !important;
+    }
+
+    /* Tooltip fix */
+    .tooltip {
+        z-index: 10050 !important;
+    }
 </style>
 
 <script>
@@ -260,5 +282,40 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     });
 });
+</script>
+@endsection
+
+@section('scripts')
+<script>
+    // Additional modal handling for carousel deletion
+    document.addEventListener('DOMContentLoaded', function() {
+        // Force modals to be top-level by moving them to the body
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            // Move modal to body to prevent stacking context issues
+            document.body.appendChild(modal);
+            
+            // Ensure high z-index
+            modal.style.zIndex = '9999';
+            
+            // Fix pointer events
+            const modalDialog = modal.querySelector('.modal-dialog');
+            if (modalDialog) {
+                modalDialog.style.zIndex = '10000';
+                modalDialog.style.pointerEvents = 'auto';
+            }
+        });
+        
+        // Ensure the body can't be scrolled when modal is open
+        document.addEventListener('show.bs.modal', function() {
+            document.body.style.overflow = 'hidden';
+        });
+        
+        document.addEventListener('hidden.bs.modal', function() {
+            if (!document.querySelector('.modal.show')) {
+                document.body.style.overflow = '';
+            }
+        });
+    });
 </script>
 @endsection

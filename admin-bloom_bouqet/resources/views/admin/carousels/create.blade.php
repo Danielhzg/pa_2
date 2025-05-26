@@ -40,11 +40,11 @@
                 </div>
                 
                 <div class="mb-4">
-                    <label for="image" class="form-label">Image</label>
+                    <label for="image_url" class="form-label">Image</label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="fas fa-image"></i></span>
-                        <input type="file" name="image" id="image" class="form-control @error('image') is-invalid @enderror" required>
-                        @error('image')
+                        <input type="file" name="image_url" id="image_url" class="form-control @error('image_url') is-invalid @enderror" required>
+                        @error('image_url')
                             <span class="invalid-feedback">{{ $message }}</span>
                         @enderror
                     </div>

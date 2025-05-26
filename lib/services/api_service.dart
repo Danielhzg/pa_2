@@ -3,13 +3,11 @@ import 'dart:convert';
 import 'dart:math' show min;
 import '../models/product.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/constants.dart';
 
 class ApiService {
-  // Gunakan URL API Laravel Anda
-  // Untuk emulator Android
-  final String baseUrl = 'http://10.0.2.2:8000/api';
-  // final String baseUrl = 'http://localhost:8000/api';
-  // final String baseUrl = 'http://127.0.0.1:8000/api';
+  // Use the dynamic base URL from constants
+  String get baseUrl => '${ApiConstants.getBaseUrl()}/api';
 
   // Additional URLs to try if the main one fails
   final List<String> fallbackUrls = [
@@ -295,71 +293,173 @@ class ApiService {
 
   Future<List<dynamic>> fetchCarousels() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/v1/carousels'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      );
+      print('\n==== FETCHING CAROUSELS ====');
+      print('Sending request to: $baseUrl/v1/carousels');
 
-      print('Carousel API Response Status: ${response.statusCode}');
-      print('Carousel API Response Body: ${response.body}');
+      // Coba beberapa URL berbeda jika URL utama gagal
+      final List<String> urlsToTry = [
+        '$baseUrl/v1/carousels',
+        '${ApiConstants.getBaseUrl()}/api/v1/carousels',
+        'http://10.0.2.2:8000/api/v1/carousels',
+        'http://localhost:8000/api/v1/carousels',
+        'http://192.168.0.106:8000/api/v1/carousels'
+      ];
 
-      if (response.statusCode == 200) {
-        dynamic decodedResponse = json.decode(response.body);
-        List<dynamic> carouselData = [];
+      http.Response? response;
+      String? responseBody;
+      int statusCode = 0;
 
-        // Periksa struktur respons
-        if (decodedResponse is Map) {
-          if (decodedResponse.containsKey('data') &&
-              decodedResponse['data'] is List) {
-            // Format respons dengan 'data' sebagai key
-            carouselData = decodedResponse['data'];
-          } else if (decodedResponse.containsKey('carousels') &&
-              decodedResponse['carousels'] is List) {
-            // Format respons dengan 'carousels' sebagai key
-            carouselData = decodedResponse['carousels'];
+      // Coba setiap URL sampai berhasil
+      for (String url in urlsToTry) {
+        try {
+          print('Trying URL: $url');
+          final tempResponse = await http.get(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+          ).timeout(const Duration(seconds: 5));
+
+          statusCode = tempResponse.statusCode;
+          print('Response status: $statusCode');
+
+          if (statusCode == 200) {
+            response = tempResponse;
+            responseBody = tempResponse.body;
+            print('Successful response from: $url');
+            break;
           }
-        } else if (decodedResponse is List) {
-          // Format respons langsung sebagai array
-          carouselData = decodedResponse;
+        } catch (e) {
+          print('Error with URL $url: $e');
+          continue;
         }
+      }
 
-        // Konversi data carousel ke format yang seragam
-        final List<Map<String, dynamic>> result = [];
-        for (var item in carouselData) {
-          // Log setiap item carousel untuk debugging detail
-          print('Processing carousel item: ${item.toString()}');
-
-          var imageValue = item['image']?.toString() ?? '';
-          print('Carousel image path: $imageValue');
-
-          // Cek secara khusus untuk carousel promo 10%
-          if (item['title']?.toString().contains('10%') == true ||
-              item['description']?.toString().contains('10%') == true) {
-            print('FOUND PROMO 10% CAROUSEL: ${item.toString()}');
-          }
-
-          result.add({
-            'id': item['id'] is String
-                ? int.tryParse(item['id']) ?? 0
-                : (item['id'] ?? 0),
-            'title': item['title']?.toString() ?? 'No Title',
-            'description': item['description']?.toString() ?? 'No Description',
-            'image': imageValue,
-            'order': item['order'] is String
-                ? int.tryParse(item['order']) ?? 0
-                : (item['order'] ?? 0),
-          });
-        }
-
-        print('Processed ${result.length} carousel items');
-        return result;
-      } else {
-        print('Failed to load carousels: ${response.statusCode}');
+      if (response == null || responseBody == null) {
+        print('All carousel URLs failed. No valid response.');
         return [];
       }
+
+      print('Carousel API Response Status: $statusCode');
+      print('Carousel API Response Body: $responseBody');
+
+      // Parsing JSON
+      dynamic decodedResponse;
+      try {
+        decodedResponse = json.decode(responseBody);
+        print('JSON decode successful');
+      } catch (e) {
+        print('JSON decode error: $e');
+        return [];
+      }
+
+      List<dynamic> carouselData = [];
+
+      // Periksa struktur respons
+      if (decodedResponse is Map) {
+        print('Response is a Map with keys: ${decodedResponse.keys.toList()}');
+
+        if (decodedResponse.containsKey('data') &&
+            decodedResponse['data'] is List) {
+          // Format respons dengan 'data' sebagai key
+          carouselData = decodedResponse['data'];
+          print('Found "data" key with ${carouselData.length} items');
+        } else if (decodedResponse.containsKey('carousels') &&
+            decodedResponse['carousels'] is List) {
+          // Format respons dengan 'carousels' sebagai key
+          carouselData = decodedResponse['carousels'];
+          print('Found "carousels" key with ${carouselData.length} items');
+        } else if (decodedResponse.containsKey('success') &&
+            decodedResponse.containsKey('message')) {
+          // API responses with success/message format
+          print('API response format: ${decodedResponse['message']}');
+
+          if (decodedResponse.containsKey('data') &&
+              decodedResponse['data'] is List) {
+            carouselData = decodedResponse['data'];
+            print('Using data field with ${carouselData.length} items');
+          }
+        }
+      } else if (decodedResponse is List) {
+        // Format respons langsung sebagai array
+        carouselData = decodedResponse;
+        print('Response is a direct List with ${carouselData.length} items');
+      }
+
+      if (carouselData.isEmpty) {
+        print('No carousel data found in the response');
+        return [];
+      }
+
+      // Konversi data carousel ke format yang seragam
+      final List<Map<String, dynamic>> result = [];
+      for (var item in carouselData) {
+        // Log setiap item carousel untuk debugging detail
+        print('\nProcessing carousel item: ${item.toString()}');
+
+        // Extract image path with detailed logging
+        String imageValue = '';
+
+        if (item.containsKey('image') && item['image'] != null) {
+          imageValue = item['image'].toString();
+          print('Found "image" field: $imageValue');
+        } else if (item.containsKey('image_url') && item['image_url'] != null) {
+          imageValue = item['image_url'].toString();
+          print('Found "image_url" field: $imageValue');
+        } else if (item.containsKey('imageUrl') && item['imageUrl'] != null) {
+          imageValue = item['imageUrl'].toString();
+          print('Found "imageUrl" field: $imageValue');
+        } else if (item.containsKey('url') && item['url'] != null) {
+          imageValue = item['url'].toString();
+          print('Found "url" field: $imageValue');
+        }
+
+        // Process image URL for various formats
+        if (imageValue.isNotEmpty) {
+          // If just a filename without path, add carousels/ prefix
+          if (!imageValue.contains('/') &&
+              !imageValue.startsWith('http') &&
+              !imageValue.contains('storage/')) {
+            print('Image appears to be just a filename: $imageValue');
+            // Keep the original value, path will be handled by ImageUrlHelper
+          }
+        } else {
+          print('WARNING: No image field found in carousel item');
+        }
+
+        // Cek secara khusus untuk carousel promo
+        if ((item['title']?.toString().contains('Promo') == true) ||
+            (item['description']?.toString().contains('Promo') == true) ||
+            (item['title']?.toString().contains('%') == true) ||
+            (item['description']?.toString().contains('%') == true)) {
+          print('Found PROMO CAROUSEL: ${item.toString()}');
+        }
+
+        var processedItem = {
+          'id': item['id'] is String
+              ? int.tryParse(item['id']) ?? 0
+              : (item['id'] ?? 0),
+          'title': item['title']?.toString() ?? 'No Title',
+          'description': item['description']?.toString() ?? 'No Description',
+          'image': imageValue,
+          'order': item['order'] is String
+              ? int.tryParse(item['order']) ?? 0
+              : (item['order'] ?? 0),
+        };
+
+        print('Added processed item: $processedItem');
+        result.add(processedItem);
+      }
+
+      print('\nProcessed ${result.length} carousel items');
+      if (result.isEmpty) {
+        print('WARNING: No carousel items processed successfully');
+      } else if (result.length < carouselData.length) {
+        print('WARNING: Some carousel items failed to process');
+      }
+
+      return result;
     } catch (e) {
       print('Error fetching carousels: $e');
       return [];

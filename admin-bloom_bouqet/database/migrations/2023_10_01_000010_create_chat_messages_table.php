@@ -14,25 +14,39 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('chat_messages', function (Blueprint $table) {
-            $table->id();
+            $table->increments('id'); // Changed from id() to increments() to use int
             $table->string('client_message_id')->nullable();
-            $table->unsignedBigInteger('user_id')->nullable();
+            $table->integer('user_id')->unsigned()->nullable(); // Changed to unsigned integer
+            $table->integer('admin_id')->unsigned()->nullable(); // Changed to unsigned integer
             $table->text('message');
             $table->boolean('is_from_user')->default(true);
             $table->json('product_images')->nullable();
             $table->timestamp('timestamp')->nullable();
             $table->boolean('is_read')->default(false);
-            $table->string('status')->default('active');
+            $table->string('status', 20)->default('active');
             $table->timestamps();
             
-            // Add index for faster queries
+            // Indexes
             $table->index('user_id');
+            $table->index('admin_id');
             $table->index('is_from_user');
             $table->index('timestamp');
-            
-            // Add foreign key if users table exists
-            // (optional: bisa dihapus jika sudah yakin users selalu ada)
-            // $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+            $table->index('is_read');
+            $table->index('status');
+        });
+        
+        // Add foreign keys after table creation to prevent constraint issues
+        Schema::table('chat_messages', function (Blueprint $table) {
+            // Foreign keys
+            $table->foreign('user_id')
+                ->references('id')
+                ->on('users')
+                ->cascadeOnDelete();
+                
+            $table->foreign('admin_id')
+                ->references('id')
+                ->on('admins')
+                ->cascadeOnDelete();
         });
     }
 

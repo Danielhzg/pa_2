@@ -68,6 +68,7 @@ class Order extends Model
         'shipping_cost' => 'decimal:2',
         'total_amount' => 'decimal:2',
         'payment_details' => 'array',
+        'order_items' => 'array',
         'paid_at' => 'datetime',
         'shipped_at' => 'datetime',
         'delivered_at' => 'datetime',
@@ -82,7 +83,10 @@ class Order extends Model
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class)->withDefault([
+            'name' => 'Guest User',
+            'email' => 'guest@example.com'
+        ]);
     }
 
     /**
@@ -95,6 +99,7 @@ class Order extends Model
 
     /**
      * Get the items for the order.
+     * This maintains backward compatibility with the old relationship
      */
     public function items(): HasMany
     {
@@ -125,6 +130,14 @@ class Order extends Model
     public function deliveryTracking(): HasMany
     {
         return $this->hasMany(DeliveryTracking::class);
+    }
+
+    /**
+     * Get the carts associated with this order.
+     */
+    public function carts(): HasMany
+    {
+        return $this->hasMany(Cart::class);
     }
 
     /**
@@ -180,7 +193,7 @@ class Order extends Model
      */
     public function isWaitingForPayment(): bool
     {
-        return $this->status === self::STATUS_WAITING_FOR_PAYMENT;
+        return $this->status === 'waiting_for_payment';
     }
 
     /**
@@ -188,7 +201,7 @@ class Order extends Model
      */
     public function isProcessing(): bool
     {
-        return $this->status === self::STATUS_PROCESSING;
+        return $this->status === 'processing';
     }
 
     /**
@@ -196,7 +209,7 @@ class Order extends Model
      */
     public function isShipping(): bool
     {
-        return $this->status === self::STATUS_SHIPPING;
+        return $this->status === 'shipping';
     }
 
     /**
@@ -204,7 +217,7 @@ class Order extends Model
      */
     public function isDelivered(): bool
     {
-        return $this->status === self::STATUS_DELIVERED;
+        return $this->status === 'delivered';
     }
 
     /**
@@ -212,7 +225,7 @@ class Order extends Model
      */
     public function isCancelled(): bool
     {
-        return $this->status === self::STATUS_CANCELLED;
+        return $this->status === 'cancelled';
     }
 
     /**
@@ -220,7 +233,7 @@ class Order extends Model
      */
     public function isPaymentPending(): bool
     {
-        return $this->payment_status === self::PAYMENT_PENDING;
+        return $this->payment_status === 'pending';
     }
 
     /**
@@ -228,7 +241,7 @@ class Order extends Model
      */
     public function isPaymentPaid(): bool
     {
-        return $this->payment_status === self::PAYMENT_PAID;
+        return $this->payment_status === 'paid';
     }
 
     /**
@@ -236,7 +249,7 @@ class Order extends Model
      */
     public function isPaymentFailed(): bool
     {
-        return $this->payment_status === self::PAYMENT_FAILED;
+        return $this->payment_status === 'failed';
     }
 
     /**
@@ -244,7 +257,7 @@ class Order extends Model
      */
     public function isPaymentExpired(): bool
     {
-        return $this->payment_status === self::PAYMENT_EXPIRED;
+        return $this->payment_status === 'expired';
     }
 
     /**
@@ -252,7 +265,7 @@ class Order extends Model
      */
     public function isPaymentRefunded(): bool
     {
-        return $this->payment_status === self::PAYMENT_REFUNDED;
+        return $this->payment_status === 'refunded';
     }
 
     /**
@@ -315,9 +328,7 @@ class Order extends Model
             $this->paid_at = now();
             
             // If payment is successful, automatically update order status to processing
-            if ($this->status === self::STATUS_WAITING_FOR_PAYMENT) {
-                $this->status = self::STATUS_PROCESSING;
-            }
+            $this->status = self::STATUS_PROCESSING;
         }
         
         $this->save();
@@ -332,17 +343,34 @@ class Order extends Model
         $reportTitle = $title ?? 'Sales Report for Order #' . $this->order_id;
         $reportDescription = $description ?? 'Automatically generated sales report for order ' . $this->order_id;
         
-        // Get item details for the report
-        $items = $this->items()->with('product')->get();
-        $itemDetails = $items->map(function($item) {
-            return [
-                'product_id' => $item->product_id,
-                'product_name' => $item->name,
-                'quantity' => $item->quantity,
-                'price' => $item->price,
-                'subtotal' => $item->subtotal,
-            ];
-        })->toArray();
+        // Get item details for the report - support both JSON and relation
+        if (isset($this->order_items) && !empty($this->order_items)) {
+            // Use JSON data
+            $itemsCollection = collect($this->order_items);
+            $itemDetails = $itemsCollection->map(function($item) {
+                return [
+                    'product_id' => $item['product_id'] ?? null,
+                    'product_name' => $item['name'] ?? 'Unknown Product',
+                    'quantity' => $item['quantity'] ?? 0,
+                    'price' => $item['price'] ?? 0,
+                    'subtotal' => $item['subtotal'] ?? ($item['price'] * $item['quantity']),
+                ];
+            })->toArray();
+            $totalItems = $itemsCollection->sum('quantity');
+        } else {
+            // Fall back to relation
+            $items = $this->items()->with('product')->get();
+            $itemDetails = $items->map(function($item) {
+                return [
+                    'product_id' => $item->product_id,
+                    'product_name' => $item->name,
+                    'quantity' => $item->quantity,
+                    'price' => $item->price,
+                    'subtotal' => $item->subtotal,
+                ];
+            })->toArray();
+            $totalItems = $items->sum('quantity');
+        }
         
         // Create report details
         $details = [
@@ -371,9 +399,67 @@ class Order extends Model
             'period_start' => $this->created_at->startOfDay(),
             'period_end' => $this->created_at->endOfDay(),
             'total_amount' => $this->total_amount,
-            'total_items' => $items->sum('quantity'),
+            'total_items' => $totalItems,
             'status' => 'generated',
             'created_by' => auth()->guard('admin')->id(), // If an admin is creating the report
         ]);
+    }
+
+    /**
+     * Get the order items from the JSON column.
+     * This method should be used for new code.
+     */
+    public function getOrderItemsAttribute($value)
+    {
+        // If the value is already decoded, return it
+        if (is_array($value)) {
+            return $value;
+        }
+        
+        // Check if we have json data
+        if (!empty($value)) {
+            return json_decode($value, true);
+        }
+        
+        // If no JSON data, try to get items from the relationship
+        $relatedItems = $this->items()->get();
+        if ($relatedItems->isNotEmpty()) {
+            // Convert the collection to an array and cache it
+            $itemsArray = $relatedItems->toArray();
+            $this->attributes['order_items'] = json_encode($itemsArray);
+            return $itemsArray;
+        }
+        
+        return [];
+    }
+
+    /**
+     * Set the order items JSON attribute.
+     */
+    public function setOrderItemsAttribute($value)
+    {
+        if (is_array($value)) {
+            $this->attributes['order_items'] = json_encode($value);
+        } else {
+            $this->attributes['order_items'] = $value;
+        }
+    }
+
+    /**
+     * Get a collection of order items as OrderItem models.
+     * This provides full model functionality for the items.
+     */
+    public function getItemsCollection()
+    {
+        $items = $this->order_items;
+        
+        if (empty($items)) {
+            return collect([]);
+        }
+        
+        // Convert array items to OrderItem models
+        return collect($items)->map(function($item) {
+            return new OrderItem((array) $item);
+        });
     }
 }

@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\ChatController;
+use App\Http\Controllers\Admin\NotificationController;
 use Illuminate\Support\Facades\Route;
 
 // Redirect root URL to admin page
@@ -30,12 +31,14 @@ Route::prefix('admin')->name('admin.')->middleware('auth:admin')->group(function
     Route::get('/profile', [AdminController::class, 'profile'])->name('profile');
     Route::post('/profile', [AdminController::class, 'updateProfile'])->name('profile.update');
     
+    // Product Routes
     Route::get('/products', [ProductController::class, 'index'])->name('products.index');
     Route::get('/products/create', [ProductController::class, 'create'])->name('products.create');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
     Route::get('/products/{product}/edit', [ProductController::class, 'edit'])->name('products.edit');
     Route::put('/products/{product}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('/products/{product}', [ProductController::class, 'destroy'])->name('products.destroy');
+    
     Route::post('/categories/store', [AdminController::class, 'storeCategory'])->name('categories.store');
     Route::resource('carousels', CarouselController::class);
     Route::patch('/carousels/{carousel}/toggle-active', [CarouselController::class, 'toggleActive'])->name('carousels.toggle-active');
@@ -46,6 +49,7 @@ Route::prefix('admin')->name('admin.')->middleware('auth:admin')->group(function
     Route::post('/orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.updateStatus');
     Route::get('/orders-stats', [OrderController::class, 'getOrderStats'])->name('orders.stats');
     Route::get('/orders-check-new', [OrderController::class, 'checkNewOrders'])->name('orders.check-new');
+    Route::get('/orders/{order}/api', [OrderController::class, 'getOrderApi'])->name('orders.api');
 
     // Report Routes
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
@@ -55,11 +59,12 @@ Route::prefix('admin')->name('admin.')->middleware('auth:admin')->group(function
     Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
     Route::get('/customers/{customer}', [CustomerController::class, 'show'])->name('customers.show');
     Route::get('/customers/export', [CustomerController::class, 'export'])->name('customers.export');
-});
-
-Route::prefix('admin/products')->group(function () {
-    Route::get('/', [AdminController::class, 'listProducts'])->name('admin.products.index');
-    Route::delete('/{product}', [AdminController::class, 'deleteProduct'])->name('admin.products.delete');
+    
+    // Chat Routes
+    Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
+    Route::get('/chats/{chat}', [ChatController::class, 'show'])->name('chats.show');
+    Route::post('/chats/{chat}/messages', [ChatController::class, 'sendMessage'])->name('chats.sendMessage');
+    Route::get('/chats/{chat}/new-messages', [ChatController::class, 'getNewMessages'])->name('chats.getNewMessages');
 });
 
 Route::prefix('admin/categories')->group(function () {
@@ -69,6 +74,23 @@ Route::prefix('admin/categories')->group(function () {
     Route::get('/{category}/edit', [AdminController::class, 'editCategory'])->name('admin.categories.edit');
     Route::put('/{category}', [AdminController::class, 'updateCategory'])->name('admin.categories.update');
     Route::delete('/{category}', [AdminController::class, 'deleteCategory'])->name('admin.categories.delete');
+    Route::delete('/{category}/delete-with-products', [CategoryController::class, 'deleteWithProducts'])->name('admin.categories.delete-with-products');
+});
+
+// Notification routes
+Route::middleware(['auth'])->group(function () {
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('/notifications/{notification}/mark-as-read', [NotificationController::class, 'markAsRead'])->name('notifications.mark-as-read');
+    Route::post('/notifications/mark-all-as-read', [NotificationController::class, 'markAllAsRead'])->name('notifications.mark-all-as-read');
+    Route::get('/notifications/unread-count', [NotificationController::class, 'getUnreadCount'])->name('notifications.unread-count');
+});
+
+// Admin notification routes
+Route::middleware(['auth:admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/notifications', [App\Http\Controllers\Admin\NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('/notifications/{notification}/mark-as-read', [App\Http\Controllers\Admin\NotificationController::class, 'markAsRead'])->name('notifications.mark-as-read');
+    Route::post('/notifications/mark-all-as-read', [App\Http\Controllers\Admin\NotificationController::class, 'markAllAsRead'])->name('notifications.mark-all-as-read');
+    Route::get('/notifications/unread-count', [App\Http\Controllers\Admin\NotificationController::class, 'getUnreadCount'])->name('notifications.unread-count');
 });
 
 // Allow access to storage files

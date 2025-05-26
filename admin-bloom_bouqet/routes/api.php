@@ -57,6 +57,12 @@ Route::prefix('v1')->group(function () {
     Route::post('products', [ProductController::class, 'store']); // Add product
     Route::post('products/check-stock', [ProductController::class, 'checkStock']); // Check stock availability
     
+    // Order endpoints that don't require authentication
+    Route::post('orders/create', [OrderController::class, 'createOrder']); // Create order without authentication
+    Route::get('orders/{orderId}', [OrderController::class, 'getOrder']); // Get order details by ID
+    Route::post('orders/check-stock', [OrderController::class, 'checkStockAvailability']); // Check stock before ordering
+    Route::get('users/{userId}/orders', [OrderController::class, 'getOrdersByUserId']); // Get all orders for a specific user
+    
     // Customer endpoints
     Route::get('customers', [CustomerController::class, 'index']); // Get all customers
     Route::get('customers/{id}', [CustomerController::class, 'show']); // Get customer details

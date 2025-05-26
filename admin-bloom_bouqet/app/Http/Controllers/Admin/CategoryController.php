@@ -58,7 +58,7 @@ class CategoryController extends Controller
         $category = new Category();
         $category->name = $request->name;
         $category->slug = $slug;
-        $category->admin_id = Auth::id();
+        $category->admin_id = Auth::guard('admin')->id();
         $category->save();
 
         return redirect()->route('admin.categories.index')
@@ -117,6 +117,12 @@ class CategoryController extends Controller
         }
 
         $category->name = $request->name;
+        
+        // If admin_id is null, set it to current admin
+        if (!$category->admin_id) {
+            $category->admin_id = Auth::guard('admin')->id();
+        }
+        
         $category->save();
 
         return redirect()->route('admin.categories.index')
@@ -155,20 +161,6 @@ class CategoryController extends Controller
             return redirect()->route('admin.categories.index')
                 ->with('error', 'Terjadi kesalahan saat menghapus kategori. Silakan coba lagi.');
         }
-    }
-    
-    /**
-     * Show the form for confirming category deletion with option to move products.
-     *
-     * @param  \App\Models\Category  $category
-     * @return \Illuminate\Http\Response
-     */
-    public function confirmDelete(Category $category)
-    {
-        $productCount = $category->products()->count();
-        $categories = Category::where('id', '!=', $category->id)->orderBy('name')->get();
-        
-        return view('admin.categories.confirm-delete', compact('category', 'productCount', 'categories'));
     }
     
     /**

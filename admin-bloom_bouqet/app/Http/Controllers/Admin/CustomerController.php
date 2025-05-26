@@ -17,12 +17,18 @@ class CustomerController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = User::query()->where('role', 'customer');
+            $query = User::query();
             
-            // Apply search filter if provided
-            if ($request->has('search') && !empty($request->search)) {
+            // Filter out guest accounts
+            $query->where(function($q) {
+                $q->whereNull('email')
+                  ->orWhere('email', 'not like', '%@guestgmail.com%');
+            });
+            
+            // Search functionality
+            if ($request->has('search') && $request->search) {
                 $search = $request->search;
-                $query->where(function($q) use ($search) {
+                $query->where(function ($q) use ($search) {
                     $q->where('full_name', 'like', "%{$search}%")
                       ->orWhere('username', 'like', "%{$search}%")
                       ->orWhere('email', 'like', "%{$search}%")
@@ -31,25 +37,43 @@ class CustomerController extends Controller
             }
             
             // Get customer data with order counts and total spending
-            $customers = $query->withCount('orders')
+            $customers = $query->where('role', 'customer')
+                ->withCount('orders')
                 ->withSum('orders as orders_sum_total_amount', 'total_amount')
                 ->latest()
                 ->paginate(10);
             
             // Get statistics for dashboard widgets
             $statistics = [
-                'total_customers' => User::where('role', 'customer')->count(),
+                'total_customers' => User::where('role', 'customer')
+                    ->where(function($q) {
+                        $q->whereNull('email')
+                          ->orWhere('email', 'not like', '%@guestgmail.com%');
+                    })
+                    ->count(),
                 'new_customers_this_month' => User::where('role', 'customer')
+                    ->where(function($q) {
+                        $q->whereNull('email')
+                          ->orWhere('email', 'not like', '%@guestgmail.com%');
+                    })
                     ->whereMonth('created_at', now()->month)
                     ->whereYear('created_at', now()->year)
                     ->count(),
                 'top_spending_customers' => User::where('role', 'customer')
+                    ->where(function($q) {
+                        $q->whereNull('email')
+                          ->orWhere('email', 'not like', '%@guestgmail.com%');
+                    })
                     ->withSum('orders as orders_sum_total_amount', 'total_amount')
                     ->withCount('orders')
                     ->orderBy('orders_sum_total_amount', 'desc')
                     ->limit(5)
                     ->get(),
                 'most_active_customers' => User::where('role', 'customer')
+                    ->where(function($q) {
+                        $q->whereNull('email')
+                          ->orWhere('email', 'not like', '%@guestgmail.com%');
+                    })
                     ->withCount('orders')
                     ->withSum('orders as orders_sum_total_amount', 'total_amount')
                     ->orderBy('orders_count', 'desc')
@@ -70,7 +94,12 @@ class CustomerController extends Controller
     public function show($id)
     {
         try {
-            $customer = User::where('role', 'customer')->findOrFail($id);
+            $customer = User::where('role', 'customer')
+                ->where(function($q) {
+                    $q->whereNull('email')
+                      ->orWhere('email', 'not like', '%@guestgmail.com%');
+                })
+                ->findOrFail($id);
             
             // Get customer orders
             $orders = $customer->orders()->with('items')->latest()->paginate(10);

@@ -3,7 +3,7 @@
 @section('content')
 <div class="container-fluid">
     <div class="content-header">
-        <div class="d-flex align-items-center">
+        <div class="d-flex justify-content-between align-items-center">
             <div>
                 <h3 class="page-title">Edit Kategori</h3>
                 <p class="text-muted">Perbarui informasi kategori</p>
@@ -11,10 +11,10 @@
         </div>
     </div>
     
-    <div class="row">
-        <div class="col-lg-8 col-md-10">
-            <div class="card form-card">
-                <div class="card-body">
+    <div class="card form-card">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-lg-8 col-md-12">
                     <form action="{{ route('admin.categories.update', $category) }}" method="POST">
                         @csrf
                         @method('PUT')
@@ -40,13 +40,38 @@
                         
                         <div class="form-actions">
                             <button type="submit" class="btn save-btn">
-                                <i class="fas fa-save me-2"></i>Perbarui Kategori
+                                <i class="fas fa-save me-2"></i><span class="text-emphasis">Update Kategori</span>
                             </button>
                             <a href="{{ route('admin.categories.index') }}" class="btn cancel-btn ms-2">
                                 <i class="fas fa-times me-2"></i>Batal
                             </a>
                         </div>
                     </form>
+                </div>
+                <div class="col-lg-4 col-md-12 mt-4 mt-lg-0">
+                    <div class="card preview-card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Informasi Kategori</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="category-details text-center">
+                                <div class="category-icon-container mb-3">
+                                    <i class="fas fa-tag preview-icon"></i>
+                                </div>
+                                <h5 class="preview-category-name">{{ $category->name }}</h5>
+                                <div class="product-count mt-3">
+                                    <span class="badge product-count-badge">{{ $category->products->count() }} Produk</span>
+                                </div>
+                                <div class="category-status mt-3">
+                                    @if($category->products->count() > 0)
+                                        <span class="status-badge status-active">Digunakan</span>
+                                    @else
+                                        <span class="status-badge status-inactive">Tidak Digunakan</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -59,7 +84,7 @@
     }
     
     .page-title {
-        color: var(--pink-dark);
+        color: #D46A9F;
         font-weight: 600;
         margin-bottom: 0.25rem;
     }
@@ -73,14 +98,14 @@
     
     .form-label {
         font-weight: 500;
-        color: var(--pink-dark);
+        color: #D46A9F;
         margin-bottom: 0.5rem;
     }
     
     .input-group-text {
         background-color: rgba(255,105,180,0.1);
         border: 1px solid rgba(255,105,180,0.2);
-        color: var(--pink-primary);
+        color: #FF87B2;
     }
     
     .form-control {
@@ -90,7 +115,7 @@
     }
     
     .form-control:focus {
-        border-color: var(--pink-primary);
+        border-color: #FF87B2;
         box-shadow: 0 0 0 0.2rem rgba(255,105,180,0.25);
     }
     
@@ -100,11 +125,37 @@
         align-items: center;
     }
     
+    /* Text emphasis for the "Perbarui Kategori" button */
+    .text-emphasis {
+        color: #ffffff;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        position: relative;
+        transition: all 0.3s ease;
+    }
+    
+    /* Add a subtle underline animation on hover */
+    .text-emphasis::after {
+        content: '';
+        position: absolute;
+        width: 0;
+        height: 2px;
+        bottom: -2px;
+        left: 0;
+        background-color: #FFE5EE;
+        transition: width 0.3s ease;
+    }
+    
+    .save-btn:hover .text-emphasis::after {
+        width: 100%;
+    }
+    
     .save-btn {
-        background: linear-gradient(45deg, var(--pink-primary), var(--pink-dark));
+        background: linear-gradient(45deg, #FF87B2, #D46A9F);
         color: white;
         border-radius: 10px;
-        padding: 0.6rem 1.5rem;
+        padding: 0.6rem 1.2rem;
         font-weight: 500;
         border: none;
         box-shadow: 0 4px 8px rgba(255,105,180,0.3);
@@ -112,7 +163,7 @@
     }
     
     .save-btn:hover {
-        background: linear-gradient(45deg, var(--pink-dark), var(--pink-primary));
+        background: linear-gradient(45deg, #D46A9F, #FF87B2);
         transform: translateY(-2px);
         color: white;
         box-shadow: 0 6px 12px rgba(255,105,180,0.4);
@@ -123,7 +174,7 @@
         color: #6c757d;
         border: 1px solid #dee2e6;
         border-radius: 10px;
-        padding: 0.6rem 1.5rem;
+        padding: 0.6rem 1.2rem;
         font-weight: 500;
         transition: all 0.3s;
     }
@@ -132,17 +183,69 @@
         background-color: #e9ecef;
         color: #495057;
     }
+
+    .preview-card {
+        border-radius: 15px;
+        border: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        overflow: hidden;
+    }
     
-    @media (max-width: 768px) {
-        .form-actions {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 1rem;
-        }
-        
-        .cancel-btn {
-            margin-left: 0 !important;
-        }
+    .preview-card .card-header {
+        background-color: white;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+        padding: 1rem 1.5rem;
+        color: #D46A9F;
+        font-weight: 600;
+    }
+    
+    .category-icon-container {
+        width: 70px;
+        height: 70px;
+        border-radius: 15px;
+        background-color: rgba(255,135,178,0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto;
+    }
+    
+    .preview-icon {
+        font-size: 1.8rem;
+        color: #FF87B2;
+    }
+    
+    .preview-category-name {
+        font-weight: 600;
+        color: #333;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .product-count-badge {
+        background-color: rgba(255, 87, 178, 0.1);
+        color: #FF57B2;
+        padding: 0.35rem 0.75rem;
+        border-radius: 20px;
+        font-weight: 600;
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 0.35rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    .status-active {
+        background-color: rgba(40, 167, 69, 0.1);
+        color: #28a745;
+    }
+    
+    .status-inactive {
+        background-color: rgba(108, 117, 125, 0.1);
+        color: #6c757d;
     }
 </style>
 @endsection

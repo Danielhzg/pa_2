@@ -12,20 +12,24 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('categories', function (Blueprint $table) {
-            $table->id();
+            $table->increments('id');
             $table->string('name');
             $table->string('slug')->unique();
-            $table->text('description')->nullable();
-            $table->string('image')->nullable();
             $table->boolean('is_active')->default(true);
-            $table->integer('sort_order')->default(0);
-            $table->foreignId('parent_id')->nullable()->constrained('categories')->nullOnDelete();
-            $table->foreignId('admin_id')->nullable()->constrained('admins')->nullOnDelete();
+            $table->integer('admin_id')->unsigned()->nullable();
             $table->timestamps();
             
-            // Index for parent-child relationship queries
-            $table->index('parent_id');
+            // Indexes for performance
             $table->index('is_active');
+            $table->index('admin_id');
+        });
+        
+        // Add foreign key constraints after table creation
+        Schema::table('categories', function (Blueprint $table) {
+            $table->foreign('admin_id')
+                ->references('id')
+                ->on('admins')
+                ->nullOnDelete();
         });
     }
 

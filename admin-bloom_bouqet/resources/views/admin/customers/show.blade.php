@@ -201,9 +201,9 @@
                                         @php
                                             $statusClass = 'secondary';
                                             switch($order->status) {
-                                                case 'pending': $statusClass = 'warning'; break;
+                                                case 'waiting_for_payment': $statusClass = 'warning'; break;
                                                 case 'processing': $statusClass = 'info'; break;
-                                                case 'shipped': $statusClass = 'primary'; break;
+                                                case 'shipping': $statusClass = 'primary'; break;
                                                 case 'delivered': $statusClass = 'success'; break;
                                                 case 'cancelled': $statusClass = 'danger'; break;
                                             }
@@ -213,7 +213,7 @@
                                         </span>
                                     </td>
                                     <td>Rp{{ number_format($order->total_amount, 0, ',', '.') }}</td>
-                                    <td>{{ $order->payment_method ?? 'Tidak tersedia' }}</td>
+                                    <td>{{ ucfirst($order->payment_method ?? 'Tidak tersedia') }}</td>
                                     <td>
                                         <a href="{{ route('admin.orders.show', $order->id) }}" class="btn action-btn info-btn" title="Detail">
                                             <i class="fas fa-eye"></i>
@@ -234,6 +234,81 @@
                     </div>
                     <h5>Belum Ada Pesanan</h5>
                     <p class="text-muted">Pelanggan ini belum melakukan pemesanan</p>
+                </div>
+            @endif
+        </div>
+    </div>
+    
+    <!-- Purchased Products -->
+    <div class="card table-card mb-4">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Produk yang Dibeli</h5>
+            </div>
+        </div>
+        <div class="card-body">
+            @php
+                $purchasedProducts = collect();
+                foreach($orders as $order) {
+                    foreach($order->items as $item) {
+                        $purchasedProducts->push([
+                            'product_id' => $item->product_id ?? 0,
+                            'name' => $item->name,
+                            'price' => $item->price,
+                            'quantity' => $item->quantity,
+                            'total' => $item->price * $item->quantity,
+                            'order_id' => $order->id,
+                            'order_date' => $order->created_at,
+                            'image' => $item->product->image ?? null
+                        ]);
+                    }
+                }
+            @endphp
+            
+            @if($purchasedProducts->count() > 0)
+                <div class="table-responsive">
+                    <table class="table product-table">
+                        <thead>
+                            <tr>
+                                <th>Gambar</th>
+                                <th>Produk</th>
+                                <th>Harga</th>
+                                <th>Jumlah</th>
+                                <th>Total</th>
+                                <th>Tanggal Pembelian</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($purchasedProducts as $product)
+                                <tr class="product-item">
+                                    <td>
+                                        @if($product['image'])
+                                            <img src="{{ asset('storage/' . $product['image']) }}" 
+                                                alt="{{ $product['name'] }}" class="img-thumbnail" 
+                                                style="max-height: 50px;">
+                                        @else
+                                            <div class="bg-light text-center p-2 rounded">
+                                                <i class="fas fa-image text-muted"></i>
+                                            </div>
+                                        @endif
+                                    </td>
+                                    <td>{{ $product['name'] }}</td>
+                                    <td>Rp{{ number_format($product['price'], 0, ',', '.') }}</td>
+                                    <td>{{ $product['quantity'] }}</td>
+                                    <td>Rp{{ number_format($product['total'], 0, ',', '.') }}</td>
+                                    <td>{{ \Carbon\Carbon::parse($product['order_date'])->format('d M Y') }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @else
+                <div class="empty-state text-center py-5">
+                    <div class="empty-state-icon mb-3">
+                        <i class="fas fa-shopping-bag"></i>
+                    </div>
+                    <h5>Belum Ada Produk yang Dibeli</h5>
+                    <p class="text-muted">Pelanggan ini belum membeli produk apapun</p>
                 </div>
             @endif
         </div>

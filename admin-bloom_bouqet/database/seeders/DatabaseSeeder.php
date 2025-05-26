@@ -32,8 +32,10 @@ class DatabaseSeeder extends Seeder
         ]);
         
         // Call the AdminSeeder to create default admin user
+        // Also call CarouselSeeder to create sample carousel data
         $this->call([
             AdminSeeder::class,
+            CarouselSeeder::class,
         ]);
     }
 }

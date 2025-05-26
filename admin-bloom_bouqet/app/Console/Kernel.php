@@ -16,6 +16,7 @@ class Kernel extends ConsoleKernel
         Commands\DatabaseTableCommand::class,
         Commands\AddSlugToProducts::class,
         Commands\ExpireQRPayments::class,
+        Commands\CheckExpiredOrders::class,
     ];
 
     /**
@@ -30,6 +31,9 @@ class Kernel extends ConsoleKernel
     {
         // Check for expired QR payments every minute
         $schedule->command('orders:expire-qr-payments')->everyMinute();
+        
+        // Check for expired orders every minute
+        $schedule->command('orders:check-expired')->everyMinute();
     }
 
     /**

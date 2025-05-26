@@ -883,6 +883,47 @@ class _CheckoutPageState extends State<CheckoutPage> {
         debugPrint('Payment method: $_paymentMethod (bukan VA)');
       }
 
+      // Menambahkan field untuk memastikan pesanan masuk dengan status "waiting_for_payment"
+      final Map<String, dynamic> orderData = {
+        'id': 'ORDER-${DateTime.now().millisecondsSinceEpoch}',
+        'items': itemsForPayment,
+        'deliveryAddress': {
+          'address': deliveryAddress.fullAddress,
+          'phone': deliveryAddress.phone,
+          'name': deliveryAddress.name,
+        },
+        'subtotal': subtotal,
+        'shippingCost': shippingCost,
+        'total': total,
+        'paymentMethod': _paymentMethod,
+        'status':
+            'waiting_for_payment', // Status eksplisit dengan string literal
+        'payment_status': 'pending',
+        'payment_deadline': DateTime.now()
+            .add(const Duration(minutes: 15))
+            .toIso8601String(), // Deadline 15 menit
+      };
+
+      debugPrint('Mengirim data order ke server: ${jsonEncode(orderData)}');
+
+      // Membuat pesanan terlebih dahulu sebelum memproses pembayaran
+      final createOrderResult = await _paymentService.createOrder(orderData);
+
+      if (!createOrderResult['success']) {
+        // Jika gagal membuat pesanan, tampilkan pesan error
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+
+        _showNetworkErrorDialog(
+          context,
+          'Order Creation Failed',
+          createOrderResult['message'] ??
+              'Failed to create order. Please try again.',
+        );
+        return;
+      }
+
       // Get Midtrans Snap Token
       debugPrint('Memanggil getMidtransSnapToken...');
       final result = await _paymentService.getMidtransSnapToken(

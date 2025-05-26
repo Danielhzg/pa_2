@@ -154,17 +154,17 @@
                     
                     <div class="col-lg-4">
                         <div class="mb-4">
-                            <label for="image" class="form-label">Foto Utama Produk</label>
+                            <label for="main_image" class="form-label">Foto Utama Produk</label>
                             <div class="input-group">
                                 <input 
                                     type="file" 
-                                    name="image" 
-                                    id="image"
-                                    class="form-control @error('image') is-invalid @enderror" 
+                                    name="main_image" 
+                                    id="main_image"
+                                    class="form-control @error('main_image') is-invalid @enderror" 
                                     accept="image/*"
                                     required
                                 >
-                                @error('image')
+                                @error('main_image')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
@@ -399,7 +399,7 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // Primary image preview
-        const primaryImageInput = document.getElementById('image');
+        const primaryImageInput = document.getElementById('main_image');
         const primaryImagePreview = document.getElementById('primaryImagePreview').querySelector('img');
         
         primaryImageInput.addEventListener('change', function() {

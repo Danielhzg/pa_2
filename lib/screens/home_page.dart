@@ -689,6 +689,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       );
     }
 
+    if (_banners.isEmpty) {
+      print('No banners available to display');
+      return const SizedBox(height: 20); // Return an empty space if no banners
+    }
+
+    // Debug info
+    print('Building carousel with ${_banners.length} banners');
+    for (var banner in _banners) {
+      print('Banner data: ${banner.toString()}');
+    }
+
     return Container(
       height: 200,
       margin: const EdgeInsets.only(top: 15),
@@ -702,9 +713,22 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         },
         itemBuilder: (context, index) {
           final banner = _banners[index];
-          final imageUrl = ImageUrlHelper.buildImageUrl(banner['image'] ?? '');
+
+          // Dapatkan semua URL alternatif
+          final String rawImagePath = banner['image'] ?? '';
+          final List<String> imageUrls =
+              ImageUrlHelper.getAllPossibleImageUrls(rawImagePath);
+          final String primaryImageUrl = imageUrls.isNotEmpty
+              ? imageUrls[0]
+              : ImageUrlHelper.placeholderUrl;
+
           final title = banner['title'] ?? '';
           final description = banner['description'] ?? '';
+
+          // Log the image URLs for debugging
+          print('Banner $index raw image path: $rawImagePath');
+          print('Banner $index primary URL: $primaryImageUrl');
+          print('Banner $index all URLs: $imageUrls');
 
           return AnimatedContainer(
             duration: const Duration(milliseconds: 500),
@@ -727,13 +751,85 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
+                  // Try multiple image URLs if the main one fails
                   CachedNetworkImage(
-                    imageUrl: imageUrl,
+                    imageUrl: primaryImageUrl,
                     fit: BoxFit.cover,
-                    placeholder: (context, url) =>
-                        const Center(child: CircularProgressIndicator()),
-                    errorWidget: (context, url, error) => const Center(
-                        child: Icon(Icons.error, color: Colors.red)),
+                    placeholder: (context, url) => const Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                    errorWidget: (context, url, error) {
+                      print('Error loading banner image: $error');
+                      print('Failed URL: $primaryImageUrl');
+
+                      // Try second URL if available
+                      if (imageUrls.length > 1) {
+                        return CachedNetworkImage(
+                          imageUrl: imageUrls[1],
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => const Center(
+                            child: CircularProgressIndicator(),
+                          ),
+                          errorWidget: (context, url, error) {
+                            // Try third URL if available
+                            if (imageUrls.length > 2) {
+                              return CachedNetworkImage(
+                                imageUrl: imageUrls[2],
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                                errorWidget: (context, url, error) => Container(
+                                  color: Colors.grey[200],
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.image_not_supported,
+                                            color: Colors.grey[400], size: 40),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Image not available',
+                                          style: TextStyle(
+                                              color: Colors.grey[600]),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            return const Center(
+                              child: Icon(Icons.error, color: Colors.red),
+                            );
+                          },
+                        );
+                      }
+
+                      return Container(
+                        color: Colors.grey[200],
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.broken_image,
+                                  color: Colors.grey, size: 40),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Cannot load image',
+                                style: TextStyle(color: Colors.grey[600]),
+                              ),
+                              if (rawImagePath.isNotEmpty)
+                                Text(
+                                  'Path: $rawImagePath',
+                                  style: TextStyle(
+                                      color: Colors.grey[500], fontSize: 10),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   Container(
                     decoration: BoxDecoration(
@@ -747,40 +843,37 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       ),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            shadows: [
-                              Shadow(
-                                color: Colors.black26,
-                                offset: Offset(0, 2),
-                                blurRadius: 4,
-                              ),
-                            ],
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          description,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
+                          const SizedBox(height: 5),
+                          Text(
+                            description,
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 14,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],

@@ -484,6 +484,237 @@
             color: var(--primary-dark) !important;
             transition: color 0.3s;
         }
+        
+        /* Notification Styles */
+        .notification-icon-wrapper {
+            position: relative;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-right: 15px;
+        }
+        
+        .notification-icon-wrapper:hover {
+            background-color: rgba(255, 135, 178, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .notification-icon {
+            color: var(--primary-color);
+            font-size: 18px;
+        }
+        
+        .notification-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #FF3366;
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid white;
+        }
+        
+        .notifications-dropdown {
+            width: 380px !important;
+            padding: 0 !important;
+            border-radius: 12px !important;
+            border: none !important;
+            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.15) !important;
+            max-height: 80vh;
+            overflow: hidden;
+        }
+        
+        .notifications-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            background-color: white;
+        }
+        
+        .notifications-header h6 {
+            font-weight: 600;
+            color: #333;
+            letter-spacing: 0.5px;
+        }
+        
+        .notifications-header a {
+            font-size: 14px;
+            text-decoration: none;
+        }
+        
+        .notifications-body {
+            max-height: 60vh;
+            overflow-y: auto;
+            padding: 0;
+        }
+        
+        .notification-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: all 0.2s;
+            cursor: pointer;
+            display: flex;
+            align-items: flex-start;
+            position: relative;
+            background-color: white;
+        }
+        
+        .notification-item:hover {
+            background-color: #f9f9f9;
+        }
+        
+        .notification-item.unread {
+            background-color: #f9f9f9;
+        }
+        
+        .notification-icon-container {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        
+        .notification-content-wrapper {
+            flex-grow: 1;
+        }
+        
+        .notification-title {
+            font-size: 15px;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .notification-content {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.4;
+        }
+        
+        .notification-time {
+            font-size: 12px;
+            color: #999;
+            margin-top: 8px;
+        }
+        
+        /* Order notification specific styles */
+        .notification-item.order-notification .notification-icon-container {
+            background-color: #f8e5ff;
+        }
+        
+        .notification-item.order-notification .notification-icon-container i {
+            color: #9c27b0;
+        }
+        
+        /* Payment notification specific styles */
+        .notification-item.payment-notification .notification-icon-container {
+            background-color: #e3f2fd;
+        }
+        
+        .notification-item.payment-notification .notification-icon-container i {
+            color: #2196f3;
+        }
+        
+        /* Shopee notification specific styles */
+        .notification-item.shopee-notification .notification-icon-container {
+            background-color: #fff8e1;
+        }
+        
+        .notification-item.shopee-notification .notification-icon-container i {
+            color: #ff5722;
+        }
+        
+        /* System notification specific styles */
+        .notification-item.system-notification .notification-icon-container {
+            background-color: #e8f5e9;
+        }
+        
+        .notification-item.system-notification .notification-icon-container i {
+            color: #4caf50;
+        }
+        
+        .no-notifications {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 30px 15px;
+            color: #999;
+        }
+        
+        .no-notifications i {
+            font-size: 32px;
+            margin-bottom: 10px;
+            color: #ddd;
+        }
+        
+        .no-notifications p {
+            font-size: 14px;
+            margin: 0;
+        }
+        
+        /* Toast notifications */
+        .toast {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            border: none;
+            overflow: hidden;
+            width: 320px;
+        }
+
+        .toast.bg-success {
+            border-left: 4px solid #2ecc71;
+        }
+
+        .toast.bg-info {
+            border-left: 4px solid #3498db;
+        }
+
+        .toast.bg-warning {
+            border-left: 4px solid #f1c40f;
+        }
+
+        .toast.bg-danger {
+            border-left: 4px solid #e74c3c;
+        }
+
+        .toast .toast-body {
+            padding: 12px 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .toast .btn-close {
+            background-size: 0.65em;
+            opacity: 0.5;
+        }
+
+        .toast .toast-body i {
+            margin-right: 10px;
+            font-size: 18px;
+        }
+
+        .toast .toast-body strong {
+            display: block;
+            margin-bottom: 3px;
+        }
     </style>
     
     @yield('styles')
@@ -534,7 +765,8 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <!-- Chat functionality removed -->
+                    <a class="nav-link {{ Request::is('admin/chats*') ? 'active' : '' }}" href="{{ route('admin.chats.index') }}">
+                        <i class="fas fa-comments"></i> Chat
                     </a>
                 </li>
                 <li class="nav-item">
@@ -574,7 +806,13 @@
                 <h4 class="page-title">@yield('page-title', 'Dashboard')</h4>
             </div>
             
-            <div class="user-dropdown">
+            <div class="user-dropdown d-flex align-items-center">
+                <!-- Notification icon -->
+                <div class="ms-3">
+                    @include('admin.components.notification_dropdown', ['unreadNotificationCount' => $unreadNotificationCount ?? 0])
+                </div>
+                
+                <!-- User dropdown -->
                 <button class="dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                     <img src="https://ui-avatars.com/api/?name=Admin&background=FF87B2&color=fff" alt="Admin">
                     <span>Admin</span>
@@ -616,6 +854,55 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     
+    <!-- Make sure Bootstrap is globally available -->
+    <script>
+        // Ensure Bootstrap is available globally
+        if (typeof bootstrap === 'undefined') {
+            console.error('Bootstrap is not loaded properly. Adding fallback.');
+            // Create a fallback for Bootstrap modal if needed
+            window.bootstrap = {
+                Modal: function(element) {
+                    return {
+                        show: function() {
+                            if (element) {
+                                element.classList.add('show');
+                                element.style.display = 'block';
+                                document.body.classList.add('modal-open');
+                                
+                                // Create backdrop
+                                let backdrop = document.createElement('div');
+                                backdrop.className = 'modal-backdrop fade show';
+                                document.body.appendChild(backdrop);
+                            }
+                        },
+                        hide: function() {
+                            if (element) {
+                                element.classList.remove('show');
+                                element.style.display = 'none';
+                                document.body.classList.remove('modal-open');
+                                
+                                // Remove backdrop
+                                let backdrop = document.querySelector('.modal-backdrop');
+                                if (backdrop) {
+                                    backdrop.remove();
+                                }
+                            }
+                        }
+                    };
+                }
+            };
+        }
+        
+        // Test Bootstrap availability
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof bootstrap !== 'undefined') {
+                console.log('Bootstrap is loaded correctly.');
+            } else {
+                console.error('Bootstrap is still not available after fallback.');
+            }
+        });
+    </script>
+    
     <!-- Custom JS -->
     <script>
         // Toggle sidebar on mobile
@@ -629,56 +916,222 @@
             return new bootstrap.Tooltip(tooltipTriggerEl)
         });
 
-        // Order Notification System
+        // Notification system
         $(document).ready(function() {
-            // Add notification badge to Orders menu
-            const orderNavLink = $('a.nav-link[href="{{ route('admin.orders.index') }}"]');
-            orderNavLink.append('<span class="order-badge ms-auto badge bg-danger rounded-pill" style="display: none;">0</span>');
+            // Track already displayed notifications to prevent duplicates
+            const displayedNotifications = new Set();
             
             // Create notification sound
             const notificationSound = new Audio('{{ asset('sounds/notification.mp3') }}');
             
-            // Create toast container
+            // Create notification container if it doesn't exist
             if ($('#notification-container').length === 0) {
                 $('body').append(`
                     <div id="notification-container" style="position: fixed; top: 80px; right: 20px; z-index: 9999;"></div>
                 `);
             }
-
-            // Check for new orders every 30 seconds
-            function checkNewOrders() {
+            
+            // Load notifications
+            function loadNotifications() {
+                fetch('{{ route('admin.notifications.unread-count') }}')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update badge count
+                        if (data.count > 0) {
+                            $('#notification-badge').removeClass('d-none').text(data.count);
+                        } else {
+                            $('#notification-badge').addClass('d-none');
+                        }
+                        
+                        // Get notifications content
+                        return fetch('{{ route('admin.notifications.index') }}?ajax=true');
+                    })
+                    .then(response => response.text())
+                    .then(html => {
+                        $('#notificationsContainer').html(html);
+                    })
+                    .catch(error => {
+                        console.error('Error loading notifications:', error);
+                        $('#notificationsContainer').html(`
+                            <div class="no-notifications">
+                                <i class="fas fa-bell-slash"></i>
+                                <p>Gagal memuat notifikasi</p>
+                            </div>
+                        `);
+                    });
+            }
+            
+            // Show notifications when dropdown is opened
+            $('#notificationDropdown').on('click', function() {
+                loadNotifications();
+            });
+            
+            // Mark all notifications as read
+            $('#markAllAsRead').on('click', function(e) {
+                e.preventDefault();
+                markAllNotificationsAsRead();
+            });
+            
+            function markAllNotificationsAsRead() {
+                fetch('{{ route('admin.notifications.mark-all-as-read') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Update badge
+                    $('#notification-badge').addClass('d-none').text('0');
+                    
+                    // Remove unread styling from all notifications
+                    $('.notification-item').removeClass('unread');
+                })
+                .catch(error => {
+                    console.error('Error marking notifications as read:', error);
+                });
+            }
+            
+            // Mark single notification as read when clicked
+            $(document).on('click', '.notification-item', function(e) {
+                // Don't trigger if clicking on a link inside the notification
+                if ($(e.target).closest('a').length > 0) {
+                    return;
+                }
+                
+                const notificationId = $(this).data('notification-id');
+                
+                fetch(`{{ route('admin.notifications.mark-as-read', '') }}/${notificationId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Update badge count
+                    const currentCount = parseInt($('#notification-badge').text() || '0');
+                    if (currentCount > 0) {
+                        const newCount = currentCount - 1;
+                        if (newCount > 0) {
+                            $('#notification-badge').text(newCount);
+                        } else {
+                            $('#notification-badge').addClass('d-none');
+                        }
+                    }
+                    
+                    // Remove unread styling
+                    $(this).removeClass('unread');
+                    
+                    // If it's an order notification, redirect to the order detail page
+                    if (data.type === 'order' && data.order_id) {
+                        window.location.href = `{{ route('admin.orders.show', '') }}/${data.order_id}`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error marking notification as read:', error);
+                });
+            });
+            
+            // Auto-refresh notifications
+            const CHECK_INTERVAL = 30000; // 30 seconds
+            let lastNotificationCount = 0;
+            
+            // Check for new orders/notifications with throttling
+            let lastCheck = 0;
+            function throttledCheckNotifications() {
+                const now = Date.now();
+                if (now - lastCheck > 60000) { // Max once per minute
+                    lastCheck = now;
+                    checkForNotifications();
+                }
+            }
+            
+            // Set interval to check for notifications
+            setInterval(throttledCheckNotifications, CHECK_INTERVAL);
+            
+            // Initial check
+            throttledCheckNotifications();
+            
+            // Function to check for new notifications
+            function checkForNotifications() {
                 $.ajax({
-                    url: '{{ route('admin.orders.check-new') }}',
-                    type: 'GET',
-                    dataType: 'json',
+                    url: '{{ route('admin.notifications.unread-count') }}',
+                    method: 'GET',
                     success: function(response) {
-                        if (response.new_orders_count > 0) {
-                            // Update badge
-                            const orderBadge = $('.order-badge');
-                            orderBadge.text(response.new_orders_count).show();
+                        // Update badge without spam notifications
+                        if (response.count > 0) {
+                            $('#notification-badge').removeClass('d-none').text(response.count);
                             
-                            // Show toast notification
-                            showNotification('New Order Received!', `You have ${response.new_orders_count} new order(s) waiting for review.`);
+                            // Only play sound if there are new unread notifications since last check
+                            if (response.count > lastNotificationCount) {
+                                // Only play sound once per session for new notifications
+                                notificationSound.play().catch(e => console.log('Error playing sound:', e));
+                                
+                                // Check for new orders
+                                checkForNewOrders();
+                            }
                             
-                            // Play sound
-                            notificationSound.play();
+                            lastNotificationCount = response.count;
+                        } else {
+                            $('#notification-badge').addClass('d-none');
+                            lastNotificationCount = 0;
                         }
                     },
-                    error: function(xhr, status, error) {
-                        console.error('Error checking for new orders:', error);
+                    error: function(error) {
+                        console.error('Error checking for notifications:', error);
                     }
                 });
             }
             
-            // Create toast notification
-            function showNotification(title, message) {
+            // Function to check for new orders
+            function checkForNewOrders() {
+                fetch('{{ route('admin.orders.check-new') }}')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.new_orders_count > 0) {
+                            // Show toast notification for new orders
+                            showToast('Pesanan Baru', `Ada ${data.new_orders_count} pesanan baru yang perlu ditinjau`, 'success');
+                            
+                            // Auto-reload notifications in dropdown if it's open
+                            if ($('.notifications-dropdown').hasClass('show')) {
+                                loadNotifications();
+                            }
+                        }
+                        
+                        if (data.payment_status_changed_count > 0) {
+                            // Show toast notification for payment status changes
+                            showToast('Pembayaran Diterima', `${data.payment_status_changed_count} pesanan telah dibayar dan perlu diproses`, 'info');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error checking for new orders:', error);
+                    });
+            }
+            
+            // Function to show toast notification
+            function showToast(title, message, type = 'info') {
                 const toastId = 'toast-' + Date.now();
+                
+                // Determine icon based on type
+                let icon = 'fa-info-circle text-info';
+                if (type === 'success') icon = 'fa-check-circle text-success';
+                if (type === 'warning') icon = 'fa-exclamation-triangle text-warning';
+                if (type === 'danger') icon = 'fa-exclamation-circle text-danger';
+                
                 const toast = `
-                    <div id="${toastId}" class="toast align-items-center bg-white border-start border-4 border-danger" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div id="${toastId}" class="toast align-items-center border-0 mb-3 bg-${type}" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000">
                         <div class="d-flex">
-                            <div class="toast-body">
-                                <strong class="text-danger">${title}</strong>
-                                <p class="mb-0">${message}</p>
+                            <div class="toast-body d-flex">
+                                <div class="me-3">
+                                    <i class="fas ${icon} fa-lg"></i>
+                                </div>
+                                <div>
+                                    <strong>${title}</strong>
+                                    <div>${message}</div>
+                                </div>
                             </div>
                             <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
                         </div>
@@ -686,20 +1139,84 @@
                 `;
                 
                 $('#notification-container').append(toast);
+                
+                // Initialize and show the toast
                 const toastElement = new bootstrap.Toast(document.getElementById(toastId), {
+                    autohide: true,
                     delay: 5000
                 });
                 toastElement.show();
                 
-                // Redirect to orders page when clicked
-                $(`#${toastId}`).on('click', function() {
-                    window.location.href = '{{ route('admin.orders.index') }}';
+                // Remove toast from DOM after it's hidden
+                $(`#${toastId}`).on('hidden.bs.toast', function() {
+                    $(this).remove();
                 });
             }
+        });
+    </script>
+    
+    <!-- Add this script just before the closing </body> tag -->
+    <script>
+        // Enhanced modal fix to ensure proper display and interaction
+        document.addEventListener('DOMContentLoaded', function() {
+            // Fix any existing modals
+            const allModals = document.querySelectorAll('.modal');
+            allModals.forEach(modal => {
+                // Apply higher z-index
+                modal.style.zIndex = '9999';
+                
+                // Ensure dialog is clickable
+                const modalDialog = modal.querySelector('.modal-dialog');
+                if(modalDialog) {
+                    modalDialog.style.zIndex = '10000';
+                    modalDialog.style.pointerEvents = 'auto';
+                }
+            });
             
-            // Initial check and start interval
-            checkNewOrders();
-            setInterval(checkNewOrders, 30000); // Check every 30 seconds
+            // Listen for modal show events
+            document.addEventListener('show.bs.modal', function(event) {
+                // Make sure body has modal-open class
+                document.body.classList.add('modal-open');
+                
+                // Create backdrop if it doesn't exist
+                if(!document.querySelector('.modal-backdrop')) {
+                    let modalBackdrop = document.createElement('div');
+                    modalBackdrop.classList.add('modal-backdrop', 'fade', 'show');
+                    modalBackdrop.style.zIndex = '9998';
+                    document.body.appendChild(modalBackdrop);
+                }
+                
+                // Force the current modal to appear on top with higher z-index
+                const modal = event.target;
+                modal.style.zIndex = '9999';
+                modal.style.display = 'block';
+                
+                // Ensure the modal dialog is clickable
+                const modalDialog = modal.querySelector('.modal-dialog');
+                if(modalDialog) {
+                    modalDialog.style.zIndex = '10000';
+                    modalDialog.style.pointerEvents = 'auto';
+                }
+                
+                // Make sure content wrapper doesn't interfere
+                const contentWrapper = document.querySelector('.content-wrapper');
+                if(contentWrapper) {
+                    contentWrapper.style.position = 'relative';
+                    contentWrapper.style.zIndex = '1';
+                }
+            });
+            
+            // Remove artifacts when modal is hidden
+            document.addEventListener('hidden.bs.modal', function(event) {
+                // Remove any stray backdrops when all modals are closed
+                if(document.querySelectorAll('.modal.show').length === 0) {
+                    const backdrops = document.querySelectorAll('.modal-backdrop');
+                    backdrops.forEach(backdrop => {
+                        backdrop.remove();
+                    });
+                    document.body.classList.remove('modal-open');
+                }
+            });
         });
     </script>
     
