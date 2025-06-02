@@ -25,6 +25,7 @@ class ChatMessage extends Model
         'is_read',
         'status',
         'is_from_user',
+        'order_id',
     ];
 
     protected $casts = [
@@ -62,6 +63,14 @@ class ChatMessage extends Model
     }
 
     /**
+     * Get the order associated with this message.
+     */
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    /**
      * Scope a query to only include unread messages.
      */
     public function scopeUnread($query)
@@ -91,5 +100,13 @@ class ChatMessage extends Model
     public function scopeSystemMessages($query)
     {
         return $query->where('is_system', true);
+    }
+
+    /**
+     * Scope a query to filter messages by order.
+     */
+    public function scopeForOrder($query, $orderId)
+    {
+        return $query->where('order_id', $orderId);
     }
 } 

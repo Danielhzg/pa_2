@@ -35,12 +35,15 @@
 </div>
 
 <!-- Chat Messages -->
+<div class="chat-content">
 <div class="chat-messages" id="chat-messages">
     @php
         $currentDate = null;
+            // Sort messages by created_at in ascending order to display oldest first
+            $sortedMessages = $chat->messages->sortBy('created_at');
     @endphp
     
-    @forelse($chat->messages as $message)
+        @foreach($sortedMessages as $message)
         @php
             $messageDate = \Carbon\Carbon::parse($message->created_at)->format('Y-m-d');
             $showDateDivider = $currentDate !== $messageDate;
@@ -66,6 +69,41 @@
                         @endif
                     </div>
                 @endif
+                    
+                    @if($message->order_id)
+                        <div class="order-info mb-2">
+                            @php
+                                $order = \App\Models\Order::find($message->order_id);
+                            @endphp
+                            @if($order)
+                                <div class="order-card">
+                                    <div class="order-header">
+                                        <i class="fas fa-shopping-bag me-2"></i> 
+                                        <a href="{{ route('admin.orders.show', $order->id) }}" target="_blank">
+                                            {{ $order->order_id }}
+                                        </a>
+                                        <span class="badge bg-{{ $order->status === 'delivered' ? 'success' : ($order->status === 'cancelled' ? 'danger' : 'info') }} ms-2">
+                                            {{ ucfirst($order->status) }}
+                                        </span>
+                                    </div>
+                                    <div class="order-details">
+                                        <div class="order-detail-item">
+                                            <span class="detail-label">Customer:</span>
+                                            <span class="detail-value">{{ $order->user->name ?? 'Guest' }}</span>
+                                        </div>
+                                        <div class="order-detail-item">
+                                            <span class="detail-label">Total:</span>
+                                            <span class="detail-value">Rp {{ number_format($order->total_amount, 0, ',', '.') }}</span>
+                                        </div>
+                                        <div class="order-detail-item">
+                                            <span class="detail-label">Date:</span>
+                                            <span class="detail-value">{{ $order->created_at->format('d M Y') }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endif
+                        </div>
+                    @endif
                 
                 <div class="message-content">{{ $message->message }}</div>
                 <div class="message-time">
@@ -73,7 +111,7 @@
                     @if($message->is_admin)
                         <span class="ms-1">
                             @if($message->read_at)
-                                <i class="fas fa-check-double" title="Read" style="color: #FFE5EE;"></i>
+                                    <i class="fas fa-check-double" title="Read" style="color: #4fc3f7;"></i>
                             @else
                                 <i class="fas fa-check" title="Sent"></i>
                             @endif
@@ -82,31 +120,50 @@
                 </div>
             </div>
         </div>
-    @empty
-        <div class="no-messages">
-            <div class="chat-welcome-icon">
-                <i class="fas fa-comments"></i>
-            </div>
-            <h5>Belum ada pesan</h5>
-            <p class="text-muted">Mulai kirim pesan untuk memulai percakapan</p>
-        </div>
-    @endforelse
+        @endforeach
 </div>
 
-<!-- Chat Input -->
 <div class="chat-input">
-    <form id="send-message-form" action="{{ route('admin.chats.send', $chat->id) }}" method="POST">
+        <form id="send-message-form" action="{{ route('admin.chats.send', $chat->id) }}" method="POST" autocomplete="off">
         @csrf
         <div class="input-group">
-            <button type="button" class="btn" id="attach-button">
+                <button type="button" class="btn btn-light border" id="attach-button">
                 <i class="fas fa-paperclip"></i>
             </button>
-            <input type="text" name="message" class="form-control" placeholder="Ketik pesan..." autocomplete="off" autofocus>
+                <input type="text" name="message" class="form-control border" placeholder="Ketik pesan..." required maxlength="1000">
+                
+                <!-- Order dropdown for linking messages to orders -->
+                @if(isset($userOrders) && $userOrders->isNotEmpty())
+                    <div class="input-group-append">
+                        <button class="btn btn-light border dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Link to Order">
+                            <i class="fas fa-shopping-bag"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><h6 class="dropdown-header">Link to Order:</h6></li>
+                            @foreach($userOrders as $order)
+                                <li>
+                                    <a class="dropdown-item select-order" href="#" data-order-id="{{ $order->id }}">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span>{{ $order->order_id }}</span>
+                                            <span class="badge bg-{{ $order->status === 'delivered' ? 'success' : ($order->status === 'cancelled' ? 'danger' : 'info') }}">
+                                                {{ ucfirst($order->status) }}
+                                            </span>
+                                        </div>
+                                        <small class="text-muted">{{ $order->created_at->format('d M Y') }}</small>
+                                    </a>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                    <input type="hidden" name="order_id" id="selected-order-id">
+                @endif
+                
             <button type="submit" class="btn send-btn">
                 <i class="fas fa-paper-plane"></i>
             </button>
         </div>
     </form>
+    </div>
 </div>
 
 <style>
@@ -183,6 +240,48 @@
     @keyframes slideIn {
         from { transform: translateX(100%); opacity: 0; }
         to { transform: translateX(0); opacity: 1; }
+    }
+    
+    .order-card {
+        background-color: rgba(248, 249, 250, 0.7);
+        border-radius: 8px;
+        padding: 10px;
+        border: 1px solid #e9ecef;
+        margin-bottom: 8px;
+    }
+    
+    .order-header {
+        font-weight: 600;
+        margin-bottom: 5px;
+        display: flex;
+        align-items: center;
+    }
+    
+    .order-header a {
+        color: #FF87B2;
+        text-decoration: none;
+    }
+    
+    .order-header a:hover {
+        text-decoration: underline;
+    }
+    
+    .order-details {
+        font-size: 0.85rem;
+    }
+    
+    .order-detail-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 2px;
+    }
+    
+    .detail-label {
+        color: #6c757d;
+    }
+    
+    .detail-value {
+        font-weight: 500;
     }
 </style>
 
@@ -394,4 +493,36 @@
             });
         });
     }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // Handle order selection
+        document.querySelectorAll('.select-order').forEach(function(element) {
+            element.addEventListener('click', function(e) {
+                e.preventDefault();
+                const orderId = this.getAttribute('data-order-id');
+                document.getElementById('selected-order-id').value = orderId;
+                
+                // Visual feedback
+                document.querySelectorAll('.select-order').forEach(el => {
+                    el.classList.remove('active');
+                });
+                this.classList.add('active');
+                
+                // Update button to show selected order
+                const dropdownButton = document.querySelector('.dropdown-toggle');
+                dropdownButton.innerHTML = '<i class="fas fa-shopping-bag"></i> ' + this.querySelector('span').textContent;
+                dropdownButton.classList.add('btn-pink');
+            });
+        });
+        
+        // Clear order selection when message is sent
+        document.getElementById('send-message-form').addEventListener('submit', function() {
+            setTimeout(function() {
+                document.getElementById('selected-order-id').value = '';
+                const dropdownButton = document.querySelector('.dropdown-toggle');
+                dropdownButton.innerHTML = '<i class="fas fa-shopping-bag"></i>';
+                dropdownButton.classList.remove('btn-pink');
+            }, 100);
+        });
+    });
 </script> 

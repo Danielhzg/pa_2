@@ -13,6 +13,11 @@
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <!-- Chart.js Adapter untuk tanggal -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@2.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
     <!-- Custom CSS -->
     <style>
         :root {
@@ -488,101 +493,106 @@
         /* Notification Styles */
         .notification-icon-wrapper {
             position: relative;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background-color: rgba(255, 255, 255, 0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: inline-block;
+            padding: 10px;
             cursor: pointer;
-            transition: all 0.2s;
-            margin-right: 15px;
+            color: var(--light-text);
+            transition: all 0.3s;
         }
         
         .notification-icon-wrapper:hover {
-            background-color: rgba(255, 135, 178, 0.2);
+            color: var(--primary-color);
             transform: translateY(-2px);
         }
         
         .notification-icon {
-            color: var(--primary-color);
-            font-size: 18px;
+            font-size: 20px;
         }
         
         .notification-badge {
             position: absolute;
-            top: -5px;
-            right: -5px;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background-color: #FF3366;
+            top: 5px;
+            right: 5px;
+            background-color: #FF4757;
             color: white;
-            font-size: 11px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px solid white;
+            border-radius: 50%;
+            font-size: 10px;
+            padding: 2px 5px;
+            min-width: 18px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
         
         .notifications-dropdown {
-            width: 380px !important;
+            width: 320px !important;
+            max-height: 400px !important;
+            overflow-y: auto;
             padding: 0 !important;
-            border-radius: 12px !important;
             border: none !important;
-            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.15) !important;
-            max-height: 80vh;
-            overflow: hidden;
+            border-radius: 15px !important;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15) !important;
+            z-index: 99999 !important;
+            position: absolute !important;
+        }
+        
+        /* Fix untuk dropdown notifikasi */
+        .dropdown-menu.show {
+            display: block !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+            z-index: 99999 !important;
+        }
+        
+        /* Fix untuk backdrop */
+        .dropdown-backdrop {
+            z-index: 99990 !important;
         }
         
         .notifications-header {
-            padding: 15px 20px;
-            border-bottom: 1px solid #f0f0f0;
-            background-color: white;
+            padding: 15px;
+            background-color: var(--primary-light);
+            color: white;
+            border-top-left-radius: 15px;
+            border-top-right-radius: 15px;
         }
         
         .notifications-header h6 {
             font-weight: 600;
-            color: #333;
-            letter-spacing: 0.5px;
+            margin: 0;
         }
         
         .notifications-header a {
-            font-size: 14px;
-            text-decoration: none;
+            color: white;
+            font-size: 12px;
         }
         
         .notifications-body {
-            max-height: 60vh;
+            max-height: 300px;
             overflow-y: auto;
-            padding: 0;
         }
         
         .notification-item {
-            padding: 15px 20px;
+            padding: 12px 15px;
             border-bottom: 1px solid #f0f0f0;
-            transition: all 0.2s;
+            transition: all 0.3s;
             cursor: pointer;
             display: flex;
             align-items: flex-start;
-            position: relative;
-            background-color: white;
         }
         
         .notification-item:hover {
-            background-color: #f9f9f9;
+            background-color: rgba(255, 135, 178, 0.05);
         }
         
         .notification-item.unread {
-            background-color: #f9f9f9;
+            background-color: rgba(255, 135, 178, 0.1);
         }
         
         .notification-icon-container {
-            width: 48px;
-            height: 48px;
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
+            background-color: rgba(255, 135, 178, 0.1);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -590,83 +600,101 @@
             flex-shrink: 0;
         }
         
+        .notification-icon-container i {
+            font-size: 16px;
+            color: var(--primary-color);
+        }
+        
         .notification-content-wrapper {
             flex-grow: 1;
         }
         
         .notification-title {
-            font-size: 15px;
-            margin-bottom: 5px;
-            color: #333;
+            font-size: 14px;
             font-weight: 600;
+            margin-bottom: 5px;
+            color: var(--dark-text);
         }
         
         .notification-content {
-            font-size: 14px;
-            color: #666;
-            line-height: 1.4;
+            font-size: 12px;
+            color: var(--light-text);
+            margin-bottom: 5px;
         }
         
         .notification-time {
-            font-size: 12px;
-            color: #999;
-            margin-top: 8px;
+            font-size: 11px;
+            color: #aaa;
         }
         
         /* Order notification specific styles */
         .notification-item.order-notification .notification-icon-container {
-            background-color: #f8e5ff;
+            background-color: rgba(25, 118, 210, 0.1);
         }
         
         .notification-item.order-notification .notification-icon-container i {
-            color: #9c27b0;
+            color: #1976D2;
         }
         
         /* Payment notification specific styles */
         .notification-item.payment-notification .notification-icon-container {
-            background-color: #e3f2fd;
+            background-color: rgba(46, 125, 50, 0.1);
         }
         
         .notification-item.payment-notification .notification-icon-container i {
-            color: #2196f3;
+            color: #2E7D32;
         }
         
         /* Shopee notification specific styles */
         .notification-item.shopee-notification .notification-icon-container {
-            background-color: #fff8e1;
+            background-color: rgba(255, 87, 34, 0.1);
         }
         
         .notification-item.shopee-notification .notification-icon-container i {
-            color: #ff5722;
+            color: #FF5722;
         }
         
         /* System notification specific styles */
         .notification-item.system-notification .notification-icon-container {
-            background-color: #e8f5e9;
+            background-color: rgba(117, 117, 117, 0.1);
         }
         
         .notification-item.system-notification .notification-icon-container i {
-            color: #4caf50;
+            color: #757575;
         }
         
         .no-notifications {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
             padding: 30px 15px;
-            color: #999;
+            text-align: center;
+            color: #aaa;
         }
         
         .no-notifications i {
-            font-size: 32px;
+            font-size: 40px;
             margin-bottom: 10px;
-            color: #ddd;
         }
         
         .no-notifications p {
             font-size: 14px;
-            margin: 0;
+        }
+        
+        /* Notification action button */
+        .notification-action-btn {
+            display: inline-block;
+            padding: 5px 12px;
+            background-color: rgba(255, 135, 178, 0.1);
+            color: var(--primary-color);
+            border-radius: 20px;
+            font-size: 12px;
+            margin-top: 5px;
+            transition: all 0.3s;
+            text-decoration: none;
+        }
+        
+        .notification-action-btn:hover {
+            background-color: var(--primary-color);
+            color: white;
+            transform: translateY(-2px);
         }
         
         /* Toast notifications */
@@ -717,6 +745,7 @@
         }
     </style>
     
+    <!-- Page specific styles -->
     @yield('styles')
 </head>
 <body>
@@ -808,7 +837,7 @@
             
             <div class="user-dropdown d-flex align-items-center">
                 <!-- Notification icon -->
-                <div class="ms-3">
+                <div class="me-4">
                     @include('admin.components.notification_dropdown', ['unreadNotificationCount' => $unreadNotificationCount ?? 0])
                 </div>
                 
@@ -850,58 +879,9 @@
         </div>
     </div>
     
-    <!-- Bootstrap and jQuery JS -->
+    <!-- Bootstrap JS and jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- Make sure Bootstrap is globally available -->
-    <script>
-        // Ensure Bootstrap is available globally
-        if (typeof bootstrap === 'undefined') {
-            console.error('Bootstrap is not loaded properly. Adding fallback.');
-            // Create a fallback for Bootstrap modal if needed
-            window.bootstrap = {
-                Modal: function(element) {
-                    return {
-                        show: function() {
-                            if (element) {
-                                element.classList.add('show');
-                                element.style.display = 'block';
-                                document.body.classList.add('modal-open');
-                                
-                                // Create backdrop
-                                let backdrop = document.createElement('div');
-                                backdrop.className = 'modal-backdrop fade show';
-                                document.body.appendChild(backdrop);
-                            }
-                        },
-                        hide: function() {
-                            if (element) {
-                                element.classList.remove('show');
-                                element.style.display = 'none';
-                                document.body.classList.remove('modal-open');
-                                
-                                // Remove backdrop
-                                let backdrop = document.querySelector('.modal-backdrop');
-                                if (backdrop) {
-                                    backdrop.remove();
-                                }
-                            }
-                        }
-                    };
-                }
-            };
-        }
-        
-        // Test Bootstrap availability
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof bootstrap !== 'undefined') {
-                console.log('Bootstrap is loaded correctly.');
-            } else {
-                console.error('Bootstrap is still not available after fallback.');
-            }
-        });
-    </script>
     
     <!-- Custom JS -->
     <script>
@@ -916,11 +896,42 @@
             return new bootstrap.Tooltip(tooltipTriggerEl)
         });
 
-        // Notification system
-        $(document).ready(function() {
-            // Track already displayed notifications to prevent duplicates
-            const displayedNotifications = new Set();
+        // Handle notification page specific behaviors
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if we're navigating from a notification or to notifications page
+            const navigatingFromNotification = sessionStorage.getItem('navigatingFromNotification');
+            const navigatingToNotifications = sessionStorage.getItem('navigatingToNotifications');
             
+            if (navigatingToNotifications === 'true') {
+                // Add the notifications-page class to body
+                document.body.classList.add('notifications-page');
+                
+                // Clear the flag
+                sessionStorage.removeItem('navigatingToNotifications');
+                
+                // Hide navbar if needed
+                if (window.location.href.includes('/notifications')) {
+                    const topbar = document.querySelector('.topbar');
+                    if (topbar) {
+                        topbar.style.display = 'none';
+                    }
+                }
+            }
+            
+            if (navigatingFromNotification === 'true') {
+                // Clear the flag
+                sessionStorage.removeItem('navigatingFromNotification');
+                sessionStorage.removeItem('notificationId');
+                
+                // Ensure modals appear above navbar
+                document.querySelectorAll('.modal').forEach(modal => {
+                    modal.style.zIndex = '10000';
+                });
+            }
+        });
+
+        // Notification system - Hanya bagian yang tidak duplikat dengan komponen notifikasi
+        $(document).ready(function() {
             // Create notification sound
             const notificationSound = new Audio('{{ asset('sounds/notification.mp3') }}');
             
@@ -930,110 +941,6 @@
                     <div id="notification-container" style="position: fixed; top: 80px; right: 20px; z-index: 9999;"></div>
                 `);
             }
-            
-            // Load notifications
-            function loadNotifications() {
-                fetch('{{ route('admin.notifications.unread-count') }}')
-                    .then(response => response.json())
-                    .then(data => {
-                        // Update badge count
-                        if (data.count > 0) {
-                            $('#notification-badge').removeClass('d-none').text(data.count);
-                        } else {
-                            $('#notification-badge').addClass('d-none');
-                        }
-                        
-                        // Get notifications content
-                        return fetch('{{ route('admin.notifications.index') }}?ajax=true');
-                    })
-                    .then(response => response.text())
-                    .then(html => {
-                        $('#notificationsContainer').html(html);
-                    })
-                    .catch(error => {
-                        console.error('Error loading notifications:', error);
-                        $('#notificationsContainer').html(`
-                            <div class="no-notifications">
-                                <i class="fas fa-bell-slash"></i>
-                                <p>Gagal memuat notifikasi</p>
-                            </div>
-                        `);
-                    });
-            }
-            
-            // Show notifications when dropdown is opened
-            $('#notificationDropdown').on('click', function() {
-                loadNotifications();
-            });
-            
-            // Mark all notifications as read
-            $('#markAllAsRead').on('click', function(e) {
-                e.preventDefault();
-                markAllNotificationsAsRead();
-            });
-            
-            function markAllNotificationsAsRead() {
-                fetch('{{ route('admin.notifications.mark-all-as-read') }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    // Update badge
-                    $('#notification-badge').addClass('d-none').text('0');
-                    
-                    // Remove unread styling from all notifications
-                    $('.notification-item').removeClass('unread');
-                })
-                .catch(error => {
-                    console.error('Error marking notifications as read:', error);
-                });
-            }
-            
-            // Mark single notification as read when clicked
-            $(document).on('click', '.notification-item', function(e) {
-                // Don't trigger if clicking on a link inside the notification
-                if ($(e.target).closest('a').length > 0) {
-                    return;
-                }
-                
-                const notificationId = $(this).data('notification-id');
-                
-                fetch(`{{ route('admin.notifications.mark-as-read', '') }}/${notificationId}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    // Update badge count
-                    const currentCount = parseInt($('#notification-badge').text() || '0');
-                    if (currentCount > 0) {
-                        const newCount = currentCount - 1;
-                        if (newCount > 0) {
-                            $('#notification-badge').text(newCount);
-                        } else {
-                            $('#notification-badge').addClass('d-none');
-                        }
-                    }
-                    
-                    // Remove unread styling
-                    $(this).removeClass('unread');
-                    
-                    // If it's an order notification, redirect to the order detail page
-                    if (data.type === 'order' && data.order_id) {
-                        window.location.href = `{{ route('admin.orders.show', '') }}/${data.order_id}`;
-                    }
-                })
-                .catch(error => {
-                    console.error('Error marking notification as read:', error);
-                });
-            });
             
             // Auto-refresh notifications
             const CHECK_INTERVAL = 30000; // 30 seconds
@@ -1073,15 +980,15 @@
                                 // Check for new orders
                                 checkForNewOrders();
                             }
-                            
-                            lastNotificationCount = response.count;
                         } else {
                             $('#notification-badge').addClass('d-none');
-                            lastNotificationCount = 0;
                         }
+                        
+                        // Update last count
+                        lastNotificationCount = response.count;
                     },
                     error: function(error) {
-                        console.error('Error checking for notifications:', error);
+                        console.error('Error checking notifications:', error);
                     }
                 });
             }
@@ -1097,7 +1004,7 @@
                             
                             // Auto-reload notifications in dropdown if it's open
                             if ($('.notifications-dropdown').hasClass('show')) {
-                                loadNotifications();
+                                checkForNotifications();
                             }
                         }
                         
@@ -1220,6 +1127,75 @@
         });
     </script>
     
-    @yield('scripts')
+    @stack('scripts')
+
+    <script>
+        // Check for new messages and notifications periodically
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check for new messages every 10 seconds
+            setInterval(function() {
+                if (!document.hidden) {
+                    // Check for new chat messages
+                    fetch('/admin/chats/check-all')
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                // Update unread message count in notifications
+                                const badge = document.getElementById('notification-badge');
+                                if (badge && data.chats) {
+                                    // Calculate total unread messages
+                                    let totalUnread = 0;
+                                    data.chats.forEach(chat => {
+                                        totalUnread += chat.unread_count || 0;
+                                    });
+                                    
+                                    // Update badge
+                                    if (totalUnread > 0) {
+                                        badge.textContent = totalUnread;
+                                        badge.classList.remove('d-none');
+                                        
+                                        // Show notification for new message
+                                        if (data.new_message) {
+                                            showNotification('New message from ' + data.new_message.sender, data.new_message.message);
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error checking for new messages:', error);
+                        });
+                }
+            }, 10000);
+            
+            // Function to show notification
+            function showNotification(title, body) {
+                // Check if browser notifications are supported
+                if ('Notification' in window) {
+                    // Request permission if needed
+                    if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+                        Notification.requestPermission();
+                    }
+                    
+                    // Show notification if permission granted
+                    if (Notification.permission === 'granted') {
+                        const notification = new Notification(title, {
+                            body: body,
+                            icon: '/favicon.ico'
+                        });
+                        
+                        // Close after 5 seconds
+                        setTimeout(notification.close.bind(notification), 5000);
+                        
+                        // Navigate to chat when clicked
+                        notification.onclick = function() {
+                            window.focus();
+                            window.location.href = '/admin/chats';
+                        };
+                    }
+                }
+            }
+        });
+    </script>
 </body>
 </html>

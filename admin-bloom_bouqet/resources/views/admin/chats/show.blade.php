@@ -18,11 +18,21 @@
             margin-bottom: 0.25rem;
         }
         
+        .customer-highlight {
+            background-color: #FFE5EE;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: 700;
+            color: #D46A9F;
+            border: 1px solid rgba(212, 106, 159, 0.2);
+        }
+        
         .table-card {
             border-radius: 15px;
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
             border: none;
             overflow: hidden;
+            max-height: calc(100vh - 180px);
         }
         
         .back-btn {
@@ -47,7 +57,7 @@
         <div class="content-header">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <h3 class="page-title">Chat dengan {{ $chat->user->name ?? 'User' }}</h3>
+                    <h3 class="page-title">Chat dengan <span class="customer-highlight">{{ $chat->user->name ?? 'User' }}</span></h3>
                     <p class="text-muted">Percakapan dengan pelanggan melalui aplikasi</p>
                 </div>
                 <div>
@@ -79,7 +89,10 @@
                 @endif
             </div>
             <div class="chat-user-details">
-                <div class="chat-user-name-lg">{{ $chat->user->name ?? 'User' }}</div>
+                <div class="chat-user-name-lg">
+                    <span class="customer-name-lg">{{ $chat->user->name ?? 'User' }}</span>
+                    <span class="customer-badge">Customer</span>
+                </div>
                 <div class="chat-user-status">
                     <span id="typing-indicator" style="display: none; color: #D46A9F;">
                         <i class="fas fa-keyboard me-1"></i> Sedang mengetik...
@@ -117,9 +130,11 @@
     <div class="chat-messages" id="chat-messages">
         @php
             $currentDate = null;
+            // Sort messages by created_at in ascending order to display oldest first
+            $sortedMessages = $chat->messages->sortBy('created_at');
         @endphp
         
-        @foreach($chat->messages as $message)
+        @foreach($sortedMessages as $message)
             @php
                 $messageDate = \Carbon\Carbon::parse($message->created_at)->format('Y-m-d');
                 $showDateDivider = $currentDate !== $messageDate;
@@ -184,17 +199,17 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 16px;
+            padding: 12px;
             background-color: #fff;
             border-bottom: 1px solid rgba(255,105,180,0.1);
         }
         
         .chat-avatar-lg {
-            width: 45px;
-            height: 45px;
+            width: 38px;
+            height: 38px;
             border-radius: 50%;
             background: linear-gradient(45deg, #FF87B2, #D46A9F);
-            margin-right: 15px;
+            margin-right: 12px;
             position: relative;
             display: flex;
             align-items: center;
@@ -212,6 +227,25 @@
             font-weight: 600;
             font-size: 16px;
             color: #D46A9F;
+            display: flex;
+            align-items: center;
+        }
+        
+        .customer-name-lg {
+            font-weight: 700;
+            font-size: 18px;
+            color: #D46A9F;
+        }
+        
+        .customer-badge {
+            background-color: #FFE5EE;
+            color: #D46A9F;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-left: 8px;
+            font-weight: 500;
+            border: 1px solid rgba(212, 106, 159, 0.2);
         }
         
         .chat-user-status {
@@ -221,18 +255,19 @@
         
         .chat-messages {
             flex: 1;
-            padding: 20px;
+            padding: 15px;
             overflow-y: auto;
             background-color: #f8f9fa;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%23FFE5EE' fill-opacity='0.4'%3E%3Cpath d='M0 38.59l2.83-2.83 1.41 1.41L1.41 40H0v-1.41zM0 1.4l2.83 2.83 1.41-1.41L1.41 0H0v1.41zM38.59 40l-2.83-2.83 1.41-1.41L40 38.59V40h-1.41zM40 1.41l-2.83 2.83-1.41-1.41L38.59 0H40v1.41zM20 18.6l2.83-2.83 1.41 1.41L21.41 20l2.83 2.83-1.41 1.41L20 21.41l-2.83 2.83-1.41-1.41L18.59 20l-2.83-2.83 1.41-1.41L20 18.59z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
             display: flex;
             flex-direction: column;
-            min-height: calc(100vh - 290px);
+            min-height: calc(100vh - 260px);
+            max-height: calc(100vh - 260px);
         }
         
         .message-row {
             display: flex;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             align-items: flex-start;
             position: relative;
         }
@@ -247,10 +282,10 @@
         
         .message-bubble {
             max-width: 75%;
-            padding: 10px 14px;
+            padding: 8px 12px;
             border-radius: 18px;
             position: relative;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
         
         .message-bubble.admin {
@@ -278,13 +313,14 @@
         }
         
         .message-content {
-            margin-bottom: 6px;
+            margin-bottom: 4px;
             word-wrap: break-word;
-            line-height: 1.4;
+            line-height: 1.3;
+            font-size: 0.9rem;
         }
         
         .message-time {
-            font-size: 11px;
+            font-size: 10px;
             opacity: 0.8;
             text-align: right;
         }
@@ -298,49 +334,34 @@
         }
         
         .chat-input {
-            padding: 15px;
+            padding: 10px;
             background-color: #fff;
             border-top: 1px solid rgba(255,105,180,0.1);
         }
         
         .chat-input .form-control {
             border-radius: 20px;
-            padding: 10px 15px;
+            padding: 8px 12px;
             height: auto;
             border: 1px solid rgba(255,105,180,0.2);
         }
         
-        .chat-input .form-control:focus {
-            border-color: #FF87B2;
-            box-shadow: 0 0 0 0.25rem rgba(255,135,178,0.25);
-        }
-        
         .chat-input .btn.send-btn {
             border-radius: 10px;
-            padding: 10px;
+            padding: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
             background: linear-gradient(45deg, #FF87B2, #D46A9F);
             border: none;
             color: white;
-            box-shadow: 0 4px 8px rgba(255,105,180,0.3);
+            box-shadow: 0 3px 6px rgba(255,105,180,0.3);
             transition: all 0.3s;
-        }
-        
-        .chat-input .btn.send-btn:hover {
-            background: linear-gradient(45deg, #D46A9F, #FF87B2);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(255,105,180,0.4);
-        }
-        
-        .chat-input .input-group {
-            align-items: center;
         }
         
         #attach-button {
             border-radius: 10px;
-            padding: 10px;
+            padding: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -351,13 +372,9 @@
             transition: all 0.3s;
         }
         
-        #attach-button:hover {
-            background-color: rgba(255,105,180,0.2);
-        }
-        
         .day-divider {
             text-align: center;
-            margin: 20px 0;
+            margin: 15px 0;
             position: relative;
         }
         
@@ -374,16 +391,16 @@
         
         .day-divider span {
             background-color: #f8f9fa;
-            padding: 0 15px;
-            font-size: 12px;
+            padding: 0 12px;
+            font-size: 11px;
             color: #D46A9F;
             position: relative;
             z-index: 2;
         }
         
         .online-indicator {
-            width: 12px;
-            height: 12px;
+            width: 10px;
+            height: 10px;
             background-color: #10b981;
             border-radius: 50%;
             position: absolute;
@@ -428,37 +445,23 @@
     
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Scroll to bottom
+            // Scroll to bottom on page load
             const messagesContainer = document.getElementById('chat-messages');
             if (messagesContainer) {
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                
+                // Mark messages as read on page load
+                markMessagesAsRead();
             }
             
-            // Simulate typing indicator (for demo purposes)
-            let typingTimeout;
-            function simulateTypingIndicator() {
-                // Show typing indicator randomly
-                if (Math.random() > 0.7) {
-                    document.getElementById('typing-indicator').style.display = 'inline';
-                    document.getElementById('online-status').style.display = 'none';
-                    document.getElementById('offline-status').style.display = 'none';
-                    
-                    // Hide after random time
-                    typingTimeout = setTimeout(() => {
-                        document.getElementById('typing-indicator').style.display = 'none';
-                        
-                        // Show online status again
-                        if (document.getElementById('online-status').textContent.trim() !== '') {
-                            document.getElementById('online-status').style.display = 'inline';
-                        } else {
-                            document.getElementById('offline-status').style.display = 'inline';
-                        }
-                    }, 2000 + Math.random() * 3000);
-                }
+            // Add refresh button handler
+            const refreshBtn = document.getElementById('refreshChat');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    location.reload();
+                });
             }
-            
-            // Simulate typing every 10-20 seconds (for demo only)
-            setInterval(simulateTypingIndicator, 10000 + Math.random() * 10000);
             
             // Handle form submission
             const form = document.getElementById('send-message-form');
@@ -475,6 +478,10 @@
                     
                     // Disable input while sending
                     input.disabled = true;
+                    const submitBtn = this.querySelector('button[type="submit"]');
+                    const originalBtnHtml = submitBtn.innerHTML;
+                    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+                    submitBtn.disabled = true;
                     
                     fetch(url, {
                         method: 'POST',
@@ -485,7 +492,12 @@
                         },
                         body: JSON.stringify({ message })
                     })
-                    .then(res => res.json())
+                    .then(res => {
+                        if (!res.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return res.json();
+                    })
                     .then(data => {
                         if (data.success) {
                             // Add the message to chat
@@ -503,166 +515,230 @@
                                     </div>
                                 </div>
                             `;
+                            
+                            // Add to chat and scroll to bottom
                             messagesContainer.appendChild(msgRow);
                             messagesContainer.scrollTop = messagesContainer.scrollHeight;
                             
                             // Clear input
                             input.value = '';
+                            
+                            // Update last message ID for polling
+                            lastMessageId = data.message.id;
                         } else {
-                            alert(data.message || 'Gagal mengirim pesan.');
+                            showNotification('error', data.message || 'Failed to send message');
                         }
                     })
-                    .catch(() => alert('Gagal mengirim pesan.'))
+                    .catch((error) => {
+                        console.error('Error sending message:', error);
+                        showNotification('error', 'Failed to send message. Please try again.');
+                    })
                     .finally(() => {
-                        // Re-enable input
+                        // Re-enable input and button
                         input.disabled = false;
+                        submitBtn.innerHTML = originalBtnHtml;
+                        submitBtn.disabled = false;
                         input.focus();
                     });
                 });
             }
             
-            // Refresh button
-            const refreshBtn = document.getElementById('refreshChat');
-            if (refreshBtn) {
-                refreshBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    window.location.reload();
-                });
+            // Poll for new messages every 3 seconds
+            let lastMessageId = 0;
+            const lastMessageEl = document.querySelector('.message-row:last-child');
+            if (lastMessageEl) {
+                lastMessageId = lastMessageEl.getAttribute('data-message-id') || 0;
+                console.log('Last message ID:', lastMessageId);
             }
             
-            // Clear chat button
-            const clearChatBtn = document.getElementById('clearChatBtn');
-            if (clearChatBtn) {
-                clearChatBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    
-                    if (confirm('Apakah Anda yakin ingin menghapus seluruh riwayat chat?')) {
+            function pollForNewMessages() {
                         const chatId = window.location.pathname.split('/').pop();
-                        const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
                         
-                        fetch(`/admin/chats/${chatId}/clear`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': token,
-                                'Accept': 'application/json',
-                            }
-                        })
-                        .then(res => res.json())
+                fetch(`/admin/chats/${chatId}/new-messages?last_message_id=${lastMessageId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
                         .then(data => {
-                            if (data.success) {
-                                // Clear chat area and add system message
-                                messagesContainer.innerHTML = `
-                                    <div class="message-row">
-                                        <div class="message-bubble system-message">
-                                            <div class="message-content">Riwayat chat telah dihapus oleh admin</div>
-                                            <div class="message-time">${new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</div>
-                                        </div>
-                                    </div>
-                                `;
-                            } else {
-                                alert(data.message || 'Gagal menghapus riwayat chat.');
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error clearing chat:', error);
-                            alert('Gagal menghapus riwayat chat. Silakan coba lagi.');
-                        });
-                    }
-                });
-            }
-            
-            // Attachment button
-            const attachButton = document.getElementById('attach-button');
-            if (attachButton) {
-                attachButton.addEventListener('click', function() {
-                    alert('Fitur attachment akan segera tersedia.');
-                });
-            }
-            
-            // Poll for new messages
-            setInterval(function() {
-                if (!document.hidden) {
-                    // Get chat ID from URL
-                    const chatId = window.location.pathname.split('/').pop();
-                    // Get last message ID
-                    const messages = document.querySelectorAll('.message-row');
-                    let lastMessageId = 0;
-                    
-                    if (messages.length > 0) {
-                        const lastMessage = messages[messages.length - 1];
-                        lastMessageId = lastMessage.getAttribute('data-message-id') || 0;
-                    }
-                    
-                    fetch(`/admin/chats/${chatId}/new-messages?last_message_id=${lastMessageId}`)
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success && data.messages && data.messages.length > 0) {
-                                data.messages.forEach(message => {
+                        console.log('Polling response:', data);
+                        
+                        if (data.success && data.messages && data.messages.length > 0) {
+                            console.log(`Found ${data.messages.length} new message(s)`);
+                            
+                            data.messages.forEach(message => {
+                                console.log('New message:', message);
+                                
+                                // Skip if message already exists in DOM
+                                if (document.querySelector(`.message-row[data-message-id="${message.id}"]`)) {
+                                    console.log('Message already exists in DOM, skipping:', message.id);
+                                    return;
+                                }
+                                
+                                // Create new message element
                                     const msgRow = document.createElement('div');
                                     msgRow.className = `message-row ${message.is_admin ? 'message-admin' : 'message-user'}`;
                                     msgRow.setAttribute('data-message-id', message.id);
                                     
-                                    let attachmentHtml = '';
+                                // Create message bubble HTML
+                                let bubbleContent = `
+                                    <div class="message-content">${message.message}</div>
+                                    <div class="message-time">
+                                        ${new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                    </div>
+                                `;
+                                
+                                // Add attachment if exists
                                     if (message.attachment_url) {
-                                        if (message.attachment_url.match(/\.(jpg|jpeg|png|gif)$/i)) {
-                                            attachmentHtml = `
+                                    const isImage = /\.(jpg|jpeg|png|gif)$/i.test(message.attachment_url);
+                                    if (isImage) {
+                                        bubbleContent = `
                                                 <div class="message-attachment">
                                                     <img src="${message.attachment_url}" alt="Attachment" class="img-fluid rounded mb-2">
                                                 </div>
+                                            ${bubbleContent}
                                             `;
                                         } else {
-                                            attachmentHtml = `
+                                        bubbleContent = `
                                                 <div class="message-attachment">
                                                     <a href="${message.attachment_url}" target="_blank" class="attachment-link">
                                                         <i class="fas fa-file me-2"></i> Attachment
                                                     </a>
                                                 </div>
+                                            ${bubbleContent}
                                             `;
                                         }
                                     }
                                     
-                                    // Add system message class if needed
-                                    const systemClass = message.is_system ? ' system-message' : '';
-                                    
-                                    msgRow.innerHTML = `
-                                        <div class="message-bubble ${message.is_admin ? 'admin' : 'user'}${systemClass}">
-                                            ${attachmentHtml}
-                                            <div class="message-content">${message.message}</div>
-                                            <div class="message-time">
-                                                ${new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
-                                                ${message.is_admin ? `
+                                // Add read receipt if admin message
+                                if (message.is_admin) {
+                                    const timeSection = bubbleContent.split('<div class="message-time">')[1];
+                                    const newTimeSection = timeSection.replace('</div>', `
                                                 <span class="ms-1">
-                                                    ${message.read_at ? '<i class="fas fa-check-double" title="Read" style="color: #4fc3f7;"></i>' : '<i class="fas fa-check" title="Sent"></i>'}
+                                            <i class="fas fa-check${message.read_at ? '-double" title="Read" style="color: #4fc3f7;"' : '" title="Sent"'}</i>
                                                 </span>
-                                                ` : ''}
-                                            </div>
                                         </div>
-                                    `;
-                                    
-                                    messagesContainer.appendChild(msgRow);
-                                });
-                                
-                                // Scroll to bottom if we're already near the bottom
-                                const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
-                                if (isAtBottom) {
-                                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                                } else {
-                                    // Show new message indicator if not at bottom
-                                    const indicator = document.createElement('div');
-                                    indicator.className = 'new-message-indicator';
-                                    indicator.innerHTML = '<i class="fas fa-arrow-down"></i> Pesan baru';
-                                    indicator.addEventListener('click', () => {
-                                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                                        indicator.remove();
-                                    });
-                                    messagesContainer.parentNode.appendChild(indicator);
+                                    `);
+                                    bubbleContent = bubbleContent.split('<div class="message-time">')[0] + '<div class="message-time">' + newTimeSection;
                                 }
+                                
+                                // Set the bubble HTML
+                                msgRow.innerHTML = `<div class="message-bubble ${message.is_admin ? 'admin' : 'user'}">${bubbleContent}</div>`;
+                                    
+                                // Add to messages container
+                                    messagesContainer.appendChild(msgRow);
+                                
+                                // Update last message id
+                                if (message.id > lastMessageId) {
+                                    lastMessageId = message.id;
+                                    console.log('Updated last message ID:', lastMessageId);
+                                }
+                                
+                                // Play notification sound for new user messages
+                                if (!message.is_admin) {
+                                    // Play notification sound
+                                    const audio = new Audio('/sounds/notification.mp3');
+                                    audio.play().catch(e => console.log('Error playing sound:', e));
+                                    
+                                    // Show browser notification
+                                    if (Notification.permission === 'granted') {
+                                        const notification = new Notification('New Message', {
+                                            body: message.message,
+                                            icon: '/favicon.ico'
+                                        });
+                                        setTimeout(() => notification.close(), 5000);
+                                    }
+                                }
+                            });
+                            
+                            // Always scroll to bottom when new messages arrive
+                                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                            
+                            // Mark new messages as read
+                            markMessagesAsRead();
+                        }
+                    })
+                    .catch(error => console.error('Error polling for messages:', error));
+            }
+            
+            // Poll for new messages every 3 seconds
+            setInterval(pollForNewMessages, 3000);
+            
+            // Initial poll for new messages
+            pollForNewMessages();
+            
+            // Show toast notifications
+            function showNotification(type, message) {
+                const notif = document.createElement('div');
+                notif.className = 'notification-toast';
+                
+                if (type === 'error') {
+                    notif.style.background = 'linear-gradient(45deg, #ff5b5b, #ff2121)';
+                    notif.innerHTML = `<i class="fas fa-exclamation-circle me-2"></i> ${message}`;
+                } else {
+                    notif.style.background = 'linear-gradient(45deg, #FF87B2, #D46A9F)';
+                    notif.innerHTML = `<i class="fas fa-check-circle me-2"></i> ${message}`;
+                }
+                
+                document.body.appendChild(notif);
+                
+                setTimeout(() => {
+                    notif.style.opacity = '0';
+                    setTimeout(() => notif.remove(), 300);
+                }, 3000);
+            }
+            
+            // After messages are loaded or received, mark them as read
+            function markMessagesAsRead() {
+                const chatId = window.location.pathname.split('/').pop();
+                const unreadUserMessages = document.querySelectorAll('.message-row.message-user');
+                
+                if (unreadUserMessages.length > 0) {
+                    console.log('Marking messages as read');
+                    
+                    fetch(`/admin/chats/${chatId}/read`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Accept': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            console.log(`Marked ${data.count} messages as read`);
                             }
                         })
-                        .catch(error => console.error('Error fetching new messages:', error));
+                    .catch(error => {
+                        console.error('Error marking messages as read:', error);
+                    });
                 }
-            }, 5000); // Check every 5 seconds
+            }
         });
     </script>
+    
+    <style>
+        .notification-toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            color: white;
+            box-shadow: 0 4px 12px rgba(255,105,180,0.4);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            animation: slideIn 0.3s ease-out;
+            transition: opacity 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
 @endif 

@@ -10,6 +10,8 @@ use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\ChatController;
 use App\Http\Controllers\Admin\NotificationController;
+use App\Http\Controllers\CustomerOrderController;
+use App\Http\Controllers\OrderDetailController;
 use Illuminate\Support\Facades\Route;
 
 // Redirect root URL to admin page
@@ -47,9 +49,12 @@ Route::prefix('admin')->name('admin.')->middleware('auth:admin')->group(function
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
     Route::post('/orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.updateStatus');
+    Route::post('/orders/{order}/update-status', [OrderController::class, 'updateStatus'])->name('orders.updateStatus');
+    Route::post('/orders/{order}/payment-status', [OrderController::class, 'updatePaymentStatus'])->name('orders.updatePaymentStatus');
     Route::get('/orders-stats', [OrderController::class, 'getOrderStats'])->name('orders.stats');
     Route::get('/orders-check-new', [OrderController::class, 'checkNewOrders'])->name('orders.check-new');
     Route::get('/orders/{order}/api', [OrderController::class, 'getOrderApi'])->name('orders.api');
+    Route::get('/orders/{order}/detail', [OrderController::class, 'getOrderDetail'])->name('orders.detail');
 
     // Report Routes
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
@@ -63,8 +68,51 @@ Route::prefix('admin')->name('admin.')->middleware('auth:admin')->group(function
     // Chat Routes
     Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
     Route::get('/chats/{chat}', [ChatController::class, 'show'])->name('chats.show');
-    Route::post('/chats/{chat}/messages', [ChatController::class, 'sendMessage'])->name('chats.sendMessage');
-    Route::get('/chats/{chat}/new-messages', [ChatController::class, 'getNewMessages'])->name('chats.getNewMessages');
+    Route::post('/chats/{chat}/send', [ChatController::class, 'sendMessage'])->name('chats.send');
+    Route::get('/chats/{chat}/new-messages', [ChatController::class, 'getNewMessages'])->name('chats.new-messages');
+    Route::post('/chats/{chat}/clear', [ChatController::class, 'clearChat'])->name('chats.clear');
+    Route::post('/chats/{chat}/read/{messageId?}', [ChatController::class, 'markMessagesAsRead'])->name('chats.read');
+    Route::get('/chats/unread-count', [ChatController::class, 'getUnreadCount'])->name('chats.unread-count');
+    Route::post('/chats/mark-all-read', [ChatController::class, 'markAllAsRead'])->name('chats.mark-all-read');
+    Route::get('/chats/check-all', [ChatController::class, 'checkAllChatsForNewMessages'])->name('chats.check-all');
+    Route::post('/chats/{chat}/typing', [ChatController::class, 'sendTypingIndicator'])->name('chats.typing');
+    Route::delete('/chats/{chat}/typing/{typingMessageId}', [ChatController::class, 'removeTypingIndicator'])->name('chats.remove-typing');
+});
+
+// Customer routes with auth middleware
+Route::middleware(['auth'])->group(function () {
+    // Customer Dashboard
+    Route::get('/dashboard', function () {
+        return view('customer.dashboard');
+    })->name('customer.dashboard');
+    
+    // Customer Profile
+    Route::get('/profile', function () {
+        return view('customer.profile');
+    })->name('customer.profile');
+    
+    // Customer Addresses
+    Route::get('/addresses', function () {
+        return view('customer.addresses');
+    })->name('customer.addresses');
+    
+    // Customer Wishlist
+    Route::get('/wishlist', function () {
+        return view('customer.wishlist');
+    })->name('customer.wishlist');
+    
+    // Customer Orders
+    Route::get('/orders', [CustomerOrderController::class, 'index'])->name('customer.orders.index');
+    Route::get('/orders/{orderId}', [CustomerOrderController::class, 'show'])->name('customer.orders.show');
+    Route::get('/orders/{orderId}/track', [CustomerOrderController::class, 'track'])->name('customer.orders.track');
+    Route::post('/orders/{orderId}/cancel', [CustomerOrderController::class, 'cancel'])->name('customer.orders.cancel');
+    Route::post('/orders/{orderId}/complete', [CustomerOrderController::class, 'complete'])->name('customer.orders.complete');
+    
+    // Order Detail Routes (New)
+    Route::get('/order/{orderId}', [OrderDetailController::class, 'show'])->name('order.detail');
+    Route::get('/order/{orderId}/track', [OrderDetailController::class, 'track'])->name('order.track');
+    Route::post('/order/{orderId}/cancel', [OrderDetailController::class, 'cancel'])->name('order.cancel');
+    Route::post('/order/{orderId}/complete', [OrderDetailController::class, 'complete'])->name('order.complete');
 });
 
 Route::prefix('admin/categories')->group(function () {
@@ -91,9 +139,123 @@ Route::middleware(['auth:admin'])->prefix('admin')->name('admin.')->group(functi
     Route::post('/notifications/{notification}/mark-as-read', [App\Http\Controllers\Admin\NotificationController::class, 'markAsRead'])->name('notifications.mark-as-read');
     Route::post('/notifications/mark-all-as-read', [App\Http\Controllers\Admin\NotificationController::class, 'markAllAsRead'])->name('notifications.mark-all-as-read');
     Route::get('/notifications/unread-count', [App\Http\Controllers\Admin\NotificationController::class, 'getUnreadCount'])->name('notifications.unread-count');
+    Route::get('/notifications/latest', [App\Http\Controllers\Admin\NotificationController::class, 'getLatest'])->name('notifications.latest');
 });
 
 // Allow access to storage files
 Route::get('/storage/{path}', function ($path) {
     return response()->file(storage_path('app/public/' . $path));
 })->where('path', '.*')->middleware('cors');
+
+// Add this new route for updating product stock
+Route::post('admin/products/{product}/update-stock', [App\Http\Controllers\Admin\ProductController::class, 'updateStock'])
+    ->name('admin.products.update-stock')
+    ->middleware(['auth:admin']);
+
+// Add this new route for testing orders page
+Route::get('/test-orders', function () {
+    // Base query with user relationship
+    $query = App\Models\Order::with(['user']);
+    
+    // Get status counts for summary stats
+    $waitingForPaymentCount = App\Models\Order::where('status', App\Models\Order::STATUS_WAITING_FOR_PAYMENT)->count();
+    $processingCount = App\Models\Order::where('status', App\Models\Order::STATUS_PROCESSING)->count();
+    $shippingCount = App\Models\Order::where('status', App\Models\Order::STATUS_SHIPPING)->count();
+    $deliveredCount = App\Models\Order::where('status', App\Models\Order::STATUS_DELIVERED)->count();
+    $cancelledCount = App\Models\Order::where('status', App\Models\Order::STATUS_CANCELLED)->count();
+    
+    // Get orders with pagination
+    $orders = $query->orderBy('created_at', 'desc')->paginate(10);
+    
+    return view('admin.orders.index', compact(
+        'orders', 
+        'waitingForPaymentCount',
+        'processingCount', 
+        'shippingCount',
+        'deliveredCount', 
+        'cancelledCount'
+    ));
+});
+
+// Add this new route for testing order detail page
+Route::get('/test-order/{order}', function (App\Models\Order $order) {
+    // Load order relationships
+    $order->load(['user']);
+    
+    // Get order items
+    try {
+        $orderItems = $order->getFormattedItems();
+        
+        // Add product information if available
+        foreach ($orderItems as $key => $item) {
+            if (isset($item['product_id']) && $item['product_id']) {
+                $product = App\Models\Product::find($item['product_id']);
+                if ($product) {
+                    $orderItems[$key]['product'] = $product;
+                }
+            }
+        }
+    } catch (\Exception $e) {
+        \Illuminate\Support\Facades\Log::error('Error formatting order items: ' . $e->getMessage());
+        $orderItems = [];
+    }
+    
+    // Parse shipping address if it's stored as JSON
+    $shippingAddress = $order->shipping_address;
+    if (is_string($shippingAddress)) {
+        try {
+            $shippingAddress = json_decode($shippingAddress, true);
+        } catch (\Exception $e) {
+            // Keep as string if not valid JSON
+        }
+    }
+    
+    // Format payment details if available
+    $paymentDetails = null;
+    if ($order->payment_details) {
+        try {
+            $paymentDetails = is_string($order->payment_details) ? 
+                json_decode($order->payment_details, true) : 
+                $order->payment_details;
+        } catch (\Exception $e) {
+            // Keep as null if not valid JSON
+        }
+    }
+    
+    // Get user details
+    $user = $order->user;
+    $userData = null;
+    if ($user) {
+        $userData = [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'phone' => $user->phone ?? null,
+            'address' => $user->address ?? null,
+            'created_at' => $user->created_at,
+            'order_count' => App\Models\Order::where('user_id', $user->id)->count(),
+        ];
+    }
+    
+    return view('admin.orders.show', compact('order', 'shippingAddress', 'paymentDetails', 'userData', 'orderItems'));
+});
+
+// Add this route for quick admin login (for testing only)
+Route::get('/test-login', function () {
+    // Find the first admin user
+    $admin = App\Models\Admin::first();
+    
+    if (!$admin) {
+        // Create a default admin if none exists
+        $admin = App\Models\Admin::create([
+            'name' => 'Test Admin',
+            'email' => 'admin@example.com',
+            'password' => bcrypt('password'),
+        ]);
+    }
+    
+    // Login as this admin
+    auth()->guard('admin')->login($admin);
+    
+    return redirect()->route('admin.orders.index')->with('success', 'Logged in as admin for testing');
+});

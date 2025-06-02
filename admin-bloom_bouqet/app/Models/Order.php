@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Collection;
 
 class Order extends Model
 {
@@ -29,12 +31,7 @@ class Order extends Model
         'status',
         'payment_status',
         'payment_method',
-        'midtrans_token',
-        'midtrans_redirect_url',
         'payment_details',
-        'qr_code_data',
-        'qr_code_url',
-        'notes',
         'order_items',
         'paid_at',
         'shipped_at',
@@ -42,6 +39,8 @@ class Order extends Model
         'cancelled_at',
         'is_read',
         'payment_deadline',
+        'status_updated_by',
+        'status_updated_at',
     ];
 
     // Order status constants
@@ -100,19 +99,53 @@ class Order extends Model
     /**
      * Get the items for the order.
      * This maintains backward compatibility with the old relationship
+     * Now completely using the JSON column rather than a separate table
      */
-    public function items(): HasMany
+    public function items()
     {
-        return $this->hasMany(OrderItem::class);
+        try {
+            // If we have direct data request for items, convert JSON to collection
+            if ($this->relationLoaded('items')) {
+                return $this->getRelation('items');
+            }
+            
+            // Create a relationship from JSON data
+            $items = $this->getItemsCollection();
+            
+            // Set the relation
+            $this->setRelation('items', $items);
+            
+            return $this->getRelation('items');
+        } catch (\Exception $e) {
+            // Log the error
+            \Illuminate\Support\Facades\Log::error('Error in Order items() method: ' . $e->getMessage());
+            
+            // Return empty collection as fallback
+            $emptyCollection = new \Illuminate\Database\Eloquent\Collection();
+            $this->setRelation('items', $emptyCollection);
+            return $this->getRelation('items');
+        }
     }
     
     /**
      * Get the products in this order.
+     * Now uses the product_id from the JSON data
      */
     public function products(): BelongsToMany
     {
-        return $this->belongsToMany(Product::class, 'order_items')
-                    ->withPivot('name', 'price', 'quantity')
+        // Extract product IDs from order_items JSON
+        $productIds = collect($this->order_items ?? [])
+            ->filter(function($item) {
+                return !empty($item['product_id']);
+            })
+            ->pluck('product_id')
+            ->unique()
+            ->toArray();
+        
+        // Use a query to get related products
+        return $this->belongsToMany(Product::class, 'orders', 'id', 'id')
+            ->whereIn('products.id', $productIds)
+            ->withPivot(['name', 'price', 'quantity'])
                     ->withTimestamps();
     }
     
@@ -138,6 +171,22 @@ class Order extends Model
     public function carts(): HasMany
     {
         return $this->hasMany(Cart::class);
+    }
+
+    /**
+     * Get the chat messages associated with this order.
+     */
+    public function chatMessages(): HasMany
+    {
+        return $this->hasMany(ChatMessage::class);
+    }
+
+    /**
+     * Get formatted order ID with ORDER- prefix.
+     */
+    public function getFormattedIdAttribute(): string
+    {
+        return 'ORDER-' . $this->id;
     }
 
     /**
@@ -274,15 +323,13 @@ class Order extends Model
     public function getTotalItemsAttribute()
     {
         // First try from items relationship if it exists
-        if ($this->items()->exists()) {
-            return $this->items()->sum('quantity');
+        if ($this->relationLoaded('items') && $this->getRelation('items')->isNotEmpty()) {
+            return $this->getRelation('items')->sum('quantity');
         }
         
         // Otherwise, try to calculate from order_items JSON field
-        $orderItems = json_decode($this->order_items ?? '', true);
-        
-        if (is_array($orderItems)) {
-            return collect($orderItems)->sum('quantity');
+        if (is_array($this->order_items) && !empty($this->order_items)) {
+            return collect($this->order_items)->sum('quantity');
         }
         
         // Default if no data is available
@@ -290,48 +337,110 @@ class Order extends Model
     }
     
     /**
-     * Update order status with appropriate timestamp
+     * Update the order status and set the appropriate timestamp
+     * 
+     * @param string $status The new status
+     * @return string The old status
      */
     public function updateStatus(string $status)
     {
+        // Store the old status for notification and history
+        $oldStatus = $this->status;
+        
+        // If status is the same, do nothing
+        if ($oldStatus === $status) {
+            return $oldStatus;
+        }
+        
+        // Store admin ID if in admin context
+        $adminId = null;
+        if (auth()->guard('admin')->check()) {
+            $adminId = auth()->guard('admin')->id();
+            $adminName = auth()->guard('admin')->user()->name ?? 'Unknown Admin';
+            $this->status_updated_by = "admin:{$adminId}";
+        } else {
+            // Set the user/system that updated the status
+            if (auth()->check()) {
+                $this->status_updated_by = "user:" . auth()->id();
+            } else {
+                $this->status_updated_by = "system:auto";
+        }
+        }
+        
+        // Set the timestamp for the status change
+        $this->status_updated_at = now();
+        
+        // Set the status
         $this->status = $status;
         
+        // Set the appropriate timestamp based on status
         switch ($status) {
             case self::STATUS_PROCESSING:
-                // No specific timestamp for processing
+                // Processing status means the order is being prepared
+                $this->processing_started_at = now();
                 break;
                 
             case self::STATUS_SHIPPING:
+                // Shipping status means the order has been shipped
                 $this->shipped_at = now();
                 break;
                 
             case self::STATUS_DELIVERED:
+                // Delivered status means the order has been delivered
                 $this->delivered_at = now();
                 break;
                 
             case self::STATUS_CANCELLED:
+                // Cancelled status means the order has been cancelled
                 $this->cancelled_at = now();
                 break;
         }
         
+        // Create a status history entry if the table exists
+        try {
+            if (class_exists('App\Models\OrderStatusHistory')) {
+                \App\Models\OrderStatusHistory::create([
+                    'order_id' => $this->id,
+                    'status' => $status,
+                    'previous_status' => $oldStatus,
+                    'updated_by' => $this->status_updated_by,
+                    'notes' => "Status changed from {$oldStatus} to {$status}"
+                ]);
+            }
+        } catch (\Exception $e) {
+            // Just log the error if status history table doesn't exist
+            \Illuminate\Support\Facades\Log::error('Error creating status history: ' . $e->getMessage());
+        }
+        
+        // Save the changes
         $this->save();
+        
+        return $oldStatus;
     }
     
     /**
      * Update payment status with appropriate timestamp
      */
-    public function updatePaymentStatus(string $paymentStatus)
+    public function updatePaymentStatus(string $status)
     {
-        $this->payment_status = $paymentStatus;
+        $oldStatus = $this->payment_status;
+        $this->payment_status = $status;
         
-        if ($paymentStatus === self::PAYMENT_PAID) {
+        // If payment is marked as paid, record the timestamp
+        if ($status === self::PAYMENT_PAID && !$this->paid_at) {
             $this->paid_at = now();
             
-            // If payment is successful, automatically update order status to processing
-            $this->status = self::STATUS_PROCESSING;
+            // Also update the order status if it's still waiting for payment
+            if ($this->status === self::STATUS_WAITING_FOR_PAYMENT) {
+                $this->status = self::STATUS_PROCESSING;
+                $this->status_updated_at = now();
+                $this->status_updated_by = 'payment_system';
+            }
         }
         
         $this->save();
+        
+        return $oldStatus; // Return old status for notification purposes
     }
 
     /**
@@ -359,17 +468,20 @@ class Order extends Model
             $totalItems = $itemsCollection->sum('quantity');
         } else {
             // Fall back to relation
-            $items = $this->items()->with('product')->get();
-            $itemDetails = $items->map(function($item) {
+            $itemsCollection = $this->relationLoaded('items') ? 
+                $this->getRelation('items') : 
+                $this->getItemsCollection();
+                
+            $itemDetails = $itemsCollection->map(function($item) {
                 return [
-                    'product_id' => $item->product_id,
-                    'product_name' => $item->name,
-                    'quantity' => $item->quantity,
-                    'price' => $item->price,
-                    'subtotal' => $item->subtotal,
+                    'product_id' => $item->product_id ?? null,
+                    'product_name' => $item->name ?? 'Unknown Product',
+                    'quantity' => $item->quantity ?? 0,
+                    'price' => $item->price ?? 0,
+                    'subtotal' => ($item->price ?? 0) * ($item->quantity ?? 0),
                 ];
             })->toArray();
-            $totalItems = $items->sum('quantity');
+            $totalItems = $itemsCollection->sum('quantity');
         }
         
         // Create report details
@@ -377,7 +489,7 @@ class Order extends Model
             'order_date' => $this->created_at->format('Y-m-d H:i:s'),
             'customer' => [
                 'id' => $this->user_id,
-                'name' => $this->user ? $this->user->full_name : 'Guest',
+                'name' => $this->user ? $this->user->name : 'Guest',
                 'address' => $this->shipping_address,
                 'phone' => $this->phone_number,
             ],
@@ -407,7 +519,7 @@ class Order extends Model
 
     /**
      * Get the order items from the JSON column.
-     * This method should be used for new code.
+     * This method ensures we always have consistent order items data.
      */
     public function getOrderItemsAttribute($value)
     {
@@ -418,16 +530,12 @@ class Order extends Model
         
         // Check if we have json data
         if (!empty($value)) {
-            return json_decode($value, true);
-        }
-        
-        // If no JSON data, try to get items from the relationship
-        $relatedItems = $this->items()->get();
-        if ($relatedItems->isNotEmpty()) {
-            // Convert the collection to an array and cache it
-            $itemsArray = $relatedItems->toArray();
-            $this->attributes['order_items'] = json_encode($itemsArray);
-            return $itemsArray;
+            try {
+                return json_decode($value, true) ?: [];
+            } catch (\Exception $e) {
+                Log::error('Error decoding order_items JSON: ' . $e->getMessage());
+                return [];
+            }
         }
         
         return [];
@@ -440,26 +548,181 @@ class Order extends Model
     {
         if (is_array($value)) {
             $this->attributes['order_items'] = json_encode($value);
+        } else if ($value instanceof Collection) {
+            $this->attributes['order_items'] = $value->toJson();
         } else {
             $this->attributes['order_items'] = $value;
         }
     }
 
     /**
-     * Get a collection of order items as OrderItem models.
-     * This provides full model functionality for the items.
+     * Get formatted order items from JSON
      */
     public function getItemsCollection()
     {
-        $items = $this->order_items;
+        try {
+            // Initialize empty collection
+            $collection = new Collection();
+            
+            // If we have order_items as JSON, convert to collection
+            if ($this->order_items && is_array($this->order_items)) {
+                foreach ($this->order_items as $item) {
+                    // Skip if item is not valid
+                    if (!is_array($item)) {
+                        continue;
+                    }
+                    
+                    // Create a new stdClass object to mimic DB result
+                    $itemObj = new \stdClass();
+                    
+                    // Copy all properties
+                    foreach ($item as $key => $value) {
+                        $itemObj->$key = $value;
+                    }
+                    
+                    // Make sure we have required properties
+                    if (!isset($itemObj->id)) $itemObj->id = isset($item['id']) ? $item['id'] : mt_rand(1000000, 9999999);
+                    if (!isset($itemObj->order_id)) $itemObj->order_id = $this->id;
+                    if (!isset($itemObj->product_id)) $itemObj->product_id = $item['product_id'] ?? null;
+                    if (!isset($itemObj->name)) $itemObj->name = $item['name'] ?? 'Unknown Product';
+                    if (!isset($itemObj->price)) $itemObj->price = $item['price'] ?? 0;
+                    if (!isset($itemObj->quantity)) $itemObj->quantity = $item['quantity'] ?? 1;
+                    
+                    // Add to collection
+                    $collection->push($itemObj);
+                }
+            }
+            
+            return $collection;
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error in getItemsCollection: ' . $e->getMessage());
+            return new Collection(); // Return empty collection on error
+        }
+    }
+
+    /**
+     * Add an item to the order's items.
+     * 
+     * @param array $itemData The item data to add
+     * @return $this
+     */
+    public function addItem(array $itemData)
+    {
+        $items = $this->order_items ?: [];
         
-        if (empty($items)) {
-            return collect([]);
+        // Add timestamps to the item
+        $now = now()->toDateTimeString();
+        $itemData['created_at'] = $itemData['created_at'] ?? $now;
+        $itemData['updated_at'] = $now;
+        
+        // Add the item to the array
+        $items[] = $itemData;
+        
+        // Update the order_items attribute
+        $this->order_items = $items;
+        
+        // If the model exists, save it
+        if ($this->exists) {
+            $this->save();
         }
         
-        // Convert array items to OrderItem models
-        return collect($items)->map(function($item) {
-            return new OrderItem((array) $item);
-        });
+        return $this;
+    }
+
+    /**
+     * Remove an item from the order by its position in the array.
+     * 
+     * @param int $index The index of the item to remove
+     * @return $this
+     */
+    public function removeItem(int $index)
+    {
+        $items = $this->order_items ?: [];
+        
+        if (isset($items[$index])) {
+            array_splice($items, $index, 1);
+            $this->order_items = $items;
+            
+            if ($this->exists) {
+                $this->save();
+            }
+        }
+        
+        return $this;
+    }
+
+    /**
+     * Update an item in the order.
+     * 
+     * @param int $index The index of the item to update
+     * @param array $data The data to update
+     * @return $this
+     */
+    public function updateItem(int $index, array $data)
+    {
+        $items = $this->order_items ?: [];
+        
+        if (isset($items[$index])) {
+            // Update the data
+            $items[$index] = array_merge($items[$index], $data);
+            
+            // Add updated timestamp
+            $items[$index]['updated_at'] = now()->toDateTimeString();
+            
+            $this->order_items = $items;
+            
+            if ($this->exists) {
+                $this->save();
+            }
+        }
+        
+        return $this;
+    }
+
+    /**
+     * Get formatted items for API and views
+     * 
+     * @return array
+     */
+    public function getFormattedItems()
+    {
+        // Get items either from the JSON column or from the relationship
+        $orderItems = $this->order_items ?? [];
+        
+        // If items are not in the JSON column, get them from the relationship and enhance them
+        if (empty($orderItems) && $this->items && $this->items->isNotEmpty()) {
+            return $this->items->map(function($item) {
+                return [
+                    'id' => $item->id,
+                    'product_id' => $item->product_id,
+                    'name' => $item->name,
+                    'price' => $item->price,
+                    'quantity' => $item->quantity,
+                    'subtotal' => $item->price * $item->quantity,
+                    'image' => $item->product ? $item->product->getPrimaryImage() : null,
+                ];
+            })->toArray();
+        } else {
+            // Enhance the JSON items with additional data if needed
+            return collect($orderItems)->map(function($item) {
+                $item = (array) $item;
+                $productId = $item['product_id'] ?? null;
+                $product = null;
+                
+                if ($productId) {
+                    $product = \App\Models\Product::find($productId);
+                }
+                
+                return [
+                    'id' => $item['id'] ?? null,
+                    'product_id' => $productId,
+                    'name' => $item['name'] ?? 'Unknown Product',
+                    'price' => $item['price'] ?? 0,
+                    'quantity' => $item['quantity'] ?? 1,
+                    'subtotal' => ($item['price'] ?? 0) * ($item['quantity'] ?? 1),
+                    'image' => $product ? $product->getPrimaryImage() : null,
+                ];
+            })->toArray();
+        }
     }
 }

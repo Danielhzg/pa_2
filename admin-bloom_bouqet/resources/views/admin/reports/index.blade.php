@@ -8,13 +8,14 @@
 <style>
     /* Custom styles for report page */
     .content-header {
-        margin-bottom: 1.5rem;
+        margin-bottom: 1rem;
     }
     
     .page-title {
         color: #D46A9F;
         font-weight: 600;
         margin-bottom: 0.25rem;
+        font-size: 1.5rem;
     }
     
     .table-card {
@@ -27,13 +28,14 @@
     .card-header {
         background-color: white !important;
         border-bottom: 1px solid rgba(0,0,0,0.05) !important;
-        padding: 1rem 1.5rem !important;
+        padding: 0.75rem 1.25rem !important;
     }
     
     .card-title {
         color: #D46A9F;
         font-weight: 600;
         margin-bottom: 0;
+        font-size: 0.95rem;
     }
     
     .export-btn, .date-filter-btn {
@@ -41,8 +43,9 @@
         border: 1px solid rgba(255,105,180,0.2);
         color: #D46A9F;
         border-radius: 20px;
-        padding: 8px 20px;
+        padding: 6px 15px;
         transition: all 0.3s;
+        font-size: 0.85rem;
     }
     
     .export-btn:hover, .date-filter-btn:hover {
@@ -71,7 +74,7 @@
     .stats-card {
         border-radius: 15px;
         box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
-        padding: 20px;
+        padding: 12px;
         height: 100%;
         border: none;
         position: relative;
@@ -85,22 +88,22 @@
     }
     
     .stats-card .stats-icon {
-        width: 60px;
-        height: 60px;
+        width: 50px;
+        height: 50px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 24px;
+        font-size: 20px;
         background: linear-gradient(45deg, #FF87B2, #D46A9F);
         color: white;
-        margin-bottom: 15px;
+        margin-bottom: 12px;
     }
     
     .stats-card .stats-info h3 {
-        font-size: 28px;
+        font-size: 22px;
         font-weight: 600;
-        margin-bottom: 5px;
+        margin-bottom: 3px;
         color: #333;
     }
     
@@ -130,6 +133,12 @@
     .chart-card .card-header {
         background: white !important;
         border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        padding: 0.5rem 1rem !important;
+    }
+    
+    .chart-card .card-body {
+        padding: 0.5rem;
+        height: 200px; /* Further reduced height for chart containers */
     }
     
     .filter-badge {
@@ -139,6 +148,7 @@
         padding: 6px 15px;
         border-radius: 20px;
         font-size: 13px;
+        display: inline-block;
     }
     
     .reset-btn {
@@ -195,21 +205,6 @@
     .modal-footer {
         border-top: 1px solid rgba(0, 0, 0, 0.05);
     }
-    
-    .filter-pill {
-        padding: 5px 12px;
-        border-radius: 15px;
-        background: rgba(255,135,178,0.1);
-        color: #D46A9F;
-        cursor: pointer;
-        border: 1px solid rgba(255,105,180,0.1);
-        transition: all 0.2s;
-    }
-    
-    .filter-pill:hover, .filter-pill.active {
-        background: rgba(255,135,178,0.2);
-        border-color: rgba(255,105,180,0.2);
-    }
 </style>
 @endsection
 
@@ -219,42 +214,57 @@
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 <h3 class="page-title">Laporan Penjualan</h3>
-                <p class="text-muted">Pantau performa bisnis Anda dengan laporan penjualan terperinci</p>
+                <p class="text-muted small mb-0">Pantau performa bisnis Anda dengan laporan penjualan</p>
             </div>
             <div>
                 <a href="{{ route('admin.reports.export', ['start_date' => request('start_date'), 'end_date' => request('end_date')]) }}" 
-                   class="btn export-btn me-2">
-                    <i class="fas fa-file-csv me-2"></i> <span class="text-emphasis">Export CSV</span>
+                   class="btn export-btn btn-sm">
+                    <i class="fas fa-file-csv me-1"></i> Export CSV
                 </a>
-                <button type="button" class="btn action-btn" data-bs-toggle="modal" data-bs-target="#dateFilterModal">
-                    <i class="fas fa-calendar me-2"></i> <span class="text-emphasis">Pilih Tanggal</span>
-                </button>
             </div>
         </div>
     </div>
 
-    <!-- Filter Summary -->
-    @if(request('start_date') || request('end_date'))
-    <div class="card table-card mb-4">
-        <div class="card-body p-3">
-            <div class="d-flex justify-content-between align-items-center">
-                <div class="filter-badge">
-                    <i class="fas fa-filter me-2"></i>
-                    <strong>Rentang Waktu:</strong>
-                    {{ \Carbon\Carbon::parse(request('start_date'))->format('d M Y') }} - 
-                    {{ \Carbon\Carbon::parse(request('end_date'))->format('d M Y') }}
+    <!-- Simple Date Filter -->
+    <div class="card mb-3">
+        <div class="card-body py-3">
+            <form action="{{ route('admin.reports.index') }}" method="GET" class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label for="start_date" class="form-label small mb-1">Tanggal Mulai</label>
+                    <input type="date" class="form-control form-control-sm" id="start_date" name="start_date" 
+                        value="{{ request('start_date', now()->subDays(30)->format('Y-m-d')) }}">
                 </div>
-                <a href="{{ route('admin.reports.index') }}" class="reset-btn">
-                    <i class="fas fa-times me-1"></i> Reset Filter
-                </a>
-            </div>
+                <div class="col-md-4">
+                    <label for="end_date" class="form-label small mb-1">Tanggal Akhir</label>
+                    <input type="date" class="form-control form-control-sm" id="end_date" name="end_date" 
+                        value="{{ request('end_date', now()->format('Y-m-d')) }}">
+                </div>
+                <div class="col-md-4">
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn action-btn btn-sm">
+                            <i class="fas fa-filter me-1"></i> Terapkan
+                        </button>
+                        <a href="{{ route('admin.reports.index') }}" class="btn export-btn btn-sm">
+                            <i class="fas fa-sync me-1"></i> Reset
+                        </a>
+                    </div>
+                    @if(request('start_date') || request('end_date'))
+                    <div class="mt-2">
+                        <span class="filter-badge small">
+                            <i class="fas fa-filter me-1"></i>
+                            {{ \Carbon\Carbon::parse(request('start_date'))->format('d M Y') }} - 
+                            {{ \Carbon\Carbon::parse(request('end_date'))->format('d M Y') }}
+                        </span>
+                    </div>
+                    @endif
+                </div>
+            </form>
         </div>
     </div>
-    @endif
 
     <!-- Summary Cards -->
-    <div class="row mb-4">
-        <div class="col-md-3 mb-4">
+    <div class="row mb-2">
+        <div class="col-md-3 mb-2">
             <div class="stats-card">
                 <div class="stats-icon">
                     <i class="fas fa-shopping-cart"></i>
@@ -267,7 +277,7 @@
             </div>
         </div>
         
-        <div class="col-md-3 mb-4">
+        <div class="col-md-3 mb-2">
             <div class="stats-card">
                 <div class="stats-icon">
                     <i class="fas fa-dollar-sign"></i>
@@ -280,7 +290,7 @@
             </div>
         </div>
         
-        <div class="col-md-3 mb-4">
+        <div class="col-md-3 mb-2">
             <div class="stats-card">
                 <div class="stats-icon">
                     <i class="fas fa-chart-line"></i>
@@ -293,41 +303,68 @@
             </div>
         </div>
         
-        <div class="col-md-3 mb-4">
+        <div class="col-md-3 mb-2">
             <div class="stats-card">
                 <div class="stats-icon">
-                    <i class="fas fa-spinner"></i>
+                    <i class="fas fa-chart-pie"></i>
                 </div>
                 <div class="stats-info">
-                    <h3>{{ $orderStats['active_orders'] }}</h3>
-                    <p>Pesanan Aktif</p>
+                    <h3>Rp {{ number_format($orderStats['monthly_revenue'], 0, ',', '.') }}</h3>
+                    <p>Pendapatan {{ $orderStats['period_label'] ?? 'Periode Ini' }}</p>
                 </div>
                 <div class="stats-decoration"></div>
             </div>
         </div>
     </div>
 
-    <div class="row mb-4">
-        <!-- Daily Sales Chart -->
-        <div class="col-lg-8 mb-4">
+    <div class="row mb-2">
+        <!-- Sales Chart -->
+        <div class="col-lg-12 mb-2">
             <div class="card chart-card h-100">
                 <div class="card-header">
                     <h5 class="card-title"><i class="fas fa-chart-area me-2"></i>Penjualan Harian</h5>
                 </div>
                 <div class="card-body">
-                    <canvas id="dailySalesChart" height="300"></canvas>
+                    <canvas id="salesChart" height="180"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Monthly Revenue Chart -->
+    <div class="row mb-2">
+        <div class="col-lg-12 mb-2">
+            <div class="card chart-card h-100">
+                <div class="card-header">
+                    <h5 class="card-title"><i class="fas fa-chart-bar me-2"></i>Pendapatan Bulanan</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="monthlyRevenueChart" height="180"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Simple Pie Chart -->
+    <div class="row mb-2">
+        <div class="col-lg-6 mb-2">
+            <div class="card chart-card h-100">
+                <div class="card-header">
+                    <h5 class="card-title"><i class="fas fa-chart-pie me-2"></i>Distribusi Pesanan</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="orderDistributionChart" height="180"></canvas>
                 </div>
             </div>
         </div>
         
-        <!-- Payment Methods Chart -->
-        <div class="col-lg-4 mb-4">
+        <div class="col-lg-6 mb-2">
             <div class="card chart-card h-100">
                 <div class="card-header">
-                    <h5 class="card-title"><i class="fas fa-credit-card me-2"></i>Metode Pembayaran</h5>
+                    <h5 class="card-title"><i class="fas fa-chart-line me-2"></i>Tren Penjualan</h5>
                 </div>
-                <div class="card-body d-flex align-items-center justify-content-center">
-                    <canvas id="paymentMethodsChart"></canvas>
+                <div class="card-body">
+                    <canvas id="salesTrendChart" height="180"></canvas>
                 </div>
             </div>
         </div>
@@ -400,33 +437,47 @@
                             <tr>
                                 <th>ID</th>
                                 <th>Pelanggan</th>
-                                <th>Produk</th>
                                 <th>Total</th>
                                 <th>Status</th>
+                                <th>Pembayaran</th>
                                 <th>Tanggal</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach($latestOrders as $order)
-                                <tr>
-                                    <td>#{{ $order->id }}</td>
-                                    <td>{{ $order->user->name ?? 'Tamu' }}</td>
-                                    <td>{{ $order->total_items }} item</td>
-                                    <td>Rp {{ number_format($order->total_amount, 0, ',', '.') }}</td>
+                                <tr class="order-item">
+                                    <td><span class="order-id">{{ $order->id }}</span></td>
                                     <td>
-                                        @if($order->status == 'completed')
-                                            <span class="badge bg-success">Selesai</span>
-                                        @elseif($order->status == 'processing')
-                                            <span class="badge bg-primary">Diproses</span>
-                                        @elseif($order->status == 'pending')
-                                            <span class="badge bg-warning">Tertunda</span>
-                                        @elseif($order->status == 'cancelled')
-                                            <span class="badge bg-danger">Dibatalkan</span>
-                                        @else
-                                            <span class="badge bg-secondary">{{ ucfirst($order->status) }}</span>
-                                        @endif
+                                        <div class="customer-info">
+                                            <span class="customer-name">{{ $order->user->username ?? ($order->user->name ?? 'Pelanggan') }}</span>
+                                            <span class="customer-email">{{ $order->user->email != 'guest@example.com' ? $order->user->email : '' }}</span>
+                                        </div>
                                     </td>
-                                    <td>{{ \Carbon\Carbon::parse($order->created_at)->format('d M Y H:i') }}</td>
+                                    <td><span class="order-amount">Rp {{ number_format($order->total_amount, 0, ',', '.') }}</span></td>
+                                    <td>
+                                        <span class="badge bg-{{ 
+                                            $order->status == 'waiting_for_payment' ? 'warning' : 
+                                            ($order->status == 'processing' ? 'primary' : 
+                                            ($order->status == 'shipping' ? 'info' : 
+                                            ($order->status == 'delivered' ? 'success' : 
+                                            ($order->status == 'cancelled' ? 'danger' : 'secondary')))) 
+                                        }}">
+                                            {{ $order->status_label }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="payment-info">
+                                            <span class="payment-method">{{ ucfirst($order->payment_method) }}</span>
+                                            <span class="payment-badge badge bg-{{ $order->payment_status == 'paid' ? 'success' : 'warning' }}">
+                                                {{ $order->payment_status_label }}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="order-date" data-timestamp="{{ $order->created_at }}">
+                                            {{ \Carbon\Carbon::parse($order->created_at)->format('d M Y H:i') }}
+                                        </span>
+                                    </td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -445,235 +496,329 @@
     </div>
 </div>
 
-<!-- Date Filter Modal -->
-<div class="modal fade" id="dateFilterModal" tabindex="-1" aria-labelledby="dateFilterModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="dateFilterModalLabel">Filter Berdasarkan Tanggal</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form action="{{ route('admin.reports.index') }}" method="GET">
-                <div class="modal-body">
-                    <div class="row mb-3">
-                        <div class="col">
-                            <label for="start_date" class="form-label">Tanggal Mulai</label>
-                            <input type="date" class="form-control" id="start_date" name="start_date" 
-                                value="{{ request('start_date', now()->subDays(30)->format('Y-m-d')) }}">
-                        </div>
-                        <div class="col">
-                            <label for="end_date" class="form-label">Tanggal Akhir</label>
-                            <input type="date" class="form-control" id="end_date" name="end_date" 
-                                value="{{ request('end_date', now()->format('Y-m-d')) }}">
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Rentang Cepat</label>
-                        <div class="d-flex flex-wrap gap-2">
-                            <button type="button" class="filter-pill quick-range" data-days="7">
-                                7 Hari
-                            </button>
-                            <button type="button" class="filter-pill quick-range" data-days="30">
-                                30 Hari
-                            </button>
-                            <button type="button" class="filter-pill quick-range" data-days="90">
-                                90 Hari
-                            </button>
-                            <button type="button" class="filter-pill this-month">
-                                Bulan Ini
-                            </button>
-                            <button type="button" class="filter-pill last-month">
-                                Bulan Lalu
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn export-btn" data-bs-dismiss="modal">Tutup</button>
-                    <button type="submit" class="btn action-btn">Terapkan</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
 @endsection
 
 @push('scripts')
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Chart.js Script -->
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Daily Sales Chart with pink theme
-        const dailySalesCtx = document.getElementById('dailySalesChart').getContext('2d');
-        const dailySalesChart = new Chart(dailySalesCtx, {
-            type: 'line',
-            data: {
-                labels: {!! json_encode($dailySales->pluck('date')) !!},
-                datasets: [{
-                    label: 'Penjualan Harian',
-                    data: {!! json_encode($dailySales->pluck('total')) !!},
-                    backgroundColor: 'rgba(255, 135, 178, 0.1)',
-                    borderColor: '#D46A9F',
-                    pointBackgroundColor: '#D46A9F',
-                    pointBorderColor: '#fff',
-                    pointHoverBackgroundColor: '#fff',
-                    pointHoverBorderColor: '#D46A9F',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.3
-                }]
-            },
-            options: {
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    tooltip: {
-                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                        titleColor: '#D46A9F',
-                        bodyColor: '#555',
-                        bodyFont: {
-                            size: 13
+        console.log('DOM fully loaded, initializing charts');
+        
+        // Directly create simple charts that will always work
+        createSimpleCharts();
+        
+        // Function to create simple charts that will always work
+        function createSimpleCharts() {
+            // Create sample data
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const salesData = [1500000, 2200000, 1800000, 2500000, 3100000, 2800000, 3500000, 3200000, 2700000, 3000000, 3300000, 3800000];
+            const ordersData = [15, 22, 18, 25, 31, 28, 35, 32, 27, 30, 33, 38];
+            
+            // Format currency helper
+            const formatCurrency = (value) => {
+                return new Intl.NumberFormat('id-ID', {
+                    style: 'currency',
+                    currency: 'IDR',
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
+                }).format(value);
+            };
+            
+            // Chart colors
+            const colors = {
+                pink: '#D46A9F',
+                lightPink: '#FF87B2',
+                purple: '#935EB7',
+                blue: '#4E73DF',
+                teal: '#36B9CC',
+                green: '#1CC88A',
+                yellow: '#F6C23E',
+                red: '#E74A3B'
+            };
+            
+            // 1. Daily Sales Chart
+            try {
+                const salesCtx = document.getElementById('salesChart');
+                if (salesCtx) {
+                    new Chart(salesCtx, {
+                        type: 'line',
+                        data: {
+                            labels: {!! json_encode($salesChartData['labels'] ?? []) !!},
+                            datasets: {!! json_encode($salesChartData['datasets'] ?? []) !!}
                         },
-                        titleFont: {
-                            size: 15,
-                            weight: 'bold'
-                        },
-                        padding: 15,
-                        displayColors: false,
-                        borderColor: 'rgba(255, 135, 178, 0.1)',
-                        borderWidth: 1,
-                        cornerRadius: 10,
-                        callbacks: {
-                            label: function(context) {
-                                return 'Rp ' + context.raw.toLocaleString('id-ID');
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            layout: {
+                                padding: {
+                                    top: 5,
+                                    right: 10,
+                                    bottom: 5,
+                                    left: 10
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top',
+                                    labels: {
+                                        boxWidth: 10,
+                                        padding: 8,
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            if (context.dataset.label === 'Total Penjualan') {
+                                                return context.dataset.label + ': ' + formatCurrency(context.raw);
+                                            }
+                                            return context.dataset.label + ': ' + context.raw;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return formatCurrency(value);
+                                        },
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                },
+                                y1: {
+                                    beginAtZero: true,
+                                    position: 'right',
+                                    grid: {
+                                        drawOnChartArea: false
+                                    },
+                                    ticks: {
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                },
+                                x: {
+                                    ticks: {
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                }
                             }
                         }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.05)'
+                    });
+                    console.log('Sales chart created successfully');
+                }
+            } catch (error) {
+                console.error('Error creating sales chart:', error);
+            }
+            
+            // 2. Monthly Revenue Chart
+            try {
+                const revenueCtx = document.getElementById('monthlyRevenueChart');
+                if (revenueCtx) {
+                    new Chart(revenueCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: {!! json_encode($monthlyRevenueData['chartData']['labels'] ?? []) !!},
+                            datasets: {!! json_encode($monthlyRevenueData['chartData']['datasets'] ?? []) !!}
                         },
-                        ticks: {
-                            callback: function(value) {
-                                return 'Rp ' + value.toLocaleString('id-ID');
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            layout: {
+                                padding: {
+                                    top: 5,
+                                    right: 10,
+                                    bottom: 5,
+                                    left: 10
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top',
+                                    labels: {
+                                        boxWidth: 10,
+                                        padding: 8,
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            if (context.dataset.label === 'Pendapatan Bulanan') {
+                                                return context.dataset.label + ': ' + formatCurrency(context.raw);
+                                            }
+                                            return context.dataset.label + ': ' + context.raw;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return formatCurrency(value);
+                                        },
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                },
+                                y1: {
+                                    beginAtZero: true,
+                                    position: 'right',
+                                    grid: {
+                                        drawOnChartArea: false
+                                    },
+                                    ticks: {
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                },
+                                x: {
+                                    ticks: {
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                }
                             }
                         }
-                    },
-                    x: {
-                        grid: {
-                            display: false
-                        }
-                    }
+                    });
+                    console.log('Monthly revenue chart created successfully');
                 }
+            } catch (error) {
+                console.error('Error creating monthly revenue chart:', error);
             }
-        });
-        
-        // Payment Methods Chart with pink theme
-        const paymentCtx = document.getElementById('paymentMethodsChart').getContext('2d');
-        const paymentMethodsChart = new Chart(paymentCtx, {
-            type: 'doughnut',
-            data: {
-                labels: {!! json_encode($paymentStats->pluck('method')) !!},
-                datasets: [{
-                    data: {!! json_encode($paymentStats->pluck('count')) !!},
-                    backgroundColor: [
-                        '#FF87B2',
-                        '#D46A9F',
-                        '#B05DA9',
-                        '#935EB7',
-                        '#7373FF'
-                    ],
-                    borderWidth: 0,
-                    hoverOffset: 4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '70%',
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            padding: 15,
-                            usePointStyle: true,
-                            pointStyle: 'circle'
+            
+            // 3. Order Distribution Pie Chart
+            try {
+                const pieCtx = document.getElementById('orderDistributionChart');
+                if (pieCtx) {
+                    new Chart(pieCtx, {
+                        type: 'pie',
+                        data: {
+                            labels: {!! json_encode($orderStatusDistribution['labels'] ?? ['Tidak ada data']) !!},
+                            datasets: [{
+                                data: {!! json_encode($orderStatusDistribution['data'] ?? [100]) !!},
+                                backgroundColor: {!! json_encode($orderStatusDistribution['colors'] ?? ['#cccccc']) !!},
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            layout: {
+                                padding: {
+                                    top: 5,
+                                    right: 10,
+                                    bottom: 5,
+                                    left: 10
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                    labels: {
+                                        boxWidth: 10,
+                                        padding: 8,
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                }
+                            }
                         }
-                    },
-                    tooltip: {
-                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                        titleColor: '#D46A9F',
-                        bodyColor: '#555',
-                        bodyFont: {
-                            size: 13
-                        },
-                        titleFont: {
-                            size: 15,
-                            weight: 'bold'
-                        },
-                        padding: 15,
-                        displayColors: true,
-                        borderColor: 'rgba(255, 135, 178, 0.1)',
-                        borderWidth: 1,
-                        cornerRadius: 10
-                    }
+                    });
+                    console.log('Order distribution chart created successfully');
                 }
+            } catch (error) {
+                console.error('Error creating order distribution chart:', error);
             }
-        });
-        
-        // Quick date range buttons
-        document.querySelectorAll('.quick-range').forEach(button => {
-            button.addEventListener('click', function() {
-                const days = this.getAttribute('data-days');
-                const endDate = new Date();
-                const startDate = new Date();
-                startDate.setDate(startDate.getDate() - days);
-                
-                document.getElementById('start_date').value = formatDate(startDate);
-                document.getElementById('end_date').value = formatDate(endDate);
-            });
-        });
-        
-        // This month button
-        document.querySelector('.this-month').addEventListener('click', function() {
-            const now = new Date();
-            const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-            const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
             
-            document.getElementById('start_date').value = formatDate(startDate);
-            document.getElementById('end_date').value = formatDate(endDate);
-        });
-        
-        // Last month button
-        document.querySelector('.last-month').addEventListener('click', function() {
-            const now = new Date();
-            const startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            const endDate = new Date(now.getFullYear(), now.getMonth(), 0);
-            
-            document.getElementById('start_date').value = formatDate(startDate);
-            document.getElementById('end_date').value = formatDate(endDate);
-        });
-        
-        // Format date helper
-        function formatDate(date) {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            
-            return `${year}-${month}-${day}`;
+            // 4. Sales Trend Chart
+            try {
+                const trendCtx = document.getElementById('salesTrendChart');
+                if (trendCtx) {
+                    new Chart(trendCtx, {
+                        type: 'line',
+                        data: {
+                            labels: {!! json_encode($salesChartData['labels'] ?? ['Tidak ada data']) !!},
+                            datasets: [{
+                                label: 'Total Penjualan',
+                                data: {!! json_encode($salesChartData['datasets'][0]['data'] ?? [0]) !!},
+                                backgroundColor: 'rgba(54, 185, 204, 0.1)',
+                                borderColor: colors.teal,
+                                borderWidth: 2,
+                                tension: 0.4,
+                                fill: true
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            layout: {
+                                padding: {
+                                    top: 5,
+                                    right: 10,
+                                    bottom: 5,
+                                    left: 10
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top',
+                                    labels: {
+                                        boxWidth: 10,
+                                        padding: 8,
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return formatCurrency(value);
+                                        },
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                },
+                                x: {
+                                    ticks: {
+                                        font: {
+                                            size: 10
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    console.log('Sales trend chart created successfully');
+                }
+            } catch (error) {
+                console.error('Error creating sales trend chart:', error);
+            }
         }
-        
-        // Highlight active filter pill
-        document.querySelectorAll('.filter-pill').forEach(pill => {
-            pill.addEventListener('click', function() {
-                document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
-                this.classList.add('active');
-            });
-        });
     });
 </script>
 @endpush 

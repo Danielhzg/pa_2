@@ -75,6 +75,7 @@ class ChatPage extends StatefulWidget {
   final int? productStock;
   final int? requestedQuantity;
   final bool showBottomNav;
+  final String? orderId;
 
   // Static fields to store pending chat info between screens
   static String? pendingInitialMessage;
@@ -82,6 +83,7 @@ class ChatPage extends StatefulWidget {
   static String? pendingProductImageUrl;
   static int? pendingProductStock;
   static int? pendingRequestedQuantity;
+  static String? pendingOrderId;
 
   const ChatPage({
     super.key,
@@ -91,6 +93,7 @@ class ChatPage extends StatefulWidget {
     this.productStock,
     this.requestedQuantity,
     this.showBottomNav = false,
+    this.orderId,
   });
 
   @override
@@ -102,7 +105,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   final List<ChatMessage> _messages = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
-  bool _isSending = false;
+  final bool _isSending = false;
   bool _isTyping = false;
   bool _showScrollToBottomButton = false;
   User? _userData;
@@ -111,6 +114,10 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   final bool _showFaq = true;
   final ChatService _chatService = ChatService();
   int _lastMessageId = 0;
+  Timer? _pollingTimer;
+  bool _adminOnline = false;
+  String? _adminLastSeen;
+  DateTime _lastCheckedTime = DateTime.now();
 
   // Variables for draggable FAQ
   Offset _faqPosition = const Offset(20, 100);
@@ -162,6 +169,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     super.initState();
     _loadUserData();
     _loadChatMessages();
+    _checkAdminStatus();
+    _setupMessagePolling();
 
     // Initialize FAQ position to top right corner
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -182,7 +191,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       curve: Curves.easeOut,
     );
     _fabAnimationController!.forward();
-    
+
     // Monitor scroll to show/hide scroll-to-bottom button
     _scrollController.addListener(() {
       if (_scrollController.hasClients) {
@@ -200,6 +209,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       final pendingProductImageUrl = ChatPage.pendingProductImageUrl;
       final pendingProductStock = ChatPage.pendingProductStock;
       final pendingRequestedQuantity = ChatPage.pendingRequestedQuantity;
+      final pendingOrderId = ChatPage.pendingOrderId;
 
       // Clear static fields to prevent duplicates
       ChatPage.pendingInitialMessage = null;
@@ -207,6 +217,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       ChatPage.pendingProductImageUrl = null;
       ChatPage.pendingProductStock = null;
       ChatPage.pendingRequestedQuantity = null;
+      ChatPage.pendingOrderId = null;
 
       // Process the pending message immediately
       Future.delayed(Duration.zero, () {
@@ -218,6 +229,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             'productImageUrl': pendingProductImageUrl,
             'productStock': pendingProductStock,
             'requestedQuantity': pendingRequestedQuantity,
+            'orderId': pendingOrderId,
           };
 
           // Process this message
@@ -231,31 +243,31 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       // Process immediately without delay
       _processInitialMessage();
     }
-    
+
     // Simulate typing periodically (for demo purposes)
     Future.delayed(const Duration(seconds: 5), () {
       if (mounted) _simulateTyping();
     });
   }
-  
+
   // Simulate typing indicator (for demo purposes only)
   void _simulateTyping() {
     // Don't show typing if there are no messages yet
     if (_messages.isEmpty) return;
-    
+
     // Random typing simulation
     if (mounted) {
       setState(() {
         _isTyping = true;
       });
-    
+
       // Hide typing after a random duration
       Future.delayed(Duration(seconds: 2 + Random().nextInt(3)), () {
         if (mounted) {
           setState(() {
             _isTyping = false;
           });
-          
+
           // Schedule next typing indication
           Future.delayed(Duration(seconds: 10 + Random().nextInt(20)), () {
             if (mounted) _simulateTyping();
@@ -327,7 +339,12 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         if (chat != null && chat.messages.isNotEmpty) {
           setState(() {
             _messages.clear();
-            _messages.addAll(chat.messages);
+
+            // Sort messages by timestamp to ensure correct order
+            final sortedMessages = chat.messages.toList()
+              ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+            _messages.addAll(sortedMessages);
 
             // Update last message ID for polling
             if (chat.messages.isNotEmpty) {
@@ -347,46 +364,13 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           _chatService.markMessagesAsRead();
 
           // Scroll to bottom
-          Future.delayed(const Duration(milliseconds: 100), () {
-            if (_scrollController.hasClients) {
-              _scrollController.animateTo(
-                0.0,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-              );
-            }
-          });
+          _scrollToBottom();
 
           return;
         }
 
         // Fall back to local storage if API fails or returns no messages
-        final localMessages = await _chatService.getLocalChatMessages();
-        if (localMessages.isNotEmpty) {
-          setState(() {
-            _messages.clear();
-            _messages.addAll(localMessages);
-            _isLoading = false;
-          });
-
-          // Scroll to bottom
-          Future.delayed(const Duration(milliseconds: 100), () {
-            if (_scrollController.hasClients) {
-              _scrollController.animateTo(
-                0.0,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-              );
-            }
-          });
-        } else {
-          setState(() {
-            _isLoading = false;
-          });
-
-          // Show FAQ if no message history
-          _showFaqPanel();
-        }
+        await _loadLocalMessages();
       } catch (e) {
         print('Error loading chat messages: $e');
         setState(() {
@@ -396,87 +380,181 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     }
   }
 
-  // Send a message
-  Future<void> _sendMessage() async {
-    final message = _messageController.text.trim();
-    if (message.isEmpty) return;
+  // Load messages from local storage
+  Future<void> _loadLocalMessages() async {
+    try {
+      final localMessages = await _chatService.getLocalChatMessages();
+      if (localMessages.isNotEmpty) {
+        setState(() {
+          _messages.addAll(localMessages);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading local messages: $e');
+    }
+  }
 
+  // Auto-save messages to local storage
+  void _saveMessagesToLocalStorage() {
+    try {
+      if (_messages.isNotEmpty) {
+        _chatService.saveLocalChatMessages(_messages);
+      }
+    } catch (e) {
+      print('Error saving messages to local storage: $e');
+    }
+  }
+
+  // Send a message with WhatsApp-like behavior
+  void _sendMessage() async {
+    final messageText = _messageController.text.trim();
+    if (messageText.isEmpty) return;
+
+    // Clear input immediately
+    _messageController.clear();
+
+    // Create a temporary message with "sending" status
+    final tempMessage = ChatMessage(
+      id: DateTime.now().millisecondsSinceEpoch,
+      message: messageText,
+      isFromUser: true,
+      timestamp: DateTime.now(),
+      productImageUrl: widget.productImageUrl,
+      productName: widget.productName,
+      orderId: widget.orderId,
+      isDelivered: false,
+      isRead: false,
+    );
+
+    // Add to local messages immediately
     setState(() {
-      _isSending = true;
+      _messages.add(tempMessage);
     });
 
+    // Scroll to bottom
+    _scrollToBottom();
+
     try {
-      // Create a local message first to show immediately
-      final localMessage = ChatMessage(
-        message: message,
-        isFromUser: true,
-        timestamp: DateTime.now(),
+      // Send the message to the server
+      final sentMessage = await _chatService.sendMessage(
+        messageText,
         productImageUrl: widget.productImageUrl,
         productName: widget.productName,
+        orderId: widget.orderId,
       );
 
-      setState(() {
-        _messages.add(localMessage);
-        _messageController.clear();
-      });
-
-      // Send message through the chat service
-      final newMessage = await _chatService.sendMessage(
-        message,
-        productImageUrl: widget.productImageUrl,
-        productName: widget.productName,
-      );
-
-      if (newMessage != null) {
+      if (sentMessage != null) {
+        // Update the message with sent status
         setState(() {
-          // Replace local message with server message if needed
-          _messages.removeLast();
-          _messages.add(newMessage);
-          _lastMessageId = newMessage.id ?? _lastMessageId;
-          _isSending = false;
-        });
-
-        // Save messages locally as backup
-        _chatService.saveChatMessagesLocally(_messages);
-
-        // Auto-response for FAQ system
-        _provideFaqResponse(message);
-      } else {
-        // If API call fails, keep the local message
-        setState(() {
-          _isSending = false;
-        });
-
-        // Save messages locally as backup
-        _chatService.saveChatMessagesLocally(_messages);
-
-        // Auto-response for FAQ system
-        _provideFaqResponse(message);
-      }
-
-        // Scroll to bottom
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              0.0,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-            );
+          final index = _messages.indexWhere((m) =>
+              m.id == tempMessage.id || m.message == tempMessage.message);
+          if (index >= 0) {
+            _messages[index] = sentMessage;
           }
         });
+      }
     } catch (e) {
       print('Error sending message: $e');
-      setState(() {
-        _isSending = false;
-      });
-
+      // Show error but don't remove the message
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to send message. Please try again.'),
-          backgroundColor: Colors.red,
+        SnackBar(
+          content: const Text('Failed to send message. Tap to retry.'),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () => _resendMessage(tempMessage),
+          ),
         ),
       );
     }
+  }
+
+  // Retry sending a failed message
+  void _resendMessage(ChatMessage failedMessage) async {
+    try {
+      final sentMessage = await _chatService.sendMessage(
+        failedMessage.message,
+        productImageUrl: failedMessage.productImageUrl,
+        productName: failedMessage.productName,
+        orderId: failedMessage.orderId,
+      );
+
+      if (sentMessage != null) {
+        setState(() {
+          final index = _messages.indexWhere((m) => m.id == failedMessage.id);
+          if (index >= 0) {
+            _messages[index] = sentMessage;
+          }
+        });
+      }
+    } catch (e) {
+      print('Error resending message: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Failed to resend message. Please try again.')),
+      );
+    }
+  }
+
+  // Simulate admin typing response for better UX
+  void _simulateAdminTypingResponse() {
+    // Show typing indicator after a short delay
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        setState(() {
+          _isTyping = true;
+        });
+
+        // Provide automatic response after a delay
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() {
+              _isTyping = false;
+            });
+
+            // Add an automatic response message
+            _addAutomaticResponse();
+          }
+        });
+      }
+    });
+  }
+
+  // Add an automatic response to ensure users always get feedback
+  void _addAutomaticResponse() {
+    // Create an automatic response message
+    final responseMessage = ChatMessage(
+      id: DateTime.now().millisecondsSinceEpoch + 1,
+      message:
+          "Terima kasih atas pesan Anda. Tim customer service kami akan segera merespons. Mohon tunggu sebentar.",
+      isFromUser: false,
+      timestamp: DateTime.now(),
+      isDelivered: true,
+      isRead: true,
+    );
+
+    setState(() {
+      _messages.insert(0, responseMessage);
+    });
+
+    // Save messages locally
+    _saveMessagesToLocalStorage();
+
+    // Scroll to bottom
+    _scrollToBottom();
+  }
+
+  // Helper method to scroll to bottom of chat
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   // Provide FAQ automatic response
@@ -511,15 +589,15 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       if (!mounted) return;
 
       // Add response message
-    setState(() {
+      setState(() {
         if (matchedFaq != null) {
           // Found matching FAQ
-      _messages.add(
-        ChatMessage(
+          _messages.add(
+            ChatMessage(
               message: matchedFaq.answer,
               isFromUser: false,
-          timestamp: DateTime.now(),
-          isDelivered: true,
+              timestamp: DateTime.now(),
+              isDelivered: true,
               isRead: true,
             ),
           );
@@ -538,14 +616,14 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         }
 
         // Save locally
-        _chatService.saveChatMessagesLocally(_messages);
+        _saveMessagesToLocalStorage();
       });
 
       // Scroll to bottom
       Future.delayed(const Duration(milliseconds: 100), () {
         if (_scrollController.hasClients) {
           _scrollController.animateTo(
-            0.0,
+            _scrollController.position.maxScrollExtent,
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOut,
           );
@@ -557,7 +635,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   // Method to ask a FAQ
   void _askFAQ(FAQ faq) {
     // Hide the FAQ section after clicking a question
-      setState(() {
+    setState(() {
       _expandedFaq = false;
     });
 
@@ -579,7 +657,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       isRead: true,
     );
 
-          setState(() {
+    setState(() {
       _messages.add(userMessage);
     });
 
@@ -587,7 +665,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
-          0.0,
+          _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
@@ -597,18 +675,18 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     // Simulate typing delay for admin response
     Future.delayed(const Duration(milliseconds: 800), () {
       if (mounted) {
-      setState(() {
+        setState(() {
           _messages.add(systemMessage);
         });
 
         // Save messages locally
-        _chatService.saveChatMessagesLocally(_messages);
+        _saveMessagesToLocalStorage();
 
         // Scroll to bottom again after adding system message
         Future.delayed(const Duration(milliseconds: 100), () {
           if (_scrollController.hasClients) {
             _scrollController.animateTo(
-              0.0,
+              _scrollController.position.maxScrollExtent,
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeOut,
             );
@@ -661,11 +739,97 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     }
   }
 
+  // Check admin online status
+  void _checkAdminStatus() async {
+    try {
+      final adminStatus = await _chatService.checkAdminStatus();
+      if (mounted) {
+        setState(() {
+          _adminOnline = adminStatus['admin_online'] ?? false;
+          _adminLastSeen = adminStatus['last_seen'];
+        });
+      }
+    } catch (e) {
+      print('Error checking admin status: $e');
+    }
+  }
+
+  // Setup polling for new messages
+  void _setupMessagePolling() {
+    // Cancel any existing timer
+    _pollingTimer?.cancel();
+
+    // Start a new polling timer (every 5 seconds)
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      // Check for new admin responses
+      await _checkForNewAdminResponses();
+
+      // Periodically check admin status (every 30 seconds)
+      if (timer.tick % 6 == 0) {
+        _checkAdminStatus();
+      }
+    });
+  }
+
+  // Check for new admin responses
+  Future<void> _checkForNewAdminResponses() async {
+    try {
+      final newMessages =
+          await _chatService.checkAdminResponses(_lastCheckedTime);
+
+      if (newMessages.isNotEmpty && mounted) {
+        setState(() {
+          // Add new messages to the list
+          _messages.addAll(newMessages);
+
+          // Update last checked time
+          _lastCheckedTime = DateTime.now();
+
+          // Find the highest message ID
+          for (var message in newMessages) {
+            if (message.id != null && message.id! > _lastMessageId) {
+              _lastMessageId = message.id!;
+            }
+          }
+        });
+
+        // Mark messages as read
+        _chatService.markMessagesAsRead();
+
+        // Save messages locally
+        _saveMessagesToLocalStorage();
+
+        // Scroll to bottom if user is already at bottom
+        if (_scrollController.hasClients &&
+            _scrollController.position.pixels < 100) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        } else if (_scrollController.hasClients) {
+          // Show new message notification
+          setState(() {
+            _showScrollToBottomButton = true;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error checking for new admin responses: $e');
+    }
+  }
+
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
     _fabAnimationController?.dispose();
+    _pollingTimer?.cancel();
     super.dispose();
   }
 
@@ -676,7 +840,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
-        appBar: AppBar(
+      appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
         centerTitle: false,
@@ -714,10 +878,10 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-            children: [
-              const Text(
+                children: [
+                  const Text(
                     'FAQ',
-                style: TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
                       color: Color(0xFFFF5A8A),
@@ -726,8 +890,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                   const Text(
                     ' & Bantuan',
                     style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
                       color: Color(0xFF333333),
                     ),
                   ),
@@ -762,19 +926,19 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                     ),
                   ),
                   const SizedBox(width: 5),
-                  Text(
-                    'Customer Service Online',
-                      style: TextStyle(
-                        fontSize: 12,
-                      color: Colors.grey[600],
-                      ),
+                  const Text(
+                    'Online',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF666666),
                     ),
-            ],
+                  ),
+                ],
               ),
             ],
           ),
-          ),
-          actions: [
+        ),
+        actions: [
           Container(
             margin: const EdgeInsets.only(right: 16),
             child: IconButton(
@@ -788,27 +952,30 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 });
               },
             ),
-            ),
-          ],
-        ),
-        body: SafeArea(
-          child: Stack(
-            children: [
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Stack(
+          children: [
             // Messages area
-              Column(
-                children: [
+            Column(
+              children: [
                 // Subtle divider
                 Container(
                   height: 1,
                   color: Colors.grey.withOpacity(0.1),
                 ),
 
-                  Expanded(
-                    child: _isLoading
-                            ? Center(
-                                child: Column(
+                // Admin status header
+                if (_messages.isNotEmpty) _buildChatHeader(),
+
+                Expanded(
+                  child: _isLoading
+                      ? Center(
+                          child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
+                            children: [
                               const SizedBox(
                                 width: 50,
                                 height: 50,
@@ -819,16 +986,16 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                 ),
                               ),
                               const SizedBox(height: 16),
-                                    Text(
+                              Text(
                                 'Memuat pesan...',
-                                      style: TextStyle(
+                                style: TextStyle(
                                   color: Colors.grey[500],
                                   fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
                                 ),
-                              )
+                              ),
+                            ],
+                          ),
+                        )
                       : _messages.isEmpty
                           ? _buildEmptyState()
                           : _buildMessagesList(),
@@ -978,7 +1145,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
                   ),
                 ),
                 const SizedBox(height: 30),
@@ -989,9 +1157,10 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       ),
     );
   }
-  
+
   // Quick access card for common questions
-  Widget _buildQuickAccessCard(String title, IconData icon, Color color, String message) {
+  Widget _buildQuickAccessCard(
+      String title, IconData icon, Color color, String message) {
     return Expanded(
       child: Material(
         color: Colors.transparent,
@@ -1060,13 +1229,11 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             ),
           ),
         ),
-        
+
         // Message list
         ListView.builder(
           controller: _scrollController,
-          reverse: true,
           padding: const EdgeInsets.all(16),
-          physics: const BouncingScrollPhysics(),
           itemCount: _messages.length + 1, // +1 for the date header
           itemBuilder: (context, index) {
             // Show "Today" date header at the top
@@ -1075,7 +1242,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 padding: const EdgeInsets.only(bottom: 20.0, top: 10.0),
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: Colors.grey[200],
                       borderRadius: BorderRadius.circular(20),
@@ -1092,34 +1260,36 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 ),
               );
             }
-            
+
             final messageIndex = index;
-            final message = _messages[_messages.length - 1 - messageIndex];
-            
+            final message = _messages[messageIndex];
+
             // Determine if we should show the avatar (first message in a group)
             bool showAvatar = messageIndex == 0;
-            
+
             if (messageIndex > 0) {
-              final previousMessage = _messages[_messages.length - messageIndex];
+              final previousMessage = _messages[messageIndex - 1];
               // Show avatar if this message is from a different sender than the previous one
               // or if messages are separated by more than 5 minutes
               showAvatar = previousMessage.isFromUser != message.isFromUser ||
                   previousMessage.timestamp
                           .difference(message.timestamp)
                           .inMinutes
-                          .abs() > 5;
+                          .abs() >
+                      5;
             }
-            
+
             // Check if we need to show a date divider
             Widget? dateDivider;
             if (messageIndex < _messages.length - 1) {
-              final nextMessage = _messages[_messages.length - 2 - messageIndex];
+              final nextMessage = _messages[messageIndex + 1];
               if (!_isSameDay(message.timestamp, nextMessage.timestamp)) {
                 dateDivider = Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16.0),
                   child: Center(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: Colors.grey[200],
                         borderRadius: BorderRadius.circular(20),
@@ -1140,13 +1310,13 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
             return Column(
               children: [
-                _buildEnhancedMessageBubble(message, showAvatar: showAvatar),
+                _buildMessageBubble(message, showAvatar: showAvatar),
                 if (dateDivider != null) dateDivider,
               ],
             );
           },
         ),
-        
+
         // "New messages" indicator when scrolled up
         if (_messages.length > 10)
           Positioned(
@@ -1159,16 +1329,11 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 duration: const Duration(milliseconds: 200),
                 child: GestureDetector(
                   onTap: () {
-                    if (_scrollController.hasClients) {
-                      _scrollController.animateTo(
-                        0.0,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOut,
-                      );
-                    }
+                    _scrollToBottom();
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFF87B2),
                       borderRadius: BorderRadius.circular(20),
@@ -1183,7 +1348,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.arrow_downward, color: Colors.white, size: 18),
+                        Icon(Icons.arrow_downward,
+                            color: Colors.white, size: 18),
                         SizedBox(width: 8),
                         Text(
                           'Lihat pesan terbaru',
@@ -1199,7 +1365,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
               ),
             ),
           ),
-          
+
         // Optional: Typing indicator
         Positioned(
           bottom: 0,
@@ -1240,7 +1406,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(18),
@@ -1274,7 +1441,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       ],
     );
   }
-  
+
   // Helper to build the typing indicator animation
   Widget _buildTypingIndicator() {
     return SizedBox(
@@ -1292,8 +1459,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 child: Container(
                   width: 6,
                   height: 6,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF87B2),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFF87B2),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -1304,18 +1471,18 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       ),
     );
   }
-  
+
   // Get current date for the header
   String _getCurrentDateLabel() {
     final now = DateTime.now();
     return _formatDateHeader(now);
   }
-  
+
   // Format date for header
   String _formatDateHeader(DateTime date) {
     final now = DateTime.now();
     final yesterday = DateTime(now.year, now.month, now.day - 1);
-    
+
     if (_isSameDay(date, now)) {
       return 'Hari Ini';
     } else if (_isSameDay(date, yesterday)) {
@@ -1324,7 +1491,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       return DateFormat('d MMMM yyyy', 'id_ID').format(date);
     }
   }
-  
+
   // Check if two dates are the same day
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
@@ -1356,7 +1523,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 ),
               );
             },
-            icon: const Icon(Icons.attach_file_rounded, color: Color(0xFFFF87B2)),
+            icon:
+                const Icon(Icons.attach_file_rounded, color: Color(0xFFFF87B2)),
           ),
           Expanded(
             child: Container(
@@ -1396,7 +1564,11 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             borderRadius: BorderRadius.circular(50),
             child: InkWell(
               borderRadius: BorderRadius.circular(50),
-              onTap: _messageController.text.trim().isEmpty ? null : _sendMessage,
+              onTap: () {
+                if (_messageController.text.trim().isNotEmpty) {
+                  _sendMessage();
+                }
+              },
               child: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -1409,8 +1581,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                           end: Alignment.bottomRight,
                         ),
                 ),
-                child: Icon(
-                  _isSending ? Icons.hourglass_bottom : Icons.send_rounded,
+                child: const Icon(
+                  Icons.send,
                   color: Colors.white,
                   size: 24,
                 ),
@@ -1427,58 +1599,58 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     return Positioned(
       left: _faqPosition.dx,
       top: _faqPosition.dy,
-                  child: GestureDetector(
-                    onTap: _isDragging
-                        ? null
-                        : () {
-                            setState(() {
-                              _expandedFaq = true;
-                            });
-                          },
-                    onPanStart: (_) {
-                      setState(() {
-                        _isDragging = true;
-                      });
-                    },
-                    onPanUpdate: (details) {
-                      setState(() {
-                        _faqPosition = Offset(
+      child: GestureDetector(
+        onTap: _isDragging
+            ? null
+            : () {
+                setState(() {
+                  _expandedFaq = true;
+                });
+              },
+        onPanStart: (_) {
+          setState(() {
+            _isDragging = true;
+          });
+        },
+        onPanUpdate: (details) {
+          setState(() {
+            _faqPosition = Offset(
               (_faqPosition.dx + details.delta.dx)
                   .clamp(16, MediaQuery.of(context).size.width - 80),
               (_faqPosition.dy + details.delta.dy)
                   .clamp(80, MediaQuery.of(context).size.height - 200),
-                        );
-                      });
-                    },
-                    onPanEnd: (_) {
-                      Future.delayed(const Duration(milliseconds: 100), () {
-                        if (mounted) {
-                          setState(() {
-                            _isDragging = false;
-                          });
-                        }
-                      });
-                    },
+            );
+          });
+        },
+        onPanEnd: (_) {
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted) {
+              setState(() {
+                _isDragging = false;
+              });
+            }
+          });
+        },
         child: AnimatedContainer(
           width: 60,
           height: 60,
-                        duration: const Duration(milliseconds: 300),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFFFF87B2), Color(0xFFFF5A8A)],
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
+          duration: const Duration(milliseconds: 300),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFFF87B2), Color(0xFFFF5A8A)],
+            ),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
                 color: const Color(0xFFFF87B2).withOpacity(0.4),
                 blurRadius: _isDragging ? 18 : 12,
-                      offset: const Offset(0, 4),
+                offset: const Offset(0, 4),
                 spreadRadius: _isDragging ? 4 : 2,
-                    ),
-                  ],
-                ),
+              ),
+            ],
+          ),
           child: TweenAnimationBuilder<double>(
             duration: const Duration(milliseconds: 300),
             tween: Tween<double>(
@@ -1491,9 +1663,9 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 child: const Center(
                   child: Icon(
                     Icons.help_outline_rounded,
-                      color: Colors.white,
-                      size: 28,
-                    ),
+                    color: Colors.white,
+                    size: 28,
+                  ),
                 ),
               );
             },
@@ -1515,14 +1687,14 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
               duration: const Duration(milliseconds: 300),
               tween: Tween<double>(begin: 0.9, end: 1.0),
               curve: Curves.easeOutCubic,
-                      builder: (context, value, child) {
-                        return Transform.scale(
-                          scale: value,
-                          child: Container(
+              builder: (context, value, child) {
+                return Transform.scale(
+                  scale: value,
+                  child: Container(
                     width: MediaQuery.of(context).size.width * 0.9,
                     height: MediaQuery.of(context).size.height * 0.75,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
@@ -1558,22 +1730,22 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                 children: [
                                   Row(
                                     children: [
-                Container(
+                                      Container(
                                         width: 42,
                                         height: 42,
-                  decoration: BoxDecoration(
+                                        decoration: BoxDecoration(
                                           color: Colors.white24,
                                           borderRadius:
                                               BorderRadius.circular(12),
-                  ),
-                  child: const Center(
-                    child: Icon(
+                                        ),
+                                        child: const Center(
+                                          child: Icon(
                                             Icons.question_answer_rounded,
-                      color: Colors.white,
+                                            color: Colors.white,
                                             size: 22,
-                    ),
-                  ),
-                ),
+                                          ),
+                                        ),
+                                      ),
                                       const SizedBox(width: 14),
                                       Column(
                                         crossAxisAlignment:
@@ -1584,13 +1756,13 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                             style: TextStyle(
                                               fontSize: 18,
                                               fontWeight: FontWeight.bold,
-        color: Colors.white,
+                                              color: Colors.white,
                                             ),
                                           ),
                                           const SizedBox(height: 4),
                                           Row(
-          children: [
-            Container(
+                                            children: [
+                                              Container(
                                                 padding:
                                                     const EdgeInsets.symmetric(
                                                         horizontal: 8,
@@ -1601,20 +1773,20 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                                       BorderRadius.circular(20),
                                                 ),
                                                 child: const Row(
-                children: [
+                                                  children: [
                                                     Icon(
                                                       Icons.trending_up,
-                    color: Colors.white,
+                                                      color: Colors.white,
                                                       size: 12,
                                                     ),
                                                     SizedBox(width: 4),
                                                     Text(
                                                       'Paling Ditanyakan',
-                      style: TextStyle(
+                                                      style: TextStyle(
                                                         fontSize: 10,
-                        color: Colors.white,
-                      ),
-                    ),
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
                                                   ],
                                                 ),
                                               ),
@@ -1625,32 +1797,32 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                     ],
                                   ),
                                   GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _expandedFaq = false;
-                      });
-                    },
-                    child: Container(
+                                    onTap: () {
+                                      setState(() {
+                                        _expandedFaq = false;
+                                      });
+                                    },
+                                    child: Container(
                                       width: 36,
                                       height: 36,
-                      decoration: BoxDecoration(
+                                      decoration: BoxDecoration(
                                         color: Colors.white24,
                                         borderRadius: BorderRadius.circular(10),
-                      ),
+                                      ),
                                       child: const Center(
                                         child: Icon(
-                        Icons.close,
-                        color: Colors.white,
+                                          Icons.close,
+                                          color: Colors.white,
                                           size: 18,
                                         ),
-                      ),
-                    ),
+                                      ),
+                                    ),
                                   ),
                                 ],
-                  ),
-                ],
-              ),
-            ),
+                              ),
+                            ],
+                          ),
+                        ),
 
                         // Search box (decorative)
                         Container(
@@ -1673,14 +1845,14 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                             children: [
                               Container(
                                 padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
                                     colors: [
                                       primaryColor,
                                       const Color(0xFFFF5A8A)
                                     ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
                                   ),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
@@ -1692,12 +1864,12 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                               ),
                               const SizedBox(width: 14),
                               Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
                                       'Topik Populer',
-                                        style: TextStyle(
+                                      style: TextStyle(
                                           color: Colors.grey.shade900,
                                           fontSize: 14,
                                           fontWeight: FontWeight.w600),
@@ -1710,16 +1882,16 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                           fontSize: 12),
                                     ),
                                   ],
-                                    ),
-                                  ),
-                                ],
-                              ),
                                 ),
+                              ),
+                            ],
+                          ),
+                        ),
 
                         // FAQ List
                         Expanded(
                           child: Container(
-                                decoration: BoxDecoration(
+                            decoration: BoxDecoration(
                               color: Colors.grey.shade50,
                               borderRadius: const BorderRadius.only(
                                 bottomLeft: Radius.circular(24),
@@ -1734,333 +1906,123 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                 return _buildFaqItem(_faqs[index], index);
                               },
                             ),
-                                ),
-                              ),
-                            ],
-                      ),
+                          ),
+                        ),
+                      ],
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
+          ),
         ),
       ),
     );
   }
 
   // Enhanced message bubble with avatar for admin
-  Widget _buildEnhancedMessageBubble(ChatMessage message,
-      {required bool showAvatar}) {
-    const primaryColor = Color(0xFFFF87B2);
-    final timeStr = _formatDateTime(message.timestamp);
+  Widget _buildMessageBubble(ChatMessage message, {required bool showAvatar}) {
+    final isUserMessage = message.isFromUser;
+    final bubbleColor = isUserMessage
+        ? const Color(0xFFDCF8C6) // WhatsApp green for user messages
+        : Colors.white;
+    const textColor = Colors.black87;
+    final alignment =
+        isUserMessage ? Alignment.centerRight : Alignment.centerLeft;
+    final borderRadius = isUserMessage
+        ? const BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(16),
+            bottomRight: Radius.circular(4),
+          )
+        : const BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(4),
+            bottomRight: Radius.circular(16),
+          );
 
-    return Padding(
-      padding: EdgeInsets.only(
-        top: 8.0,
-        bottom: 8.0,
-        left: message.isFromUser ? 60 : 10,
-        right: message.isFromUser ? 10 : 60,
-      ),
-      child: Column(
-        crossAxisAlignment: message.isFromUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          // Render the status info at the top for time
-          if (showAvatar && !message.isFromUser) 
-            Padding(
-              padding: const EdgeInsets.only(left: 48, bottom: 4),
-              child: Text(
-                'Customer Service',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+    return Align(
+      alignment: alignment,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        decoration: BoxDecoration(
+          color: bubbleColor,
+          borderRadius: borderRadius,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 3,
+              offset: const Offset(0, 1),
             ),
-            
-          Row(
-            mainAxisAlignment: message.isFromUser
-                ? MainAxisAlignment.end
-                : MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              // Admin avatar
-              if (!message.isFromUser && showAvatar)
-                Container(
-                  width: 38,
-                  height: 38,
-                  margin: const EdgeInsets.only(right: 10.0),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [primaryColor, Color(0xFFFF5A8A)],
-                    ),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: primaryColor.withOpacity(0.3),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      )
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.support_agent,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                )
-              else if (!message.isFromUser)
-                const SizedBox(width: 48),
-
-              // Message content
-              Flexible(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: message.isFromUser 
-                        ? primaryColor 
-                        : Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: message.isFromUser
-                          ? const Radius.circular(18)
-                          : showAvatar
-                              ? const Radius.circular(4)
-                              : const Radius.circular(18),
-                      topRight: message.isFromUser
-                          ? showAvatar
-                              ? const Radius.circular(4)
-                              : const Radius.circular(18)
-                          : const Radius.circular(18),
-                      bottomLeft: const Radius.circular(18),
-                      bottomRight: const Radius.circular(18),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 5,
-                        offset: const Offset(0, 2),
-                        spreadRadius: 1,
-                      ),
-                    ],
-                    border: !message.isFromUser
-                        ? Border.all(
-                            color: Colors.grey.shade200,
-                            width: 1,
-                          )
-                        : null,
-                  ),
-                  padding: const EdgeInsets.all(12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Product Image (if available)
-                      if (message.productImageUrl != null &&
-                          message.productImageUrl!.isNotEmpty)
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 5,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Image.network(
-                              message.productImageUrl!,
-                              height: 160,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              loadingBuilder: (BuildContext context, Widget child,
-                                  ImageChunkEvent? loadingProgress) {
-                                if (loadingProgress == null) return child;
-                                return Container(
-                                  height: 160,
-                                  width: double.infinity,
-                                  color: Colors.grey[200],
-                                  child: Center(
-                                    child: CircularProgressIndicator(
-                                      value: loadingProgress.expectedTotalBytes !=
-                                              null
-                                          ? loadingProgress.cumulativeBytesLoaded /
-                                              loadingProgress.expectedTotalBytes!
-                                          : null,
-                                      valueColor:
-                                          const AlwaysStoppedAnimation<Color>(
-                                              primaryColor),
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                                );
-                              },
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  height: 160,
-                                  width: double.infinity,
-                                  color: Colors.grey[200],
-                                  child: Center(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.error_outline,
-                                          color: Colors.red,
-                                          size: 32,
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          "Gagal memuat gambar",
-                                          style: TextStyle(color: Colors.grey[600]),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-
-                      // Product Name (if available)
-                      if (message.productName != null &&
-                          message.productName!.isNotEmpty)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: message.isFromUser 
-                                ? Colors.white.withOpacity(0.2) 
-                                : primaryColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.shopping_bag_outlined,
-                                size: 16,
-                                color: message.isFromUser ? Colors.white : primaryColor,
-                              ),
-                              const SizedBox(width: 5),
-                              Flexible(
-                                child: Text(
-                                  message.productName!,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                    color: message.isFromUser ? Colors.white : primaryColor,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                      // Message Text
-                      Text(
-                        message.message,
-                        style: TextStyle(
-                          color: message.isFromUser ? Colors.white : Colors.black87,
-                          fontSize: 15,
-                          height: 1.3,
-                        ),
-                      ),
-
-                      // Timestamp and delivery status
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            timeStr,
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: message.isFromUser
-                                  ? Colors.white.withOpacity(0.7)
-                                  : Colors.grey[400],
-                            ),
-                          ),
-                          if (message.isFromUser) ...[
-                            const SizedBox(width: 4),
-                            Icon(
-                              message.isRead
-                                  ? Icons.done_all
-                                  : (message.isDelivered
-                                      ? Icons.done
-                                      : Icons.schedule),
-                              size: 12,
-                              color: message.isRead
-                                  ? Colors.blue[100]
-                                  : Colors.white.withOpacity(0.7),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // User avatar (optional - shows only on first message in a group)
-              if (message.isFromUser && showAvatar)
-                Container(
-                  width: 38,
-                  height: 38,
-                  margin: const EdgeInsets.only(left: 10.0),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 5,
-                        offset: const Offset(0, 2),
-                      )
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      _userData?.name?.isNotEmpty == true 
-                          ? _userData!.name![0].toUpperCase() 
-                          : 'U',
-                      style: const TextStyle(
-                        color: Colors.grey,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                )
-              else if (message.isFromUser)
-                const SizedBox(width: 0),
-            ],
-          ),
-              
-          // Show user name for first message in a group
-          if (showAvatar && message.isFromUser) 
-            Padding(
-              padding: const EdgeInsets.only(right: 48, top: 4),
-              child: Text(
-                'Anda',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Message content
+            Text(
+              message.message,
+              style: const TextStyle(color: textColor),
             ),
-        ],
+
+            // Message status and time
+            const SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text(
+                  _formatTime(message.timestamp),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                if (isUserMessage) ...[
+                  const SizedBox(width: 4),
+                  _buildStatusIcon(message),
+                ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Widget _buildStatusIcon(ChatMessage message) {
+    if (message.isRead) {
+      // Double blue check for read
+      return const Icon(
+        Icons.done_all,
+        size: 16,
+        color: Colors.blue,
+      );
+    } else if (message.isDelivered) {
+      // Double gray check for delivered
+      return Icon(
+        Icons.done_all,
+        size: 16,
+        color: Colors.grey[600],
+      );
+    } else {
+      // Single gray check for sent
+      return Icon(
+        Icons.done,
+        size: 16,
+        color: Colors.grey[600],
+      );
+    }
+  }
+
+  String _formatTime(DateTime dateTime) {
+    return DateFormat('HH:mm').format(dateTime);
   }
 
   // Enhanced FAQ item with colorful designs
@@ -2239,24 +2201,87 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     );
   }
 
-  String _formatDateTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays == 0) {
-      // Today: 14:30
-      return DateFormat('HH:mm').format(dateTime);
-    } else if (difference.inDays == 1) {
-      // Yesterday: Yesterday, 14:30
-      return 'Kemarin, ${DateFormat('HH:mm').format(dateTime)}';
-    } else if (difference.inDays < 7) {
-      // Within a week: Monday, 14:30
-      return DateFormat('EEEE, HH:mm', 'id_ID').format(dateTime);
-    } else {
-      // Older: 2023-01-01, 14:30
-      return DateFormat('dd/MM/yyyy, HH:mm').format(dateTime);
-    }
+  // Update the chat header to show admin status
+  Widget _buildChatHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFF87B2), Color(0xFFFF5A8A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.support_agent,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Customer Service',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'Online',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF666666),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              _loadChatMessages();
+              _checkAdminStatus();
+            },
+            color: const Color(0xFFFF87B2),
+          ),
+        ],
+      ),
+    );
   }
 }
-
-

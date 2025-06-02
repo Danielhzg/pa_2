@@ -111,16 +111,17 @@
     /* Chat container */
     .chat-container {
         display: flex;
-        height: calc(100vh - 250px);
-        min-height: 500px;
+        height: calc(100vh - 300px);
+        min-height: 450px;
+        max-height: 650px;
         background-color: #f0f0f0;
     }
     
     /* Chat sidebar */
     .chat-sidebar {
         width: 30%;
-        min-width: 300px;
-        max-width: 400px;
+        min-width: 280px;
+        max-width: 350px;
         border-right: 1px solid #E5E5E5;
         background-color: white;
         overflow-y: auto;
@@ -134,7 +135,7 @@
     .chat-list-item {
         display: flex;
         align-items: center;
-        padding: 15px;
+        padding: 10px 12px;
         cursor: pointer;
         border-bottom: 1px solid #f0f0f0;
         transition: all 0.2s;
@@ -153,8 +154,8 @@
     }
     
     .chat-avatar {
-        width: 50px;
-        height: 50px;
+        width: 40px;
+        height: 40px;
         border-radius: 50%;
         background-color: #128C7E;
         color: white;
@@ -162,8 +163,8 @@
         align-items: center;
         justify-content: center;
         font-weight: bold;
-        font-size: 1.2rem;
-        margin-right: 15px;
+        font-size: 1rem;
+        margin-right: 10px;
         position: relative;
     }
     
@@ -171,53 +172,75 @@
         position: absolute;
         bottom: 0;
         right: 0;
-        width: 12px;
-        height: 12px;
+        width: 10px;
+        height: 10px;
         background-color: #25D366;
         border-radius: 50%;
-        border: 2px solid white;
+        border: 1.5px solid white;
     }
     
     .chat-user-info {
         flex: 1;
         min-width: 0;
+        padding-right: 5px;
     }
     
     .chat-user-name {
-        font-weight: 600;
-        margin-bottom: 5px;
+        font-weight: 700;
+        margin-bottom: 3px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        color: #075E54;
+        display: flex;
+        align-items: center;
+    }
+    
+    .username-badge {
+        background-color: #DCF8C6;
+        color: #075E54;
+        font-size: 0.65rem;
+        padding: 1px 5px;
+        border-radius: 10px;
+        margin-left: 5px;
+        font-weight: 500;
+    }
+    
+    .customer-name {
+        font-size: 0.95rem;
+        color: #D46A9F;
+        font-weight: 700;
+        letter-spacing: 0.01em;
     }
     
     .chat-last-message {
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         color: #777;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        line-height: 1.2;
     }
     
     .chat-meta {
         display: flex;
         flex-direction: column;
         align-items: flex-end;
-        min-width: 50px;
+        min-width: 40px;
     }
     
     .chat-time {
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         color: #128C7E;
-        margin-bottom: 5px;
+        margin-bottom: 3px;
     }
     
     .chat-badge {
         background-color: #25D366;
         color: white;
-        font-size: 0.7rem;
-        width: 20px;
-        height: 20px;
+        font-size: 0.65rem;
+        width: 18px;
+        height: 18px;
         border-radius: 50%;
         display: flex;
         align-items: center;
@@ -237,29 +260,29 @@
         background-color: white;
         border-radius: 15px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.05);
-        padding: 40px 20px;
-        margin: 30px auto;
-        max-width: 500px;
+        padding: 25px 20px;
+        margin: 20px auto;
+        max-width: 450px;
         text-align: center;
     }
     
     .chat-welcome-icon {
         background-color: #25D366;
-        height: 120px;
-        width: 120px;
+        height: 90px;
+        width: 90px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        margin: 0 auto 25px;
+        margin: 0 auto 20px;
         color: white;
-        font-size: 3rem;
+        font-size: 2.5rem;
     }
     
     .chat-header {
         display: flex;
         align-items: center;
-        padding: 10px 20px;
+        padding: 8px 15px;
         background-color: #075E54;
         color: white;
     }
@@ -273,9 +296,9 @@
     .message-bubble {
         display: inline-block;
         max-width: 70%;
-        padding: 8px 12px;
+        padding: 6px 10px;
         border-radius: 8px;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
         position: relative;
         color: #303030;
     }
@@ -295,16 +318,16 @@
     }
     
     .message-time {
-        font-size: 0.7rem;
+        font-size: 0.65rem;
         color: #777;
         text-align: right;
-        margin-top: 2px;
+        margin-top: 1px;
     }
     
     .chat-input {
         display: flex;
         align-items: center;
-        padding: 10px;
+        padding: 8px;
         background-color: #f0f0f0;
         border-top: 1px solid #E5E5E5;
     }
@@ -313,8 +336,8 @@
         flex: 1;
         border: none;
         border-radius: 20px;
-        padding: 10px 15px;
-        margin: 0 10px;
+        padding: 8px 12px;
+        margin: 0 8px;
         background-color: white;
     }
     
@@ -323,8 +346,8 @@
         color: white;
         border: none;
         border-radius: 50%;
-        width: 40px;
-        height: 40px;
+        width: 36px;
+        height: 36px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -340,34 +363,42 @@
     @media (max-width: 768px) {
         .content-header .d-flex {
             flex-direction: column;
-            gap: 1rem;
+            gap: 0.8rem;
             align-items: flex-start !important;
         }
         
         .card-header .row {
             flex-direction: column;
-            gap: 1rem;
+            gap: 0.8rem;
         }
         
         .chat-container {
             flex-direction: column;
-            height: calc(100vh - 180px);
+            height: calc(100vh - 160px);
+            min-height: 400px;
         }
         
         .chat-sidebar {
             width: 100%;
-            height: 40%;
-            min-height: 250px;
+            height: 35%;
+            min-height: 200px;
             max-width: none;
         }
         
         .chat-content {
-            height: 60%;
+            height: 65%;
         }
         
         .chat-welcome {
-            margin: 15px;
-            padding: 20px 15px;
+            margin: 10px;
+            padding: 15px;
+        }
+        
+        .chat-welcome-icon {
+            height: 70px;
+            width: 70px;
+            margin-bottom: 15px;
+            font-size: 2rem;
         }
         
         .search-box {
@@ -412,24 +443,26 @@
                 <!-- Chat Sidebar -->
                 <div class="chat-sidebar">
                     <div class="chat-list">
-                        @forelse($chats as $chat)
-                            <div class="chat-list-item {{ Request::is('admin/chats/'.$chat->id) ? 'active' : '' }} {{ $chat->unread_count > 0 ? 'unread' : '' }}" data-chat-id="{{ $chat->id }}">
+                        @if(isset($chats) && $chats->count() > 0)
+                            @foreach($chats as $chatItem)
+                                <div class="chat-list-item {{ $chatItem->unread_count > 0 ? 'unread' : '' }}" data-chat-id="{{ $chatItem->id }}">
                                 <div class="chat-avatar">
-                                    {{ strtoupper(substr($chat->user->name ?? 'User', 0, 1)) }}
-                                    @if($chat->user->is_online)
+                                        {{ strtoupper(substr($chatItem->user->name ?? 'User', 0, 1)) }}
+                                        @if($chatItem->user && $chatItem->user->is_online)
                                         <span class="online-indicator"></span>
                                     @endif
                                 </div>
                                 <div class="chat-user-info">
                                     <div class="chat-user-name">
-                                        {{ $chat->user->name ?? 'User #'.$chat->user_id }}
+                                            <span class="customer-name">{{ $chatItem->user->name ?? 'User #'.$chatItem->user_id }}</span>
+                                            <span class="username-badge">Customer</span>
                                     </div>
                                     <div class="chat-last-message">
-                                        @if($chat->last_message)
-                                            @if($chat->last_message->is_admin)
+                                            @if($chatItem->last_message)
+                                                @if($chatItem->last_message->is_admin)
                                                 <span class="text-muted me-1">Anda:</span>
                                             @endif
-                                            {{ Str::limit($chat->last_message->message, 30) }}
+                                                {{ Str::limit($chatItem->last_message->message, 30) }}
                                         @else
                                             <span class="text-muted">Belum ada pesan</span>
                                         @endif
@@ -437,16 +470,17 @@
                                 </div>
                                 <div class="chat-meta">
                                     <div class="chat-time">
-                                        @if($chat->last_message)
-                                            {{ \Carbon\Carbon::parse($chat->last_message->created_at)->format('H:i') }}
+                                            @if($chatItem->last_message)
+                                                {{ \Carbon\Carbon::parse($chatItem->last_message->created_at)->format('H:i') }}
+                                            @endif
+                                        </div>
+                                        @if($chatItem->unread_count > 0)
+                                            <div class="chat-badge">{{ $chatItem->unread_count }}</div>
                                         @endif
                                     </div>
-                                    @if($chat->unread_count > 0)
-                                        <div class="chat-badge">{{ $chat->unread_count }}</div>
-                                    @endif
                                 </div>
-                            </div>
-                        @empty
+                            @endforeach
+                        @else
                             <div class="empty-state text-center">
                                 <div class="empty-state-icon">
                                     <i class="fas fa-comments"></i>
@@ -454,7 +488,7 @@
                                 <h5>Belum ada percakapan</h5>
                                 <p class="text-muted">Percakapan baru dari pelanggan akan muncul di sini</p>
                             </div>
-                        @endforelse
+                        @endif
                     </div>
                 </div>
                 

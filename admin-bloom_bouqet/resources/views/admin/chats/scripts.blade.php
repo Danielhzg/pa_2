@@ -278,7 +278,7 @@
                             // Set the bubble HTML
                             msgRow.innerHTML = `<div class="message-bubble ${message.is_admin ? 'admin' : 'user'}">${bubbleContent}</div>`;
                             
-                            // Add to messages container
+                            // Add to messages container at the bottom
                             messagesContainer.appendChild(msgRow);
                             
                             // Update last message id
@@ -301,25 +301,8 @@
                             }
                         });
                         
-                        // Scroll to bottom if near bottom
-                        const isNearBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 300;
-                        if (isNearBottom) {
-                            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                        } else {
-                            // Show new message notification if not near bottom
-                            const newMessageNotification = document.createElement('div');
-                            newMessageNotification.className = 'new-message-indicator';
-                            newMessageNotification.innerHTML = '<i class="fas fa-arrow-down me-2"></i> Pesan baru';
-                            newMessageNotification.addEventListener('click', function() {
+                        // Always scroll to bottom when new messages arrive
                                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                                this.remove();
-                            });
-                            
-                            // Only add if not already present
-                            if (!document.querySelector('.new-message-indicator')) {
-                                document.body.appendChild(newMessageNotification);
-                            }
-                        }
                     }
                     
                     // Update typing status

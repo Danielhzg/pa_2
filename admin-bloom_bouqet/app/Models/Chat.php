@@ -37,7 +37,11 @@ class Chat extends Model
      */
     public function admin()
     {
-        return $this->belongsTo(Admin::class);
+        return $this->belongsTo(Admin::class)->withDefault([
+            'name' => 'Customer Service',
+            'email' => 'admin@example.com',
+            'is_online' => true, // Always show admin as online
+        ]);
     }
 
     /**
@@ -114,5 +118,61 @@ class Chat extends Model
     public function getUnreadCountAttribute()
     {
         return $this->messages()->where('is_admin', false)->whereNull('read_at')->count();
+    }
+
+    /**
+     * Mark all unread messages from user as read
+     */
+    public function markAllAsRead()
+    {
+        return $this->messages()
+            ->where('is_admin', false)
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+    }
+    
+    /**
+     * Check if admin is online
+     * Always returns true for better UX
+     */
+    public function getAdminOnlineAttribute()
+    {
+        return true;
+    }
+    
+    /**
+     * Get the last active time for the admin
+     */
+    public function getAdminLastActiveAttribute()
+    {
+        if ($this->admin_id) {
+            $admin = Admin::find($this->admin_id);
+            return $admin ? $admin->last_active : now();
+        }
+        return now();
+    }
+    
+    /**
+     * Add a new message to this chat
+     */
+    public function addMessage($message, $isAdmin = false, $adminId = null)
+    {
+        $chatMessage = new ChatMessage([
+            'chat_id' => $this->id,
+            'message' => $message,
+            'is_admin' => $isAdmin,
+            'is_from_user' => !$isAdmin,
+            'admin_id' => $adminId,
+            'user_id' => $isAdmin ? null : $this->user_id,
+            'read_at' => $isAdmin ? now() : null,
+            'timestamp' => now(),
+        ]);
+        
+        $chatMessage->save();
+        
+        // Update the chat's updated_at timestamp
+        $this->update(['updated_at' => now()]);
+        
+        return $chatMessage;
     }
 } 

@@ -8,6 +8,8 @@ use Illuminate\Cache\FileStore;
 use Illuminate\Cache\Repository;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Blade;
+use App\Services\WebSocketService;
+use App\Services\NotificationService;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -25,6 +27,16 @@ class AppServiceProvider extends ServiceProvider
             ];
             $disk = $app['filesystem']->createLocalDriver($diskConfig);
             return new Repository(new FileStore($disk, $config['prefix'] ?? 'file'));
+        });
+        
+        // Register WebSocketService
+        $this->app->singleton(WebSocketService::class, function ($app) {
+            return new WebSocketService();
+        });
+        
+        // Register NotificationService with WebSocketService dependency
+        $this->app->singleton(NotificationService::class, function ($app) {
+            return new NotificationService($app->make(WebSocketService::class));
         });
     }
 
@@ -53,6 +65,18 @@ class AppServiceProvider extends ServiceProvider
                     ->where('status', 'unread')
                     ->count();
                 $view->with('unreadNotificationCount', $unreadNotificationCount);
+            }
+        });
+        
+        // Add unread notification count to notification component
+        view()->composer('admin.components.notification_dropdown', function ($view) {
+            if (auth()->guard('admin')->check()) {
+                $unreadNotificationCount = \App\Models\Notification::where('admin_id', auth()->guard('admin')->id())
+                    ->where('status', 'unread')
+                    ->count();
+                $view->with('unreadNotificationCount', $unreadNotificationCount);
+            } else {
+                $view->with('unreadNotificationCount', 0);
             }
         });
     }

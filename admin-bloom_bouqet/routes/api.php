@@ -11,6 +11,9 @@ use App\Http\Controllers\API\CustomerController;
 use App\Http\Controllers\API\CarouselController;
 use App\Http\Controllers\API\FavoriteController;
 use App\Http\Controllers\API\ChatController;
+use App\Http\Controllers\API\CartController;
+use App\Http\Controllers\API\UserController;
+use App\Http\Controllers\API\NotificationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -43,11 +46,38 @@ Route::prefix('v1')->group(function () {
         Route::get('favorites/check/{productId}', [FavoriteController::class, 'check']);
         
         // Chat routes
-        Route::get('chat', [ChatController::class, 'getChat']);
-        Route::post('chat/message', [ChatController::class, 'sendMessage']);
-        Route::get('chat/messages', [ChatController::class, 'getNewMessages']);
-        Route::post('chat/mark-read', [ChatController::class, 'markAsRead']);
-        Route::post('chat/typing', [ChatController::class, 'updateTypingStatus']);
+        Route::get('/chat', [ChatController::class, 'getChat']);
+        Route::post('/chat/message', [ChatController::class, 'sendMessage']);
+        Route::get('/chat/messages', [ChatController::class, 'getNewMessages']);
+        Route::post('/chat/mark-as-read', [ChatController::class, 'markAsRead']);
+        Route::post('/chat/typing', [ChatController::class, 'updateTypingStatus']);
+        Route::get('/chat/order/{orderId}', [ChatController::class, 'getOrderMessages']);
+        Route::get('/chat/admin-status', [ChatController::class, 'checkAdminStatus']);
+        Route::post('/chat/check-admin-responses', [ChatController::class, 'checkAdminResponses']);
+        Route::get('/chat/message/{messageId}/status', [ChatController::class, 'getMessageStatus']);
+        
+        // User profile
+        Route::get('/user', [UserController::class, 'profile']);
+        Route::put('/user', [UserController::class, 'updateProfile']);
+        Route::post('/user/change-password', [UserController::class, 'changePassword']);
+        
+        // Cart
+        Route::get('/cart', [CartController::class, 'index']);
+        Route::post('/cart/add', [CartController::class, 'addToCart']);
+        Route::put('/cart/{item}', [CartController::class, 'updateCartItem']);
+        Route::delete('/cart/{item}', [CartController::class, 'removeFromCart']);
+        Route::delete('/cart', [CartController::class, 'clearCart']);
+        
+        // Orders
+        Route::get('/orders', [OrderController::class, 'getUserOrders']);
+        Route::get('/orders/{order}', [OrderController::class, 'show']);
+        Route::get('/orders/{order}/details', [OrderController::class, 'getOrderDetails']);
+        
+        // Notifications
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
+        Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+        Route::get('/notifications/unread-count', [NotificationController::class, 'getUnreadCount']);
     });
 
     // Product endpoints
@@ -56,12 +86,20 @@ Route::prefix('v1')->group(function () {
     Route::get('products/category/{category}', [ProductController::class, 'getByCategory']); // Get products by category
     Route::post('products', [ProductController::class, 'store']); // Add product
     Route::post('products/check-stock', [ProductController::class, 'checkStock']); // Check stock availability
+    Route::get('products/{id}/stock', [ProductController::class, 'getStockInfo']); // Get real-time stock info for a product
+    Route::post('products/batch-stock', [ProductController::class, 'getBatchStockInfo']); // Get real-time stock info for multiple products
     
     // Order endpoints that don't require authentication
     Route::post('orders/create', [OrderController::class, 'createOrder']); // Create order without authentication
     Route::get('orders/{orderId}', [OrderController::class, 'getOrder']); // Get order details by ID
+    Route::get('orders/{orderId}/details', [OrderController::class, 'getOrderDetails']); // Get detailed order information with customer data
     Route::post('orders/check-stock', [OrderController::class, 'checkStockAvailability']); // Check stock before ordering
     Route::get('users/{userId}/orders', [OrderController::class, 'getOrdersByUserId']); // Get all orders for a specific user
+    
+    // Order status notification endpoints
+    Route::post('orders/{orderId}/notify', [OrderController::class, 'notifyOrderStatus']); // Send notification for order status change
+    Route::post('orders/{orderId}/status/notify', [OrderController::class, 'notifyOrderStatus']); // Alternative endpoint for notifications
+    Route::post('orders/{orderId}/refresh-cache', [OrderController::class, 'refreshCache']); // Refresh order cache (admin only)
     
     // Customer endpoints
     Route::get('customers', [CustomerController::class, 'index']); // Get all customers
@@ -82,13 +120,31 @@ Route::prefix('v1')->group(function () {
     Route::post('payments/create', [PaymentController::class, 'createPayment']);
     Route::get('payments/{orderId}/status', [PaymentController::class, 'checkStatus']);
     Route::get('payments/{orderId}/qr-code', [PaymentController::class, 'generateQRCode']);
+    Route::post('payments/retry', [PaymentController::class, 'retryPayment']);
 });
 
-// Public order creation endpoint for Midtrans
-Route::post('orders/create', [OrderController::class, 'createOrder']);
+// Use auth:sanctum middleware with optional parameter to allow both authenticated and unauthenticated requests
+Route::middleware(['auth.sanctum:optional'])->group(function () {
+    // Order creation endpoint - accessible with or without authentication
+    Route::post('orders/create', [OrderController::class, 'createOrder']);
+    
+    // Make API more robust by supporting various endpoint formats
+    Route::post('v1/orders/create', [OrderController::class, 'createOrder']);
+    Route::post('orders', [OrderController::class, 'createOrder']);
+});
+
+// Add a failsafe route for order creation that's more robust against errors
+Route::post('failsafe/create-order', [OrderController::class, 'createOrder']);
+Route::post('v1/failsafe/create-order', [OrderController::class, 'createOrder']);
 
 // Midtrans notification handler
 Route::post('payments/notification', [PaymentController::class, 'notification']);
+
+// Manual update after Midtrans simulation
+Route::post('payments/update-after-simulation', [PaymentController::class, 'updateAfterSimulation']);
+
+// Direct payment for development testing (non-production only)
+Route::post('payments/direct-payment', [PaymentController::class, 'directPayment']);
 
 // Fallback QR code generator for troubleshooting
 Route::get('payments/{orderId}/qr-code', [PaymentController::class, 'generateQRCode']);
