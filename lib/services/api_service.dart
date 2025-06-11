@@ -11,6 +11,7 @@ class ApiService {
 
   // Additional URLs to try if the main one fails
   final List<String> fallbackUrls = [
+    'https://dec8-114-122-41-11.ngrok-free.app/api',
     'http://10.0.2.2:8000/api',
     'http://localhost:8000/api',
     'http://127.0.0.1:8000/api',
@@ -275,8 +276,11 @@ class ApiService {
 
   Future<List<Product>> getAllProducts() async {
     try {
-      final response =
-          await http.get(Uri.parse('http://10.0.2.2:8000/api/products'));
+      final response = await _tryMultipleUrls(
+        'products',
+        headers: _getHeaders(),
+      );
+
       if (response.statusCode == 200) {
         final Map<String, dynamic> jsonResponse = json.decode(response.body);
         // Access the "data" key or the appropriate key that contains the list of products
@@ -300,6 +304,7 @@ class ApiService {
       final List<String> urlsToTry = [
         '$baseUrl/v1/carousels',
         '${ApiConstants.getBaseUrl()}/api/v1/carousels',
+        'https://dec8-114-122-41-11.ngrok-free.app/api/v1/carousels',
         'http://10.0.2.2:8000/api/v1/carousels',
         'http://localhost:8000/api/v1/carousels',
         'http://192.168.0.106:8000/api/v1/carousels'

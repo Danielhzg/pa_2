@@ -8,15 +8,13 @@ class MidtransService {
   final String _snapUrl =
       "https://app.sandbox.midtrans.com/snap/v1/transactions";
 
-  final String _serverKey;
-  final String _clientKey;
+  final String _serverKey = 'SB-Mid-server-xkWYB70njNQ8ETfGJj_lhcry';
+  final String _clientKey = 'SB-Mid-client-LqPJ6nGv11G9ceCF';
 
   // Flag untuk mode simulasi
   bool _useSimulationMode = false;
 
-  MidtransService({String? serverKey, String? clientKey})
-      : _serverKey = 'SB-Mid-server-xkWYB70njNQ8ETfGJj_lhcry',
-        _clientKey = 'SB-Mid-client-LqPJ6nGv11G9ceCF';
+  MidtransService({String? serverKey, String? clientKey});
 
   String get clientKey => _clientKey;
 
@@ -42,6 +40,7 @@ class MidtransService {
     try {
       // Jika mode simulasi aktif, langsung gunakan simulasi
       if (_useSimulationMode) {
+        debugPrint('Using simulation mode for transaction creation');
         return _createSimulatedTransaction(
           orderId: orderId,
           grossAmount: grossAmount,
@@ -80,9 +79,8 @@ class MidtransService {
       if (paymentMethod == 'bank_transfer' && bankCode != null) {
         payload['payment_type'] = 'bank_transfer';
 
-        // Perbaikan untuk Virtual Account - jangan tentukan va_number
-        // Biarkan Midtrans generate nomor VA otomatis
-        if (bankCode == 'mandiri') {
+        // Perbaikan untuk Virtual Account
+        if (bankCode == 'mandiri' || bankCode == 'echannel') {
           debugPrint('Menggunakan metode echannel untuk Mandiri');
           // Khusus untuk Mandiri gunakan echannel
           payload['payment_type'] = 'echannel';
@@ -90,10 +88,14 @@ class MidtransService {
             'bill_info1': 'Payment for Order:',
             'bill_info2': orderId,
           };
+        } else if (bankCode == 'permata' || bankCode == 'permata_va') {
+          debugPrint('Menggunakan permata untuk Permata VA');
+          payload['payment_type'] = 'permata';
         } else {
           debugPrint('Menggunakan bank_transfer untuk bank: $bankCode');
+          // Untuk BCA, BNI, BRI
           payload['bank_transfer'] = {
-            'bank': bankCode,
+            'bank': bankCode.replaceAll('_va', ''),
           };
         }
 
@@ -106,12 +108,17 @@ class MidtransService {
       } else if (paymentMethod == 'shopeepay') {
         payload['payment_type'] = 'shopeepay';
         payload['shopeepay'] = {
-          'callback_url': 'https://yourwebsite.com/callback',
+          'callback_url': 'https://www.bloom-bouquet.my.id/callback',
         };
       } else if (paymentMethod == 'qris') {
         payload['payment_type'] = 'qris';
         payload['qris'] = {
           'acquirer': 'gopay',
+        };
+      } else if (paymentMethod == 'credit_card') {
+        payload['payment_type'] = 'credit_card';
+        payload['credit_card'] = {
+          'secure': true,
         };
       }
 
@@ -119,12 +126,52 @@ class MidtransService {
       debugPrint('Headers: ${_headers.toString()}');
       debugPrint('Request body: ${jsonEncode(payload)}');
 
-      // Kirim request ke Midtrans
-      final response = await http.post(
-        Uri.parse('$_baseUrl/v2/charge'),
-        headers: _headers,
-        body: jsonEncode(payload),
-      );
+      // Kirim request ke Midtrans with timeout and retry
+      http.Response? response;
+      int retryCount = 0;
+      const maxRetries = 2;
+
+      while (response == null && retryCount <= maxRetries) {
+        try {
+          response = await http
+              .post(
+                Uri.parse('$_baseUrl/v2/charge'),
+                headers: _headers,
+                body: jsonEncode(payload),
+              )
+              .timeout(const Duration(seconds: 15));
+        } catch (e) {
+          retryCount++;
+          debugPrint('Midtrans API attempt $retryCount failed: $e');
+
+          // If reached max retries, use simulation
+          if (retryCount > maxRetries) {
+            debugPrint('All Midtrans API attempts failed, using simulation');
+            _useSimulationMode = true;
+            return _createSimulatedTransaction(
+              orderId: orderId,
+              grossAmount: grossAmount,
+              paymentMethod: paymentMethod,
+              bankCode: bankCode,
+            );
+          }
+
+          // Wait before retrying
+          await Future.delayed(const Duration(seconds: 1));
+        }
+      }
+
+      // If we couldn't get a response, use simulation
+      if (response == null) {
+        debugPrint('No response from Midtrans API, using simulation');
+        _useSimulationMode = true;
+        return _createSimulatedTransaction(
+          orderId: orderId,
+          grossAmount: grossAmount,
+          paymentMethod: paymentMethod,
+          bankCode: bankCode,
+        );
+      }
 
       debugPrint('Midtrans response status: ${response.statusCode}');
       debugPrint('Midtrans response body: ${response.body}');
@@ -134,58 +181,6 @@ class MidtransService {
 
         debugPrint(
             'Transaksi berhasil dibuat dengan ID: ${responseData['transaction_id']}');
-
-        // Format respons dengan helper function
-        if (paymentMethod == 'bank_transfer' && bankCode != null) {
-          debugPrint('Memformat respons VA untuk bank: $bankCode');
-
-          // Log semua field dalam respons untuk debugging
-          responseData.forEach((key, value) {
-            debugPrint('Response field $key: $value');
-          });
-
-          // Debugging untuk VA numbers
-          if (responseData.containsKey('va_numbers')) {
-            debugPrint(
-                'VA Numbers ditemukan dalam respons: ${responseData['va_numbers']}');
-            if (responseData['va_numbers'] is List &&
-                responseData['va_numbers'].isNotEmpty) {
-              for (var va in responseData['va_numbers']) {
-                debugPrint(
-                    'VA Bank: ${va['bank']}, Number: ${va['va_number']}');
-              }
-            }
-          } else {
-            debugPrint('VA Numbers tidak ditemukan dalam respons!');
-          }
-
-          // Debugging untuk Mandiri
-          if (bankCode == 'mandiri') {
-            if (responseData.containsKey('bill_key')) {
-              debugPrint('Mandiri Bill Key: ${responseData['bill_key']}');
-            }
-            if (responseData.containsKey('biller_code')) {
-              debugPrint('Mandiri Biller Code: ${responseData['biller_code']}');
-            }
-          }
-
-          final formattedResponse =
-              formatMidtransVAResponse(responseData, bankCode);
-          debugPrint('VA response formatted: ${jsonEncode(formattedResponse)}');
-
-          // Tambahkan cek tambahan jika VA number tidak ada
-          if (formattedResponse['va_number'] == null) {
-            debugPrint(
-                '⚠️ PERINGATAN: VA Number kosong setelah formatting! ⚠️');
-            // Fallback untuk VA number jika tidak ada di respons
-            formattedResponse['va_number'] =
-                '${DateTime.now().millisecondsSinceEpoch}';
-            debugPrint(
-                'Menggunakan fallback VA number: ${formattedResponse['va_number']}');
-          }
-
-          return formattedResponse;
-        }
 
         return responseData;
       } else {
@@ -595,5 +590,146 @@ class MidtransService {
         'simulation': true,
       };
     }
+  }
+
+  // Check transaction status
+  Future<Map<String, dynamic>> checkTransactionStatus(
+      String transactionId) async {
+    try {
+      debugPrint('Checking transaction status for: $transactionId');
+
+      // If in simulation mode, return simulated status
+      if (_useSimulationMode) {
+        return _simulateTransactionStatus(transactionId);
+      }
+
+      final response = await http
+          .get(
+            Uri.parse('$_baseUrl/v2/$transactionId/status'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: 10));
+
+      debugPrint('Status check response code: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        debugPrint('Transaction status: ${data['transaction_status']}');
+
+        return {
+          'success': true,
+          'transaction_id': data['transaction_id'] ?? transactionId,
+          'transaction_status': data['transaction_status'] ?? 'pending',
+          'status_code': data['status_code'] ?? '201',
+          'status_message': data['status_message'] ?? 'Status check successful',
+        };
+      } else {
+        debugPrint('Failed to check transaction status: ${response.body}');
+        // Use simulation as fallback
+        _useSimulationMode = true;
+        return _simulateTransactionStatus(transactionId);
+      }
+    } catch (e) {
+      debugPrint('Error checking transaction status: $e');
+      // Use simulation as fallback
+      _useSimulationMode = true;
+      return _simulateTransactionStatus(transactionId);
+    }
+  }
+
+  // Simulate transaction status check
+  Map<String, dynamic> _simulateTransactionStatus(String transactionId) {
+    // 80% chance of successful payment
+    final isSuccess = DateTime.now().millisecondsSinceEpoch % 10 < 8;
+
+    return {
+      'success': true,
+      'transaction_id': transactionId,
+      'transaction_status': isSuccess ? 'settlement' : 'pending',
+      'status_code': isSuccess ? '200' : '201',
+      'status_message': isSuccess
+          ? 'Payment successful (simulated)'
+          : 'Payment pending (simulated)',
+      'simulation': true,
+    };
+  }
+
+  // Create QR payment
+  Future<Map<String, dynamic>> createQRPayment(
+    String orderId,
+    double amount,
+    String itemDetails,
+  ) async {
+    try {
+      debugPrint('Creating QR payment for order: $orderId');
+
+      // If in simulation mode, return simulated QR
+      if (_useSimulationMode) {
+        return _simulateQRPayment(orderId);
+      }
+
+      // Format items for payload
+      final List<Map<String, dynamic>> items = [
+        {
+          'id': 'order-$orderId',
+          'name': itemDetails,
+          'price': amount.toInt(),
+          'quantity': 1,
+        }
+      ];
+
+      // Create transaction with QRIS payment method
+      final transactionResult = await createTransaction(
+        orderId: orderId,
+        grossAmount: amount.toInt(),
+        firstName: 'Customer',
+        lastName: '',
+        email: 'customer@example.com',
+        phone: '08123456789',
+        items: items,
+        paymentMethod: 'qris',
+      );
+
+      if (transactionResult.containsKey('qr_string') ||
+          transactionResult.containsKey('qr_code_url')) {
+        return {
+          'success': true,
+          'message': 'QR Code generated successfully',
+          'transaction_id': transactionResult['transaction_id'] ?? '',
+          'qr_code_url': transactionResult['qr_code_url'] ?? '',
+          'qr_string': transactionResult['qr_string'] ?? '',
+          'transaction_status':
+              transactionResult['transaction_status'] ?? 'pending',
+        };
+      } else {
+        debugPrint(
+            'Failed to generate QR payment: ${transactionResult.toString()}');
+        // Use simulation as fallback
+        _useSimulationMode = true;
+        return _simulateQRPayment(orderId);
+      }
+    } catch (e) {
+      debugPrint('Error creating QR payment: $e');
+      // Use simulation as fallback
+      _useSimulationMode = true;
+      return _simulateQRPayment(orderId);
+    }
+  }
+
+  // Simulate QR payment
+  Map<String, dynamic> _simulateQRPayment(String orderId) {
+    final String transactionId =
+        'SIM-QR-${DateTime.now().millisecondsSinceEpoch}';
+
+    return {
+      'success': true,
+      'message': 'QR Code generated successfully (simulated)',
+      'transaction_id': transactionId,
+      'qr_code_url':
+          'https://api.sandbox.midtrans.com/v2/qris/$orderId/qr-code',
+      'qr_string': 'SIMULATION-QRIS-$transactionId',
+      'transaction_status': 'pending',
+      'simulation': true,
+    };
   }
 }

@@ -1,7 +1,7 @@
 <?php
 // Simple script to test the carousel API endpoint
 
-$api_url = 'http://localhost:8000/api/v1/carousels';
+$api_url = 'https://dec8-114-122-41-11.ngrok-free.app/api/v1/carousels';
 echo "Testing API endpoint: $api_url\n";
 
 // Initialize cURL session

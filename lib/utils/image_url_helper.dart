@@ -4,6 +4,8 @@ import '../utils/constants.dart';
 class ImageUrlHelper {
   /// Base URL API untuk gambar (bisa disesuaikan dengan lingkungan)
   static final String baseImageUrl = '${ApiConstants.getBaseUrl()}/storage/';
+  static const String ngrokBaseUrl =
+      'https://dec8-114-122-41-11.ngrok-free.app/storage/'; // Primary ngrok URL
   static const String alternateBaseUrl =
       'http://192.168.1.5:8000/storage/'; // Untuk perangkat fisik
   static const String localBaseUrl =
@@ -15,7 +17,7 @@ class ImageUrlHelper {
 
   // URL khusus untuk carousel
   static const String specificCarouselUrl =
-      'http://10.0.2.2:8000/storage/carousels/'; // URL khusus carousel
+      'https://dec8-114-122-41-11.ngrok-free.app/storage/carousels/'; // Primary ngrok carousel URL
 
   /// Placeholder URL untuk gambar yang tidak tersedia
   static const String placeholderUrl =
@@ -86,8 +88,9 @@ class ImageUrlHelper {
 
       // Coba semua URL base yang mungkin untuk carousel
       List<String> possibleUrls = [
-        '$emulatorBaseUrl$cleanedPath',
+        '$ngrokBaseUrl$cleanedPath',
         '$baseImageUrl$cleanedPath',
+        '$emulatorBaseUrl$cleanedPath',
         '$alternateBaseUrl$cleanedPath',
         '$localBaseUrl$cleanedPath',
         '$networkUrl$cleanedPath',

@@ -1013,10 +1013,23 @@
         // Confirm status change before submitting
         $('#update-status-form').on('submit', function(e) {
             e.preventDefault();
-            
+
             const newStatus = $('input[name="status"]:checked').val();
             const currentStatus = '{{ $order->status }}';
-            
+            const paymentStatus = '{{ $order->payment_status }}';
+
+            // Check if payment is required for status change
+            if (newStatus !== 'cancelled' && paymentStatus !== 'paid' && newStatus !== 'waiting_for_payment') {
+                Swal.fire({
+                    title: 'Pembayaran Belum Selesai',
+                    text: 'Status pesanan tidak dapat diubah karena pembayaran belum selesai. Pastikan customer telah menyelesaikan pembayaran terlebih dahulu.',
+                    icon: 'warning',
+                    confirmButtonColor: '#3085d6',
+                    confirmButtonText: 'Mengerti'
+                });
+                return;
+            }
+
             // If status didn't change, show warning
             if (newStatus === currentStatus) {
                     Swal.fire({

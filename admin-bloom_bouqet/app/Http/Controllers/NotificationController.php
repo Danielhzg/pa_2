@@ -13,7 +13,8 @@ class NotificationController extends Controller
         $query = Notification::query();
 
         if (Auth::guard('admin')->check()) {
-            $query->where('admin_id', Auth::guard('admin')->id());
+            // For admin, show all notifications
+            // No admin_id filter since we removed that column
         } else {
             $query->where('user_id', Auth::id());
         }
@@ -24,7 +25,7 @@ class NotificationController extends Controller
         if ($request->ajax()) {
             return response()->json([
                 'notifications' => $notifications,
-                'unread_count' => $query->where('status', 'unread')->count()
+                'unread_count' => $query->where('is_read', false)->count()
             ]);
         }
 
@@ -34,11 +35,10 @@ class NotificationController extends Controller
     public function markAsRead(Request $request)
     {
         $notification = Notification::findOrFail($request->notification_id);
-        
+
         if (Auth::guard('admin')->check()) {
-            if ($notification->admin_id !== Auth::guard('admin')->id()) {
-                return response()->json(['error' => 'Unauthorized'], 403);
-            }
+            // For admin, allow marking any notification as read
+            // Since we removed admin_id column
         } else {
             if ($notification->user_id !== Auth::id()) {
                 return response()->json(['error' => 'Unauthorized'], 403);
@@ -58,15 +58,16 @@ class NotificationController extends Controller
         $query = Notification::query();
 
         if (Auth::guard('admin')->check()) {
-            $query->where('admin_id', Auth::guard('admin')->id());
+            // For admin, mark all notifications as read
+            // No admin_id filter since we removed that column
         } else {
             $query->where('user_id', Auth::id());
         }
 
-        $query->where('status', 'unread')
+        $query->where('is_read', false)
               ->update([
-                  'status' => 'read',
-                  'read_at' => now()
+                  'is_read' => true,
+                  'updated_at' => now()
               ]);
 
         return response()->json([
@@ -80,12 +81,13 @@ class NotificationController extends Controller
         $query = Notification::query();
 
         if (Auth::guard('admin')->check()) {
-            $query->where('admin_id', Auth::guard('admin')->id());
+            // For admin, count all unread notifications
+            // No admin_id filter since we removed that column
         } else {
             $query->where('user_id', Auth::id());
         }
 
-        $count = $query->where('status', 'unread')->count();
+        $count = $query->where('is_read', false)->count();
 
         return response()->json([
             'unread_count' => $count

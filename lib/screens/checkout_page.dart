@@ -10,9 +10,9 @@ import '../models/order.dart';
 import '../models/cart_item.dart';
 import '../services/payment_service.dart';
 import '../services/order_service.dart';
+import '../utils/constants.dart';
 import 'address_selection_screen.dart';
 import 'qr_payment_screen.dart';
-// import 'payment_method_screen.dart'; // Commented out as we're integrating this
 import 'payment_webview_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -20,6 +20,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'chat_page.dart';
+import '../services/notification_service.dart';
+import '../services/order_status_service.dart';
+import '../widgets/order_status_tracker.dart';
 
 class CheckoutPage extends StatefulWidget {
   const CheckoutPage({super.key});
@@ -46,6 +49,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   final PaymentService _paymentService = PaymentService();
   late OrderService _orderService;
+  static bool _orderCreationInProgress = false;
 
   // Custom currency formatter
   final formatCurrency = (double amount) {
@@ -860,12 +864,32 @@ class _CheckoutPageState extends State<CheckoutPage> {
       // Generate a unique customer ID
       final customerId = 'user_${DateTime.now().millisecondsSinceEpoch}';
 
-      // Get user email from SharedPreferences
+      // Get user data from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       final userData = prefs.getString('user_data');
-      final userEmail = userData != null
-          ? jsonDecode(userData)['email']
-          : 'customer@example.com';
+      final authToken = prefs.getString('auth_token');
+
+      String userEmail = 'guest@bloombouquet.com';
+      String userName = 'Guest Customer';
+      int? userId;
+
+      if (userData != null && authToken != null) {
+        final user = jsonDecode(userData);
+        userEmail = user['email'] ?? 'guest@bloombouquet.com';
+        userName = user['name'] ??
+            user['full_name'] ??
+            user['username'] ??
+            'Guest Customer';
+        userId = user['id'];
+        debugPrint(
+            'Authenticated user found: $userName ($userEmail) - ID: $userId');
+      } else {
+        debugPrint('No authenticated user, creating guest order');
+        // For guest orders, use delivery address name and a guest email
+        userName = deliveryAddress.name;
+        userEmail =
+            'guest.${DateTime.now().millisecondsSinceEpoch}@bloombouquet.com';
+      }
 
       debugPrint('Customer ID: $customerId');
       debugPrint('Email: $userEmail');
@@ -883,84 +907,236 @@ class _CheckoutPageState extends State<CheckoutPage> {
         debugPrint('Payment method: $_paymentMethod (bukan VA)');
       }
 
+      // Generate unique order ID
+      final String orderId =
+          'ORDER-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 4)}';
+      debugPrint('Generated Order ID: $orderId');
+
+      // Get current timestamp for real-time order creation
+      final now = DateTime.now();
+      final orderTimestamp = now.toIso8601String();
+      final paymentDeadline =
+          now.add(const Duration(hours: 24)).toIso8601String();
+
       // Menambahkan field untuk memastikan pesanan masuk dengan status "waiting_for_payment"
       final Map<String, dynamic> orderData = {
-        'id': 'ORDER-${DateTime.now().millisecondsSinceEpoch}',
+        'id': orderId,
+        'order_id': orderId, // Duplicate for safety
+        'user_id': userId, // Include authenticated user ID
         'items': itemsForPayment,
         'deliveryAddress': {
           'address': deliveryAddress.fullAddress,
           'phone': deliveryAddress.phone,
           'name': deliveryAddress.name,
+          'email': userEmail,
         },
         'subtotal': subtotal,
         'shippingCost': shippingCost,
         'total': total,
         'paymentMethod': _paymentMethod,
-        'status':
-            'waiting_for_payment', // Status eksplisit dengan string literal
+        'status': 'waiting_for_payment',
         'payment_status': 'pending',
-        'payment_deadline': DateTime.now()
-            .add(const Duration(minutes: 15))
-            .toIso8601String(), // Deadline 15 menit
+        'is_read': false,
+        'payment_deadline': paymentDeadline,
+        'customer_name': userName, // Use authenticated user name
+        'customer_email': userEmail, // Include customer email
+        'notify_admin': true,
+        'created_at': orderTimestamp, // Real-time timestamp
+        'order_timestamp': orderTimestamp, // Additional timestamp field
+        'timezone': 'Asia/Jakarta', // Specify timezone
+        'request_id':
+            'order_${now.millisecondsSinceEpoch}_${orderId.substring(orderId.length - 8)}', // Unique request ID
       };
 
       debugPrint('Mengirim data order ke server: ${jsonEncode(orderData)}');
 
-      // Membuat pesanan terlebih dahulu sebelum memproses pembayaran
-      final createOrderResult = await _paymentService.createOrder(orderData);
+      // Single order creation attempt with duplicate prevention
+      Map<String, dynamic>? createOrderResult;
 
-      if (!createOrderResult['success']) {
-        // Jika gagal membuat pesanan, tampilkan pesan error
-        if (Navigator.canPop(context)) {
-          Navigator.pop(context);
+      try {
+        if (_orderCreationInProgress) {
+          debugPrint(
+              'Order creation already in progress, skipping duplicate call');
+          return;
         }
 
-        _showNetworkErrorDialog(
-          context,
-          'Order Creation Failed',
-          createOrderResult['message'] ??
-              'Failed to create order. Please try again.',
-        );
+        _orderCreationInProgress = true;
+        debugPrint('Creating order (single attempt to prevent duplicates)');
+
+        // Membuat pesanan terlebih dahulu sebelum memproses pembayaran
+        createOrderResult = await _paymentService.createOrder(orderData);
+
+        if (!createOrderResult['success']) {
+          debugPrint('Order creation failed: ${createOrderResult['message']}');
+          // Don't retry - show error to user instead
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    'Gagal membuat pesanan: ${createOrderResult['message']}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        } else {
+          debugPrint('Order created successfully');
+
+          // Order created successfully, refresh the OrderService to show the new order in "My Orders"
+          try {
+            final orderService =
+                Provider.of<OrderService>(context, listen: false);
+
+            // Force refresh orders to ensure it appears in My Orders
+            await orderService.fetchOrders(forceRefresh: true);
+
+            debugPrint(
+                '✓ Orders refreshed - new order should appear in My Orders with waiting_for_payment status');
+
+            // Also create a local notification for the customer using NotificationService
+            try {
+              final notificationService = NotificationService();
+              await notificationService.notifyNewOrderCreated(orderId, total);
+              debugPrint('✓ Customer notification created for new order');
+            } catch (e) {
+              debugPrint('Warning: Failed to create customer notification: $e');
+              // Continue anyway as this is not critical
+            }
+          } catch (e) {
+            debugPrint('Warning: Failed to refresh orders: $e');
+          }
+        }
+      } catch (e) {
+        debugPrint('Exception in order creation: $e');
+        _orderCreationInProgress = false; // Reset flag on error
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Gagal membuat pesanan. Silakan coba lagi.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
         return;
+      } finally {
+        _orderCreationInProgress = false; // Always reset flag
       }
 
-      // Get Midtrans Snap Token
+      // Retry logic for getting Midtrans token
+      Map<String, dynamic>? result;
+      int paymentAttempts = 0;
+      const maxPaymentAttempts = 2;
+
       debugPrint('Memanggil getMidtransSnapToken...');
-      final result = await _paymentService.getMidtransSnapToken(
-        items: itemsForPayment,
-        customerId: customerId,
-        shippingCost: shippingCost,
-        shippingAddress: deliveryAddress.fullAddress,
-        phoneNumber: deliveryAddress.phone,
-        email: userEmail,
-        selectedBank: selectedBank,
-      );
+
+      while (result == null ||
+          (!result['success'] && paymentAttempts < maxPaymentAttempts)) {
+        try {
+          paymentAttempts++;
+          debugPrint(
+              'Getting Midtrans token attempt $paymentAttempts of $maxPaymentAttempts');
+
+          // Get Midtrans Snap Token
+          result = await _paymentService.getMidtransSnapToken(
+            items: itemsForPayment,
+            customerId: customerId,
+            shippingCost: shippingCost,
+            shippingAddress: deliveryAddress.fullAddress,
+            phoneNumber: deliveryAddress.phone,
+            email: userEmail,
+            selectedBank: selectedBank,
+          );
+
+          if (!result['success']) {
+            debugPrint(
+                'Midtrans token failed, attempt $paymentAttempts: ${result['message']}');
+
+            if (paymentAttempts >= maxPaymentAttempts) {
+              // Last attempt failed
+              debugPrint('All Midtrans token attempts failed');
+              break;
+            }
+
+            // Wait before retry
+            await Future.delayed(const Duration(seconds: 1));
+          }
+        } catch (e) {
+          debugPrint(
+              'Exception in Midtrans token attempt $paymentAttempts: $e');
+          if (paymentAttempts >= maxPaymentAttempts) {
+            // All attempts failed with exception
+            debugPrint('All Midtrans token attempts threw exceptions');
+            result = {
+              'success': false,
+              'message': 'Payment processing failed: $e'
+            };
+            break;
+          }
+          await Future.delayed(const Duration(seconds: 1));
+        }
+      }
 
       // Pop loading dialog
       if (Navigator.canPop(context)) {
         Navigator.pop(context);
       }
 
+      // Handle result based on payment method
       if (!result['success']) {
         debugPrint('❌ Midtrans API error: ${result['message']}');
-        _showNetworkErrorDialog(
-            context,
-            'Payment Error',
-            result['message'] ??
-                'Failed to create payment. Please try again later.');
+
+        // Show simulation payment option if payment processing failed
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Payment Service Unavailable'),
+            content: const Text(
+                'We\'re having trouble connecting to our payment service. Would you like to continue with simulation mode for testing?'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+
+                  // Simulate successful payment by showing QR code with simulation
+                  _processQRPayment(
+                      context,
+                      orderId,
+                      "SIMULATION-TOKEN-${DateTime.now().millisecondsSinceEpoch}",
+                      total,
+                      cartProvider);
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+                child: const Text('Continue with Simulation'),
+              ),
+            ],
+          ),
+        );
         return;
       }
 
-      final orderId = result['data']['order_id'];
+      final responseOrderId = result['data']['order_id'];
       final String snapToken = result['data']['token'] ?? '';
       final String redirectUrl = result['data']['redirect_url'] ?? '';
       final dynamic vaNumber = result['data']['va_number'];
       final String? bank = result['data']['bank'];
 
+      // Check if we're in simulation mode
+      final bool isSimulation = result['simulation'] == true;
+      if (isSimulation) {
+        debugPrint('⚠️ USING SIMULATION MODE FOR PAYMENT');
+      }
+
       debugPrint('============= PAYMENT DETAILS =============');
-      debugPrint('Order ID: $orderId');
+      debugPrint('Order ID: $responseOrderId');
       debugPrint('Snap Token: $snapToken');
       debugPrint('Redirect URL: $redirectUrl');
+      debugPrint('Simulation Mode: $isSimulation');
 
       if (vaNumber != null) {
         debugPrint('VA NUMBER FOUND: $vaNumber');
@@ -974,601 +1150,387 @@ class _CheckoutPageState extends State<CheckoutPage> {
       debugPrint('Payment Method: $_paymentMethod');
       debugPrint('==========================================');
 
-      // Refresh the OrderService to show the new order in "My Orders"
-      try {
-        final orderService = Provider.of<OrderService>(context, listen: false);
-        await orderService.fetchOrders();
-        debugPrint(
-            '✓ Orders refreshed - new order should appear in My Orders with waiting_for_payment status');
-      } catch (e) {
-        debugPrint('Warning: Failed to refresh orders: $e');
-      }
-
-      // Clear selected items from cart
-      cartProvider.removeSelectedItems();
-
-      // Jika ini pembayaran virtual account, tampilkan dialog dengan informasi VA
-      if (vaNumber != null) {
-        // Tutup dialog loading jika masih terbuka
-        if (Navigator.canPop(context)) {
-          Navigator.pop(context);
-        }
-
-        // Format bank name untuk tampilan
-        String bankName = '';
-        switch (bank) {
-          case 'bca':
-            bankName = 'BCA';
-            break;
-          case 'bni':
-            bankName = 'BNI';
-            break;
-          case 'bri':
-            bankName = 'BRI';
-            break;
-          case 'mandiri':
-            bankName = 'Mandiri';
-            break;
-          case 'permata':
-            bankName = 'Permata';
-            break;
-          default:
-            bankName = bank?.toUpperCase() ?? 'Bank';
-        }
-
-        debugPrint('Menampilkan dialog VA untuk bank: $bankName');
-        debugPrint('VA Number: $vaNumber');
-
-        // Pastikan VA number adalah string
-        final String vaNumberStr = vaNumber.toString();
-
-        // Tampilkan dialog VA dengan format yang lebih baik
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: TweenAnimationBuilder(
-              duration: const Duration(milliseconds: 400),
-              tween: Tween<double>(begin: 0.8, end: 1.0),
-              builder: (context, value, child) {
-                return Transform.scale(
-                  scale: value,
-                  child: child,
-                );
-              },
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Title with animation
-                    _FadeInTranslate(
-                      duration: const Duration(milliseconds: 400),
-                      delay: const Duration(milliseconds: 100),
-                      offset: const Offset(0, 20),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.account_balance,
-                              color: primaryColor),
-                          const SizedBox(width: 10),
-                          Flexible(
-                            child: Text(
-                              'Virtual Account $bankName',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 15),
-
-                    const _FadeInTranslate(
-                      duration: Duration(milliseconds: 400),
-                      delay: Duration(milliseconds: 200),
-                      offset: Offset(0, 20),
-                      child: Text(
-                        'Silakan lakukan pembayaran dengan rincian berikut:',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Payment details with animation
-                    _FadeInTranslate(
-                      duration: const Duration(milliseconds: 600),
-                      delay: const Duration(milliseconds: 300),
-                      offset: const Offset(0, 20),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text('Bank'),
-                                Text(
-                                  bankName,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
-                            const Divider(),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text('Nomor VA'),
-                                Flexible(
-                                  child: Text(
-                                    vaNumberStr,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                    textAlign: TextAlign.right,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const Divider(),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text('Total'),
-                                Text(
-                                  formatCurrency(total),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: primaryColor,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Info box with animation
-                    _FadeInTranslate(
-                      duration: const Duration(milliseconds: 600),
-                      delay: const Duration(milliseconds: 400),
-                      offset: const Offset(0, 20),
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.yellow.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.yellow.shade700),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.info_outline,
-                                size: 20, color: Colors.yellow.shade800),
-                            const SizedBox(width: 8),
-                            const Expanded(
-                              child: Text(
-                                'Salin nomor virtual account untuk melakukan pembayaran',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Action buttons with animation
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          // For narrow screens, stack the buttons vertically
-                          if (constraints.maxWidth < 280) {
-                            return Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                // Contact admin button
-                                _FadeInTranslate(
-                                  duration: const Duration(milliseconds: 800),
-                                  delay: const Duration(milliseconds: 800),
-                                  offset: const Offset(0, 20),
-                                  child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      // Close the dialog
-                                      Navigator.of(context).pop();
-
-                                      // Ambil data produk pertama yang stoknya tidak cukup
-                                      final item = insufficientItems.isNotEmpty
-                                          ? insufficientItems[0]
-                                          : null;
-
-                                      if (item != null) {
-                                        final String productName =
-                                            item['name'] ?? '';
-                                        final int requested =
-                                            item['quantity'] ?? 0;
-                                        final int available =
-                                            item['available'] ?? 0;
-
-                                        // Cari gambar produk dari cartProvider
-                                        final cartProvider =
-                                            Provider.of<CartProvider>(context,
-                                                listen: false);
-                                        final cartItem =
-                                            cartProvider.items.firstWhere(
-                                          (ci) => ci.name == productName,
-                                          orElse: () =>
-                                              cartProvider.items.first,
-                                        );
-                                        final String productImageUrl =
-                                            cartItem.imageUrl;
-
-                                        // Buat pesan otomatis
-                                        final String autoMessage =
-                                            'Halo Admin, saya ingin menanyakan ketersediaan produk "$productName" yang ingin saya beli sebanyak $requested buah, namun stok hanya tersedia $available. Mohon informasinya, terima kasih.';
-
-                                        // Navigate to chat page with product info
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) => ChatPage(
-                                              showBottomNav: true,
-                                              initialMessage: autoMessage,
-                                              productName: productName,
-                                              productImageUrl: productImageUrl,
-                                              productStock: available,
-                                              requestedQuantity: requested,
-                                            ),
-                                          ),
-                                        );
-                                      } else {
-                                        // Fallback if no insufficientItems
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                const ChatPage(
-                                              showBottomNav: true,
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: primaryColor,
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(30),
-                                      ),
-                                    ),
-                                    icon: const Icon(Icons.message,
-                                        color: Colors.white, size: 18),
-                                    label: const Text(
-                                      'Hubungi Admin',
-                                      style: TextStyle(
-                                          color: Colors.white, fontSize: 13),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-
-                                // Continue shopping button
-                                _FadeInTranslate(
-                                  duration: const Duration(milliseconds: 800),
-                                  delay: const Duration(milliseconds: 900),
-                                  offset: const Offset(0, 20),
-                                  child: OutlinedButton.icon(
-                                    onPressed: () {
-                                      Navigator.of(context).pop();
-                                    },
-                                    style: OutlinedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                      side:
-                                          const BorderSide(color: primaryColor),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(30),
-                                      ),
-                                    ),
-                                    icon: const Icon(Icons.arrow_back,
-                                        color: primaryColor, size: 16),
-                                    label: const Text(
-                                      'Kembali',
-                                      style: TextStyle(
-                                          color: primaryColor, fontSize: 13),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-
-                          // For wider screens, use a row layout
-                          return Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // Contact admin button
-                              Flexible(
-                                child: _FadeInTranslate(
-                                  duration: const Duration(milliseconds: 800),
-                                  delay: const Duration(milliseconds: 800),
-                                  offset: const Offset(-30, 0),
-                                  child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      // Close the dialog
-                                      Navigator.of(context).pop();
-
-                                      // Ambil data produk pertama yang stoknya tidak cukup
-                                      final item = insufficientItems.isNotEmpty
-                                          ? insufficientItems[0]
-                                          : null;
-
-                                      if (item != null) {
-                                        final String productName =
-                                            item['name'] ?? '';
-                                        final int requested =
-                                            item['quantity'] ?? 0;
-                                        final int available =
-                                            item['available'] ?? 0;
-
-                                        // Cari gambar produk dari cartProvider
-                                        final cartProvider =
-                                            Provider.of<CartProvider>(context,
-                                                listen: false);
-                                        final cartItem =
-                                            cartProvider.items.firstWhere(
-                                          (ci) => ci.name == productName,
-                                          orElse: () =>
-                                              cartProvider.items.first,
-                                        );
-                                        final String productImageUrl =
-                                            cartItem.imageUrl;
-
-                                        // Buat pesan otomatis
-                                        final String autoMessage =
-                                            'Halo Admin, saya ingin menanyakan ketersediaan produk "$productName" yang ingin saya beli sebanyak $requested buah, namun stok hanya tersedia $available. Mohon informasinya, terima kasih.';
-
-                                        // Navigate to chat page with product info
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) => ChatPage(
-                                              showBottomNav: true,
-                                              initialMessage: autoMessage,
-                                              productName: productName,
-                                              productImageUrl: productImageUrl,
-                                              productStock: available,
-                                              requestedQuantity: requested,
-                                            ),
-                                          ),
-                                        );
-                                      } else {
-                                        // Fallback if no insufficientItems
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                const ChatPage(
-                                              showBottomNav: true,
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: primaryColor,
-                                      padding: EdgeInsets.symmetric(
-                                          horizontal: constraints.maxWidth < 350
-                                              ? 12
-                                              : 20,
-                                          vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(30),
-                                      ),
-                                    ),
-                                    icon: const Icon(Icons.message,
-                                        color: Colors.white, size: 20),
-                                    label: const FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      child: Text(
-                                        'Hubungi Admin',
-                                        style: TextStyle(
-                                            color: Colors.white, fontSize: 14),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-
-                              // Continue shopping button
-                              Flexible(
-                                child: _FadeInTranslate(
-                                  duration: const Duration(milliseconds: 800),
-                                  delay: const Duration(milliseconds: 900),
-                                  offset: const Offset(30, 0),
-                                  child: OutlinedButton.icon(
-                                    onPressed: () {
-                                      Navigator.of(context).pop();
-                                    },
-                                    style: OutlinedButton.styleFrom(
-                                      padding: EdgeInsets.symmetric(
-                                          horizontal: constraints.maxWidth < 350
-                                              ? 12
-                                              : 20,
-                                          vertical: 12),
-                                      side:
-                                          const BorderSide(color: primaryColor),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(30),
-                                      ),
-                                    ),
-                                    icon: const Icon(Icons.arrow_back,
-                                        color: primaryColor, size: 16),
-                                    label: const FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      child: Text(
-                                        'Kembali',
-                                        style: TextStyle(
-                                            color: primaryColor, fontSize: 14),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-
-        return; // Hentikan eksekusi lebih lanjut
-      }
-
-      // Process payment based on method
-      debugPrint('Proses pembayaran metode non-VA');
-      bool paymentResult = false;
-
+      // Process payment based on selected method
       if (_paymentMethod == 'qris') {
-        // QR Code payment using QRIS
-        debugPrint('Memproses pembayaran QRIS');
-        paymentResult = await _handleQRCodePayment(orderId, total, snapToken);
-      } else if (_paymentMethod == 'bank_transfer') {
-        // Bank transfers - use WebView with redirect URL
-        debugPrint(
-            'Memproses pembayaran Bank Transfer dengan WebView URL: $redirectUrl');
-        paymentResult =
-            await _handleMidtransWebPayment(orderId, redirectUrl, snapToken);
+        // Process QR Payment
+        _processQRPayment(
+            context, responseOrderId, snapToken, total, cartProvider);
+      } else if (vaNumber != null) {
+        // Process VA Payment
+        _processVAPayment(
+            context, responseOrderId, vaNumber, bank, total, cartProvider);
+      } else if (redirectUrl.isNotEmpty) {
+        // Process Web Redirect Payment
+        _processWebPayment(
+            context, responseOrderId, redirectUrl, total, cartProvider);
       } else {
-        // Fallback if somehow an invalid payment method is selected
-        debugPrint('Metode pembayaran tidak valid: $_paymentMethod');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content:
-                Text('Silakan pilih metode pembayaran QRIS atau Transfer Bank'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
+        // Fallback to QR if nothing else works
+        _processQRPayment(
+            context, responseOrderId, snapToken, total, cartProvider);
       }
-
-      // If payment was not successful, don't continue
-      if (!paymentResult) {
-        debugPrint('Pembayaran dibatalkan atau gagal');
-        return;
-      }
-
-      // On successful payment, clear cart
-      debugPrint('Pembayaran berhasil, membersihkan keranjang');
-      cartProvider.clear();
-
-      if (!mounted) return;
-
-      // Navigate back to the previous screen
-      Navigator.of(context).pop(); // Pop checkout screen
-
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Payment successful! Your order has been placed.'),
-          backgroundColor: Colors.green,
-        ),
-      );
     } catch (e) {
-      debugPrint('❌ ERROR DALAM PEMROSESAN PEMBAYARAN: $e');
-
       // Pop loading dialog if still showing
       if (Navigator.canPop(context)) {
         Navigator.pop(context);
       }
 
-      // Show error message with better UI
+      debugPrint('Error during checkout: $e');
       _showNetworkErrorDialog(
         context,
-        'Payment Error',
-        'An error occurred while processing your payment: ${e.toString().replaceAll('Exception: ', '')}',
+        'Checkout Error',
+        'An error occurred during checkout: $e\n\nPlease try again.',
       );
     }
   }
 
-  // Handle QR Code Payment method with Snap Token
-  Future<bool> _handleQRCodePayment(
-      String orderId, double total, String snapToken) async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => QRPaymentScreen(
-          amount: total,
-          orderId: orderId,
-          snapToken: snapToken,
-          onPaymentSuccess: (payment) async {
-            try {
-              // Payment success handled in callback
-            } catch (e) {
-              print('Error updating order status: $e');
-            }
-          },
-        ),
-      ),
-    );
+  // Process QR Code Payment
+  void _processQRPayment(BuildContext context, String orderId, String snapToken,
+      double total, CartProvider cartProvider) async {
+    debugPrint('Processing QR payment for order: $orderId');
 
-    // Return true if payment was successful
-    return result == true;
-  }
-
-  // Handle Midtrans WebView Payment with redirect URL
-  Future<bool> _handleMidtransWebPayment(
-      String orderId, String redirectUrl, String snapToken) async {
     try {
-      // Open WebView for payment
-      final webViewResult = await Navigator.push(
+      // Navigate to QR Payment Screen
+      final result = await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => PaymentWebViewScreen(
-            redirectUrl: redirectUrl,
-            transactionId: snapToken,
-            onPaymentComplete: (status) {
-              // Payment status callback
+          builder: (context) => QRPaymentScreen(
+            orderId: orderId,
+            amount: total,
+            snapToken: snapToken,
+            onPaymentSuccess: (payment) {
+              // Handle payment success
             },
           ),
         ),
       );
 
-      // Return true if payment was successful
-      return webViewResult == true;
+      // Check the result
+      if (result == 'success') {
+        debugPrint('QR Payment successful');
+        // Clear cart items
+        cartProvider.removeSelectedItems();
+
+        // Navigate to order tracking screen
+        if (mounted) {
+          Navigator.pushReplacementNamed(
+            context,
+            '/order-tracking',
+            arguments: {
+              'orderId': orderId,
+            },
+          );
+        }
+      } else {
+        debugPrint('QR Payment was not successful or was cancelled');
+
+        // Navigate to order tracking screen even if payment was cancelled
+        // so user can see order status and try payment again
+        if (mounted) {
+          Navigator.pushReplacementNamed(
+            context,
+            '/order-tracking',
+            arguments: {
+              'orderId': orderId,
+            },
+          );
+        }
+      }
     } catch (e) {
-      // Show error message with better UI
-      _showNetworkErrorDialog(
+      debugPrint('Error during QR payment: $e');
+      // Show error if needed
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Payment error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Process Virtual Account Payment
+  void _processVAPayment(BuildContext context, String orderId, dynamic vaNumber,
+      String? bank, double total, CartProvider cartProvider) async {
+    debugPrint('Processing VA payment for order: $orderId');
+
+    // Format bank name for display
+    String bankName = '';
+    switch (bank) {
+      case 'bca':
+        bankName = 'BCA';
+        break;
+      case 'bni':
+        bankName = 'BNI';
+        break;
+      case 'bri':
+        bankName = 'BRI';
+        break;
+      case 'mandiri':
+        bankName = 'Mandiri';
+        break;
+      case 'permata':
+        bankName = 'Permata';
+        break;
+      default:
+        bankName = bank?.toUpperCase() ?? 'Bank';
+    }
+
+    debugPrint('VA payment for bank: $bankName');
+    debugPrint('VA Number: $vaNumber');
+
+    // Ensure VA number is a string
+    final String vaNumberStr = vaNumber.toString();
+
+    // Show VA payment information dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: TweenAnimationBuilder(
+          duration: const Duration(milliseconds: 400),
+          tween: Tween<double>(begin: 0.8, end: 1.0),
+          builder: (context, value, child) {
+            return Transform.scale(
+              scale: value,
+              child: child,
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Title with animation
+                _FadeInTranslate(
+                  duration: const Duration(milliseconds: 400),
+                  delay: const Duration(milliseconds: 100),
+                  offset: const Offset(0, 20),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.account_balance, color: primaryColor),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          'Virtual Account $bankName',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 15),
+
+                const _FadeInTranslate(
+                  duration: Duration(milliseconds: 400),
+                  delay: Duration(milliseconds: 200),
+                  offset: Offset(0, 20),
+                  child: Text(
+                    'Silakan lakukan pembayaran dengan rincian berikut:',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Payment details with animation
+                _FadeInTranslate(
+                  duration: const Duration(milliseconds: 600),
+                  delay: const Duration(milliseconds: 300),
+                  offset: const Offset(0, 20),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Bank'),
+                            Text(
+                              bankName,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                        const Divider(),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Nomor VA'),
+                            Flexible(
+                              child: Text(
+                                vaNumberStr,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                                textAlign: TextAlign.right,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Total'),
+                            Text(
+                              formatCurrency(total),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: primaryColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Info box with animation
+                _FadeInTranslate(
+                  duration: const Duration(milliseconds: 600),
+                  delay: const Duration(milliseconds: 400),
+                  offset: const Offset(0, 20),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.yellow.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.yellow.shade700),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            size: 20, color: Colors.yellow.shade800),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Salin nomor virtual account untuk melakukan pembayaran',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Close button
+                _FadeInTranslate(
+                  duration: const Duration(milliseconds: 800),
+                  delay: const Duration(milliseconds: 500),
+                  offset: const Offset(0, 20),
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+
+                      // Clear selected items from cart
+                      cartProvider.removeSelectedItems();
+
+                      // Navigate to order tracking screen
+                      Navigator.pushReplacementNamed(
+                        context,
+                        '/order-tracking',
+                        arguments: {
+                          'orderId': orderId,
+                        },
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                    child: const Text(
+                      'Close',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Process Web Redirect Payment
+  void _processWebPayment(BuildContext context, String orderId,
+      String redirectUrl, double total, CartProvider cartProvider) async {
+    debugPrint('Processing web payment for order: $orderId');
+    debugPrint('Redirect URL: $redirectUrl');
+
+    try {
+      // Navigate to WebView Payment Screen
+      final result = await Navigator.push(
         context,
-        'Payment Error',
-        'Error processing payment: ${e.toString()}',
+        MaterialPageRoute(
+          builder: (context) => PaymentWebViewScreen(
+            redirectUrl: redirectUrl,
+            transactionId:
+                orderId, // This matches the parameter in PaymentWebViewScreen
+            onPaymentComplete: (status) {
+              // Handle payment status callback
+              debugPrint('Payment status callback: $status');
+            },
+          ),
+        ),
       );
-      return false;
+
+      // Check the result
+      if (result == true) {
+        debugPrint('Web Payment successful');
+        // Clear cart items
+        cartProvider.removeSelectedItems();
+
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Payment successful! Your order has been placed.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        debugPrint('Web Payment was not successful or was cancelled');
+      }
+    } catch (e) {
+      debugPrint('Error during web payment: $e');
+      // Show error if needed
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Payment error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -1580,7 +1542,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
     // Make API request to check stock
     try {
-      const apiUrl = 'http://10.0.2.2:8000/api/v1/products/check-stock';
+      final apiUrl = '${ApiConstants.getBaseUrl()}/api/v1/products/check-stock';
       final http.Response response = await http.post(
         Uri.parse(apiUrl),
         headers: {

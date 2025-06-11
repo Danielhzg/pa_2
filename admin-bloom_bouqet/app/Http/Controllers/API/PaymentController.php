@@ -247,22 +247,19 @@ class PaymentController extends Controller
                 return response('Order not found', 404);
             }
             
-            // Update order payment status based on transaction status
+            // Determine payment status based on transaction status
             $paymentStatus = 'pending';
-            $orderStatus = Order::STATUS_WAITING_FOR_PAYMENT;
             $message = '';
-            
+
             if ($transactionStatus == 'capture') {
                 // For credit card payment that has been captured
                 if ($fraudStatus == 'accept') {
                     $paymentStatus = 'paid';
-                    $orderStatus = Order::STATUS_PROCESSING;
                     $message = 'Pembayaran berhasil, pesanan Anda sedang diproses.';
                 }
             } else if ($transactionStatus == 'settlement') {
                 // For bank transfer, GoTo payments, etc.
                 $paymentStatus = 'paid';
-                $orderStatus = Order::STATUS_PROCESSING;
                 $message = 'Pembayaran berhasil, pesanan Anda sedang diproses.';
             } else if ($transactionStatus == 'pending') {
                 // Payment is pending
@@ -281,32 +278,48 @@ class PaymentController extends Controller
                 $paymentStatus = 'failed';
                 $message = 'Pembayaran dibatalkan.';
             }
-            
-            // Update order in database
-            $order->payment_status = $paymentStatus;
-            
-            // Only update order status if payment is successful
-            if ($paymentStatus == 'paid') {
-                $order->status = $orderStatus;
-                
-                // Record payment time
-                $order->paid_at = now();
-            }
-            
-            // Save payment details
+
+            // Use the enhanced updatePaymentStatus method which automatically handles order status
+            $result = $order->updatePaymentStatus($paymentStatus, 'midtrans_notification');
+
+            Log::info('Midtrans payment notification processed for order ' . $orderId, [
+                'old_payment_status' => $result['old_payment_status'],
+                'new_payment_status' => $result['new_payment_status'],
+                'old_order_status' => $result['old_order_status'],
+                'new_order_status' => $result['new_order_status'],
+                'order_status_changed' => $result['status_changed'],
+                'payment_status_changed' => $result['payment_status_changed'],
+                'transaction_status' => $transactionStatus,
+                'payment_type' => $paymentType,
+                'fraud_status' => $fraudStatus
+            ]);
+
+            // Save payment details for audit trail
             $paymentDetails = json_decode($order->payment_details) ?: [];
             $paymentDetails[] = [
-                'time' => now()->toIso8601String(),
-                'status' => $transactionStatus,
-                'type' => $paymentType,
-                'raw' => $request->all()
+                'timestamp' => now()->toIso8601String(),
+                'source' => 'midtrans_notification',
+                'transaction_status' => $transactionStatus,
+                'payment_type' => $paymentType,
+                'fraud_status' => $fraudStatus,
+                'gross_amount' => $notification->gross_amount ?? null,
+                'transaction_id' => $notification->transaction_id ?? null,
+                'transaction_time' => $notification->transaction_time ?? null,
+                'settlement_time' => $notification->settlement_time ?? null,
+                'raw_data' => $request->all()
             ];
-            
+
             $order->payment_details = json_encode($paymentDetails);
             $order->save();
-            
-            // Send notification to the Flutter app
-            $this->sendOrderStatusUpdate($orderId, $orderStatus, $message);
+
+            // Send notification to the Flutter app using the current order status
+            $this->sendOrderStatusUpdate($orderId, $order->status, $message);
+
+            // If order status changed, send additional notification
+            if ($result['status_changed']) {
+                $statusMessage = $this->getOrderStatusMessage($order->status);
+                $this->sendOrderStatusUpdate($orderId, $order->status, $statusMessage);
+            }
             
             return response('OK', 200);
         } catch (\Exception $e) {
@@ -517,4 +530,20 @@ class PaymentController extends Controller
             Log::error('Error sending order status notification: ' . $e->getMessage());
         }
     }
-} 
+
+    /**
+     * Get order status message for notifications
+     */
+    private function getOrderStatusMessage($status)
+    {
+        $messages = [
+            Order::STATUS_WAITING_FOR_PAYMENT => 'Pesanan Anda sedang menunggu pembayaran.',
+            Order::STATUS_PROCESSING => 'Pesanan Anda sedang diproses.',
+            Order::STATUS_SHIPPING => 'Pesanan Anda telah dikirim.',
+            Order::STATUS_DELIVERED => 'Pesanan Anda telah selesai.',
+            Order::STATUS_CANCELLED => 'Pesanan Anda telah dibatalkan.'
+        ];
+
+        return $messages[$status] ?? 'Status pesanan Anda telah diperbarui.';
+    }
+}

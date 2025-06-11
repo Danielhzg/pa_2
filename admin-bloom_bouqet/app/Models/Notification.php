@@ -11,19 +11,17 @@ class Notification extends Model
 
     protected $fillable = [
         'user_id',
-        'admin_id',
         'order_id',
-        'type',
         'title',
         'message',
-        'status',
-        'data',
-        'read_at'
+        'type',
+        'is_read'
     ];
 
     protected $casts = [
-        'data' => 'array',
-        'read_at' => 'datetime'
+        'is_read' => 'boolean',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime'
     ];
 
     public function user()
@@ -31,26 +29,72 @@ class Notification extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function admin()
-    {
-        return $this->belongsTo(Admin::class);
-    }
-
     public function order()
     {
-        return $this->belongsTo(Order::class);
+        return $this->belongsTo(Order::class, 'order_id', 'order_id');
     }
 
     public function markAsRead()
     {
-        $this->update([
-            'status' => 'read',
-            'read_at' => now()
-        ]);
+        $this->update(['is_read' => true]);
     }
 
     public function isUnread()
     {
-        return $this->status === 'unread';
+        return !$this->is_read;
+    }
+
+    // Scope for unread notifications
+    public function scopeUnread($query)
+    {
+        return $query->where('is_read', false);
+    }
+
+    // Scope for specific user
+    public function scopeForUser($query, $userId)
+    {
+        return $query->where('user_id', $userId);
+    }
+
+    // Scope for specific order
+    public function scopeForOrder($query, $orderId)
+    {
+        return $query->where('order_id', $orderId);
+    }
+
+    // Create notification for order status change
+    public static function createOrderStatusNotification($orderId, $newStatus, $userId = null)
+    {
+        $statusMessages = [
+            'waiting_for_payment' => 'Your order is waiting for payment.',
+            'processing' => 'Your order is being processed.',
+            'shipping' => 'Your order is being shipped.',
+            'delivered' => 'Your order has been delivered.',
+            'cancelled' => 'Your order has been cancelled.'
+        ];
+
+        $message = $statusMessages[$newStatus] ?? "Your order status has been updated to: $newStatus";
+
+        return self::create([
+            'user_id' => $userId,
+            'order_id' => $orderId,
+            'title' => 'Order Status Updated',
+            'message' => $message,
+            'type' => 'status_update',
+            'is_read' => false
+        ]);
+    }
+
+    // Create notification for payment completion
+    public static function createPaymentNotification($orderId, $userId = null)
+    {
+        return self::create([
+            'user_id' => $userId,
+            'order_id' => $orderId,
+            'title' => 'Payment Completed',
+            'message' => "Your payment for order #$orderId has been completed successfully.",
+            'type' => 'payment_success',
+            'is_read' => false
+        ]);
     }
 } 

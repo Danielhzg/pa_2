@@ -1,5 +1,5 @@
 {{-- Order Notification Component --}}
-<div class="notification-item order-notification {{ $notification->read_at ? '' : 'unread' }}" data-notification-id="{{ $notification->id }}">
+<div class="notification-item order-notification {{ $notification->is_read ? '' : 'unread' }}" data-notification-id="{{ $notification->id }}">
     <div class="notification-icon-container">
         <i class="fas fa-shopping-bag"></i>
     </div>

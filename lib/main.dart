@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'services/auth_service.dart';
 import 'services/payment_service.dart'; // Import PaymentService
 import 'services/order_service.dart'; // Import OrderService
+import 'services/notification_service.dart'; // Add notification service
 import 'screens/splash_screen.dart';
 import 'login_page.dart';
 import 'register.dart';
@@ -13,6 +14,12 @@ import 'screens/cart_page.dart';
 import 'screens/chat_page.dart';
 import 'screens/profile_page.dart';
 import 'screens/favorites_page.dart'; // Import favorites page
+import 'screens/my_orders_screen.dart'; // Add my orders screen
+import 'screens/order_detail_screen.dart'; // Add order detail screen
+import 'screens/order_tracking_screen.dart'; // Add order tracking screen
+import 'screens/notifications_page.dart'; // Add notifications page
+import 'screens/privacy_security_screen.dart'; // Add privacy security screen
+import 'screens/help_support_screen.dart'; // Add help support screen
 import 'providers/cart_provider.dart'; // Import CartProvider
 import 'providers/delivery_provider.dart'; // Import DeliveryProvider
 import 'providers/favorite_provider.dart'; // Import FavoriteProvider
@@ -33,6 +40,9 @@ void main() async {
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
+
+  // Initialize notification service
+  NotificationService();
 
   // Initialize payment service
   try {
@@ -97,6 +107,14 @@ class MyApp extends StatelessWidget {
           '/profile': (context) => const ProfilePage(),
           '/favorites': (context) =>
               const FavoritesPage(), // Add favorites route
+          '/my-orders': (context) =>
+              const MyOrdersScreen(), // Add my orders route
+          '/notifications': (context) =>
+              const NotificationsPage(), // Add notifications route
+          '/privacy-security': (context) =>
+              const PrivacySecurityScreen(), // Add privacy security route
+          '/help-support': (context) =>
+              const HelpSupportScreen(), // Add help support route
         },
         onGenerateRoute: (settings) {
           if (settings.name == '/product-detail') {
@@ -104,6 +122,23 @@ class MyApp extends StatelessWidget {
             return MaterialPageRoute(
               builder: (context) => ProductDetailPage(
                 product: args?['product'],
+              ),
+            );
+          }
+          if (settings.name == '/order-detail') {
+            final orderId = settings.arguments as String;
+            return MaterialPageRoute(
+              builder: (context) => OrderDetailScreen(
+                orderId: orderId,
+              ),
+            );
+          }
+          if (settings.name == '/order-tracking') {
+            final args = settings.arguments as Map<String, dynamic>?;
+            return MaterialPageRoute(
+              builder: (context) => OrderTrackingScreen(
+                orderId: args?['orderId'] ?? '',
+                initialOrder: args?['order'],
               ),
             );
           }
@@ -168,13 +203,29 @@ class ProviderConfig extends StatelessWidget {
           update: (context, authService, previous) =>
               previous ?? FavoriteProvider(authService),
         ),
-        ChangeNotifierProxyProvider<AuthService, OrderService>(
+        ChangeNotifierProxyProvider2<AuthService, CartProvider, OrderService>(
           create: (context) => OrderService(context.read<AuthService>()),
-          update: (context, authService, previous) =>
-              previous ?? OrderService(authService),
+          update: (context, authService, cartProvider, previous) {
+            final orderService = previous ?? OrderService(authService);
+            orderService.setCartProvider(cartProvider);
+            return orderService;
+          },
+          lazy: false,
+        ),
+        ChangeNotifierProvider<NotificationService>(
+          create: (_) => NotificationService(),
         ),
       ],
-      child: child,
+      child: Consumer<OrderService>(
+        builder: (context, orderService, child) {
+          // Initialize order expiration checker after build
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            orderService.initExpirationChecker();
+          });
+          return child!;
+        },
+        child: child,
+      ),
     );
   }
 }

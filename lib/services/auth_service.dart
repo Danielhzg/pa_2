@@ -12,6 +12,7 @@ class AuthService extends ChangeNotifier {
   // Base API URLs - Try multiple possible configurations
   // This helps ensure that at least one URL works depending on the environment
   static final List<String> _baseUrls = [
+    'https://dec8-114-122-41-11.ngrok-free.app/api', // Primary ngrok URL
     'http://10.0.2.2:8000/api', // Android emulator pointing to localhost
     'http://localhost:8000/api', // Direct localhost
     'http://127.0.0.1:8000/api', // Alternative localhost

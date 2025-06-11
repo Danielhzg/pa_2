@@ -39,7 +39,7 @@
             @else
                     <div class="list-group list-group-flush notification-list">
                     @foreach($notifications as $notification)
-                            <div class="list-group-item list-group-item-action notification-item border-0 py-3 px-4 {{ $notification->status === 'unread' ? 'unread' : '' }}"
+                            <div class="list-group-item list-group-item-action notification-item border-0 py-3 px-4 {{ !$notification->is_read ? 'unread' : '' }}"
                              data-notification-id="{{ $notification->id }}">
                                 <div class="d-flex align-items-start">
                                     <div class="me-3">

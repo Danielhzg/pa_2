@@ -6,8 +6,8 @@ import 'package:http/http.dart' as http;
 void main() async {
   print('Testing carousel API endpoint...');
 
-  // API URL
-  const apiUrl = 'http://10.0.2.2:8000/api/v1/carousels';
+  // API URL - Updated to use ngrok
+  const apiUrl = 'https://dec8-114-122-41-11.ngrok-free.app/api/v1/carousels';
   print('API URL: $apiUrl');
 
   try {

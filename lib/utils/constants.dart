@@ -1,14 +1,12 @@
 class ApiConstants {
-  // Base URL for the API
-  static const String baseUrl = "http://10.0.2.2:8000"; // For Android emulator
-  // Alternative URLs for different environments
-  static const String localUrl = "http://localhost:8000";
-  static const String networkUrl =
-      "http://192.168.1.5:8000"; // Adjust to your network IP
+  // Base URL for the API - Updated to ngrok URL
+  static const String baseUrl = "https://dec8-114-122-41-11.ngrok-free.app";
 
-  // Helper method to get the appropriate URL based on environment
+  static const String localUrl = "http://localhost:8000";
+  static const String networkUrl = "http://192.168.1.5:8000";
+  static const String emulatorUrl = "http://10.0.2.2:8000";
+
   static String getBaseUrl() {
-    // You can implement logic to detect environment and return appropriate URL
     return baseUrl;
   }
 
@@ -19,6 +17,8 @@ class ApiConstants {
   static const String categories = "/api/v1/categories";
   static const String carousels = "/api/v1/carousels";
   static const String orders = "/api/v1/orders";
+  static const String ordersCreate = "/api/v1/orders/create";
+  static const String ordersTrack = "/api/v1/orders/track";
   static const String profile = "/api/v1/user";
 }
 
@@ -33,6 +33,7 @@ class AppConstants {
   static const String userName = "user_name";
 
   // Other constants
-  static const int splashDuration = 2; // in seconds
+  static const int splashDuration = 2;
   static const int pageSizeDefault = 10;
 }
+

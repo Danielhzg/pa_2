@@ -46,7 +46,18 @@
         padding: 6px 15px;
         transition: all 0.3s;
         font-size: 0.85rem;
+        text-decoration: none;
     }
+
+    .export-btn:hover, .date-filter-btn:hover {
+        background-color: #D46A9F;
+        color: white;
+        border-color: #D46A9F;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(212, 106, 159, 0.3);
+    }
+
+
     
     .export-btn:hover, .date-filter-btn:hover {
         background-color: rgba(255,135,178,0.05);
@@ -216,11 +227,36 @@
                 <h3 class="page-title">Laporan Penjualan</h3>
                 <p class="text-muted small mb-0">Pantau performa bisnis Anda dengan laporan penjualan</p>
             </div>
-            <div>
-                <a href="{{ route('admin.reports.export', ['start_date' => request('start_date'), 'end_date' => request('end_date')]) }}" 
+            <div class="d-flex gap-2">
+                <!-- Export CSV Button -->
+                <a href="{{ route('admin.reports.export', ['start_date' => request('start_date'), 'end_date' => request('end_date')]) }}"
                    class="btn export-btn btn-sm">
                     <i class="fas fa-file-csv me-1"></i> Export CSV
                 </a>
+
+                <!-- Export Excel Dropdown -->
+                <div class="dropdown">
+                    <button class="btn export-btn btn-sm dropdown-toggle" type="button" id="excelExportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-file-excel me-1"></i> Export Excel
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="excelExportDropdown">
+                        <li>
+                            <a class="dropdown-item" href="{{ route('admin.reports.export-excel', ['start_date' => request('start_date'), 'end_date' => request('end_date'), 'type' => 'orders']) }}">
+                                <i class="fas fa-shopping-cart me-2"></i> Laporan Pesanan
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{{ route('admin.reports.export-excel', ['start_date' => request('start_date'), 'end_date' => request('end_date'), 'type' => 'summary']) }}">
+                                <i class="fas fa-chart-bar me-2"></i> Ringkasan Laporan
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{{ route('admin.reports.export-excel', ['start_date' => request('start_date'), 'end_date' => request('end_date'), 'type' => 'products']) }}">
+                                <i class="fas fa-box me-2"></i> Laporan Produk
+                            </a>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
@@ -231,29 +267,36 @@
             <form action="{{ route('admin.reports.index') }}" method="GET" class="row g-2 align-items-end">
                 <div class="col-md-4">
                     <label for="start_date" class="form-label small mb-1">Tanggal Mulai</label>
-                    <input type="date" class="form-control form-control-sm" id="start_date" name="start_date" 
-                        value="{{ request('start_date', now()->subDays(30)->format('Y-m-d')) }}">
+                    <input type="date" class="form-control form-control-sm" id="start_date" name="start_date"
+                        value="{{ request('start_date') }}">
                 </div>
                 <div class="col-md-4">
                     <label for="end_date" class="form-label small mb-1">Tanggal Akhir</label>
-                    <input type="date" class="form-control form-control-sm" id="end_date" name="end_date" 
-                        value="{{ request('end_date', now()->format('Y-m-d')) }}">
+                    <input type="date" class="form-control form-control-sm" id="end_date" name="end_date"
+                        value="{{ request('end_date') }}">
                 </div>
                 <div class="col-md-4">
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn action-btn btn-sm">
                             <i class="fas fa-filter me-1"></i> Terapkan
                         </button>
-                        <a href="{{ route('admin.reports.index') }}" class="btn export-btn btn-sm">
+                        <button type="button" class="btn export-btn btn-sm" id="reset-btn">
                             <i class="fas fa-sync me-1"></i> Reset
-                        </a>
+                        </button>
                     </div>
-                    @if(request('start_date') || request('end_date'))
+                    @if(request('start_date') && request('end_date'))
                     <div class="mt-2">
                         <span class="filter-badge small">
                             <i class="fas fa-filter me-1"></i>
-                            {{ \Carbon\Carbon::parse(request('start_date'))->format('d M Y') }} - 
+                            {{ \Carbon\Carbon::parse(request('start_date'))->format('d M Y') }} -
                             {{ \Carbon\Carbon::parse(request('end_date'))->format('d M Y') }}
+                        </span>
+                    </div>
+                    @else
+                    <div class="mt-2">
+                        <span class="filter-badge small" style="background-color: #f8f9fa; color: #6c757d; border: 1px solid #dee2e6;">
+                            <i class="fas fa-globe me-1"></i>
+                            Semua Data
                         </span>
                     </div>
                     @endif
@@ -819,6 +862,16 @@
                 console.error('Error creating sales trend chart:', error);
             }
         }
+
+        // Reset button functionality
+        document.getElementById('reset-btn').addEventListener('click', function() {
+            // Clear date inputs
+            document.getElementById('start_date').value = '';
+            document.getElementById('end_date').value = '';
+
+            // Redirect to reports page without any parameters
+            window.location.href = '{{ route("admin.reports.index") }}';
+        });
     });
 </script>
 @endpush 

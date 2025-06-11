@@ -127,6 +127,16 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the user's name (alias for full_name for compatibility).
+     *
+     * @return string
+     */
+    public function getNameAttribute()
+    {
+        return $this->full_name ?: $this->username ?: 'Customer';
+    }
+
+    /**
      * Check if the user has favorited a product.
      */
     public function hasFavorited($productId)

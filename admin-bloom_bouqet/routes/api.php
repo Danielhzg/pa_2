@@ -11,9 +11,9 @@ use App\Http\Controllers\API\CustomerController;
 use App\Http\Controllers\API\CarouselController;
 use App\Http\Controllers\API\FavoriteController;
 use App\Http\Controllers\API\ChatController;
-use App\Http\Controllers\API\CartController;
-use App\Http\Controllers\API\UserController;
-use App\Http\Controllers\API\NotificationController;
+// use App\Http\Controllers\API\CartController; // Controller not implemented yet
+// use App\Http\Controllers\API\UserController; // Controller not implemented yet
+// use App\Http\Controllers\API\NotificationController; // Controller not implemented yet
 
 /*
 |--------------------------------------------------------------------------
@@ -39,6 +39,12 @@ Route::prefix('v1')->group(function () {
         Route::post('orders', [OrderController::class, 'createOrder']);
         Route::get('orders/{orderId}', [OrderController::class, 'getOrder']);
         Route::put('orders/{orderId}/status', [OrderController::class, 'updateStatus']);
+        Route::post('orders/{orderId}/status', [OrderController::class, 'updateOrderStatus']);
+        Route::post('orders/{orderId}/payment-status', [OrderController::class, 'updateOrderStatus']);
+
+        // Notification routes
+        Route::get('notifications', [OrderController::class, 'getNotifications']);
+        Route::post('notifications/{notificationId}/read', [OrderController::class, 'markNotificationAsRead']);
         
         // Favorite products routes
         Route::get('favorites', [FavoriteController::class, 'index']);
@@ -56,28 +62,29 @@ Route::prefix('v1')->group(function () {
         Route::post('/chat/check-admin-responses', [ChatController::class, 'checkAdminResponses']);
         Route::get('/chat/message/{messageId}/status', [ChatController::class, 'getMessageStatus']);
         
-        // User profile
-        Route::get('/user', [UserController::class, 'profile']);
-        Route::put('/user', [UserController::class, 'updateProfile']);
-        Route::post('/user/change-password', [UserController::class, 'changePassword']);
+        // User profile (Controller not implemented yet)
+        // Route::get('/user', [UserController::class, 'profile']);
+        // Route::put('/user', [UserController::class, 'updateProfile']);
+        // Route::post('/user/change-password', [UserController::class, 'changePassword']);
         
-        // Cart
-        Route::get('/cart', [CartController::class, 'index']);
-        Route::post('/cart/add', [CartController::class, 'addToCart']);
-        Route::put('/cart/{item}', [CartController::class, 'updateCartItem']);
-        Route::delete('/cart/{item}', [CartController::class, 'removeFromCart']);
-        Route::delete('/cart', [CartController::class, 'clearCart']);
+        // Cart (Controller not implemented yet)
+        // Route::get('/cart', [CartController::class, 'index']);
+        // Route::post('/cart/add', [CartController::class, 'addToCart']);
+        // Route::put('/cart/{item}', [CartController::class, 'updateCartItem']);
+        // Route::delete('/cart/{item}', [CartController::class, 'removeFromCart']);
+        // Route::delete('/cart', [CartController::class, 'clearCart']);
         
         // Orders
         Route::get('/orders', [OrderController::class, 'getUserOrders']);
         Route::get('/orders/{order}', [OrderController::class, 'show']);
         Route::get('/orders/{order}/details', [OrderController::class, 'getOrderDetails']);
+        Route::post('/orders/{order}/cancel', [OrderController::class, 'cancelOrder']);
         
-        // Notifications
-        Route::get('/notifications', [NotificationController::class, 'index']);
-        Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
-        Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
-        Route::get('/notifications/unread-count', [NotificationController::class, 'getUnreadCount']);
+        // Notifications (Controller not implemented yet)
+        // Route::get('/notifications', [NotificationController::class, 'index']);
+        // Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
+        // Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+        // Route::get('/notifications/unread-count', [NotificationController::class, 'getUnreadCount']);
     });
 
     // Product endpoints
@@ -90,11 +97,12 @@ Route::prefix('v1')->group(function () {
     Route::post('products/batch-stock', [ProductController::class, 'getBatchStockInfo']); // Get real-time stock info for multiple products
     
     // Order endpoints that don't require authentication
-    Route::post('orders/create', [OrderController::class, 'createOrder']); // Create order without authentication
     Route::get('orders/{orderId}', [OrderController::class, 'getOrder']); // Get order details by ID
     Route::get('orders/{orderId}/details', [OrderController::class, 'getOrderDetails']); // Get detailed order information with customer data
+    Route::get('orders/track/{orderId}', [OrderController::class, 'trackOrder']); // Track order by ID (for both authenticated users and guests)
     Route::post('orders/check-stock', [OrderController::class, 'checkStockAvailability']); // Check stock before ordering
     Route::get('users/{userId}/orders', [OrderController::class, 'getOrdersByUserId']); // Get all orders for a specific user
+    Route::post('orders/{orderId}/cancel', [OrderController::class, 'cancelOrder']); // Add route for cancelling orders without authentication
     
     // Order status notification endpoints
     Route::post('orders/{orderId}/notify', [OrderController::class, 'notifyOrderStatus']); // Send notification for order status change
@@ -123,22 +131,38 @@ Route::prefix('v1')->group(function () {
     Route::post('payments/retry', [PaymentController::class, 'retryPayment']);
 });
 
-// Use auth:sanctum middleware with optional parameter to allow both authenticated and unauthenticated requests
-Route::middleware(['auth.sanctum:optional'])->group(function () {
-    // Order creation endpoint - accessible with or without authentication
-    Route::post('orders/create', [OrderController::class, 'createOrder']);
-    
-    // Make API more robust by supporting various endpoint formats
-    Route::post('v1/orders/create', [OrderController::class, 'createOrder']);
-    Route::post('orders', [OrderController::class, 'createOrder']);
-});
-
-// Add a failsafe route for order creation that's more robust against errors
-Route::post('failsafe/create-order', [OrderController::class, 'createOrder']);
-Route::post('v1/failsafe/create-order', [OrderController::class, 'createOrder']);
+// Single order creation endpoint - accessible without authentication
+Route::post('v1/orders/create', [OrderController::class, 'createOrder']);
 
 // Midtrans notification handler
 Route::post('payments/notification', [PaymentController::class, 'notification']);
+
+// Payment webhook routes (for real-time payment status updates)
+Route::post('payment/webhook/midtrans', [App\Http\Controllers\API\PaymentWebhookController::class, 'handleMidtransNotification']);
+Route::post('payment/update-status', [App\Http\Controllers\API\PaymentWebhookController::class, 'updatePaymentStatus']);
+Route::post('payment/simulate-success', [App\Http\Controllers\API\PaymentWebhookController::class, 'simulatePaymentSuccess']);
+Route::get('payment/status/{orderId}', [App\Http\Controllers\API\PaymentWebhookController::class, 'getPaymentStatus']);
+
+// Admin notification endpoints
+Route::post('admin/notifications', function(\Illuminate\Http\Request $request) {
+    try {
+        $notificationService = app(\App\Services\OrderNotificationService::class);
+
+        // Store notification from Flutter app
+        $notificationService->storeAdminNotification([
+            'type' => $request->type ?? 'general',
+            'order_id' => $request->order_id,
+            'title' => $request->title,
+            'message' => $request->message,
+            'timestamp' => time(),
+            'is_read' => false,
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Notification stored']);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+    }
+});
 
 // Manual update after Midtrans simulation
 Route::post('payments/update-after-simulation', [PaymentController::class, 'updateAfterSimulation']);

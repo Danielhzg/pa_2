@@ -290,13 +290,34 @@ class OrderController extends Controller
             // Record who updated the status
             $adminId = auth()->guard('admin')->id();
             $adminName = auth()->guard('admin')->user()->name ?? 'Unknown Admin';
-            
-            // Use the updateStatus method from the Order model
-            $order->updateStatus($newStatus);
-            
-            // Make sure status_updated_by and status_updated_at are set
-            $order->status_updated_by = 'admin:' . $adminId;
-            $order->status_updated_at = now();
+
+            // Use the enhanced updateStatus method from the Order model
+            try {
+                $result = $order->updateStatus($newStatus, null, $adminId);
+
+                if (!$result['changed']) {
+                    if ($request->expectsJson() || $request->ajax()) {
+                        return response()->json([
+                            'success' => true,
+                            'message' => 'Status pesanan sudah ' . $newStatus,
+                            'order' => [
+                                'id' => $order->id,
+                                'status' => $order->status,
+                                'status_label' => $order->status_label
+                            ]
+                        ]);
+                    }
+                    return back()->with('info', 'Status pesanan sudah ' . $newStatus);
+                }
+            } catch (\InvalidArgumentException $e) {
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $e->getMessage()
+                    ], 422);
+                }
+                return back()->with('error', $e->getMessage());
+            }
             
             // Store status notes if provided
             if ($request->filled('status_notes')) {

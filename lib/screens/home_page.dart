@@ -6,6 +6,7 @@ import 'package:line_icons/line_icons.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/product.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart'; // Add notification service import
 import '../widgets/product_search.dart';
 import '../utils/image_url_helper.dart'; // Tambahkan import untuk ImageUrlHelper
 import '../providers/favorite_provider.dart'; // Updated from favorites_provider
@@ -27,7 +28,8 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+class _HomePageState extends State<HomePage>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   int _selectedIndex = 0;
   String _selectedCategory = 'All';
   bool _isLoading = false;
@@ -54,39 +56,52 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   // Timer for favorites sync
   Timer? _favoritesSyncTimer;
-
   void _startBannerAutoScroll() {
     if (_banners.isEmpty) {
       print('No banners available to auto-scroll.');
       return;
     }
 
+    // Cancel any existing timer
     _bannerTimer?.cancel();
-    _bannerTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+
+    // Create a new periodic timer that scrolls every 4 seconds (consistent with carousel widgets)
+    _bannerTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
       if (mounted && _pageController.hasClients) {
+        // Calculate the next page index
         final nextPage = (_currentBannerIndex + 1) % _banners.length;
+
+        // Animate to the next page
         _pageController.animateToPage(
           nextPage,
           duration: const Duration(milliseconds: 600),
           curve: Curves.easeInOut,
         );
+
+        // Update the current banner index
+        setState(() {
+          _currentBannerIndex = nextPage;
+        });
       }
     });
+
+    print('Auto-scroll started for ${_banners.length} banners');
   }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // Add lifecycle observer
     _pageController = PageController(viewportFraction: 0.85);
     _fetchCategories(); // Fetch categories from API
     _fetchProducts(); // Fetch products from API
-    _fetchBanners(); // Fetch banners from API
-    _loadUsername();
-
-    // Auto-scroll banner - start after a short delay
-    Future.delayed(const Duration(seconds: 1), () {
-      _startBannerAutoScroll();
+    _fetchBanners().then((_) {
+      // Only start auto-scroll after banners are fetched successfully
+      if (_banners.isNotEmpty && mounted) {
+        _startBannerAutoScroll();
+      }
     });
+    _loadUsername();
 
     // Set up periodic check for favorites to ensure UI is consistent
     _setupFavoritesSyncTimer();
@@ -94,10 +109,26 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // Remove lifecycle observer
     _pageController.dispose();
     _bannerTimer?.cancel();
     _favoritesSyncTimer?.cancel(); // Cancel favorites timer on dispose
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    // Stop auto-scrolling when app is paused, resume when app is resumed
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _bannerTimer?.cancel();
+    } else if (state == AppLifecycleState.resumed) {
+      if (_banners.isNotEmpty) {
+        _startBannerAutoScroll();
+      }
+    }
   }
 
   Future<void> _fetchProducts() async {
@@ -475,31 +506,53 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 ],
               ),
               const Spacer(),
-              Stack(
-                children: [
-                  IconButton(
-                    icon: const Icon(
-                      LineIcons.bell,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    onPressed: () {},
-                  ),
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
+              Consumer<NotificationService>(
+                builder: (context, notificationService, child) {
+                  final unreadCount = notificationService.unreadCount;
+                  return Stack(
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          LineIcons.bell,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () {
+                          // Navigate to notifications page
+                          Navigator.pushNamed(context, '/notifications');
+                        },
                       ),
-                    ),
-                  ),
-                ],
+                      // Show notification badge if there are unread notifications
+                      if (unreadCount > 0)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: Text(
+                              unreadCount > 99 ? '99+' : unreadCount.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -703,184 +756,292 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     return Container(
       height: 200,
       margin: const EdgeInsets.only(top: 15),
-      child: PageView.builder(
-        controller: _pageController,
-        itemCount: _banners.length,
-        onPageChanged: (index) {
-          setState(() {
-            _currentBannerIndex = index;
-          });
-        },
-        itemBuilder: (context, index) {
-          final banner = _banners[index];
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: _banners.length,
+            onPageChanged: (index) {
+              // Update the current banner index
+              setState(() {
+                _currentBannerIndex = index;
+              });
 
-          // Dapatkan semua URL alternatif
-          final String rawImagePath = banner['image'] ?? '';
-          final List<String> imageUrls =
-              ImageUrlHelper.getAllPossibleImageUrls(rawImagePath);
-          final String primaryImageUrl = imageUrls.isNotEmpty
-              ? imageUrls[0]
-              : ImageUrlHelper.placeholderUrl;
+              // When user manually swipes, restart the timer to prevent
+              // auto-scrolling right after manual interaction
+              if (_bannerTimer != null) {
+                _bannerTimer?.cancel();
+                _startBannerAutoScroll();
+              }
+            },
+            itemBuilder: (context, index) {
+              final banner = _banners[index];
 
-          final title = banner['title'] ?? '';
-          final description = banner['description'] ?? '';
+              // Dapatkan semua URL alternatif
+              final String rawImagePath = banner['image'] ?? '';
+              final List<String> imageUrls =
+                  ImageUrlHelper.getAllPossibleImageUrls(rawImagePath);
+              final String primaryImageUrl = imageUrls.isNotEmpty
+                  ? imageUrls[0]
+                  : ImageUrlHelper.placeholderUrl;
 
-          // Log the image URLs for debugging
-          print('Banner $index raw image path: $rawImagePath');
-          print('Banner $index primary URL: $primaryImageUrl');
-          print('Banner $index all URLs: $imageUrls');
+              final title = banner['title'] ?? '';
+              final description = banner['description'] ?? '';
 
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 500),
-            margin: EdgeInsets.symmetric(
-              horizontal: _currentBannerIndex == index ? 10 : 20,
-              vertical: _currentBannerIndex == index ? 0 : 10,
-            ),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(25),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
+              // Log the image URLs for debugging
+              print('Banner $index raw image path: $rawImagePath');
+              print('Banner $index primary URL: $primaryImageUrl');
+              print('Banner $index all URLs: $imageUrls');
+
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 500),
+                margin: EdgeInsets.symmetric(
+                  horizontal: _currentBannerIndex == index ? 10 : 20,
+                  vertical: _currentBannerIndex == index ? 0 : 10,
                 ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(25),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Try multiple image URLs if the main one fails
-                  CachedNetworkImage(
-                    imageUrl: primaryImageUrl,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => const Center(
-                      child: CircularProgressIndicator(),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(25),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
                     ),
-                    errorWidget: (context, url, error) {
-                      print('Error loading banner image: $error');
-                      print('Failed URL: $primaryImageUrl');
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(25),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Try multiple image URLs if the main one fails
+                      CachedNetworkImage(
+                        imageUrl: primaryImageUrl,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => const Center(
+                          child: CircularProgressIndicator(),
+                        ),
+                        errorWidget: (context, url, error) {
+                          print('Error loading banner image: $error');
+                          print('Failed URL: $primaryImageUrl');
 
-                      // Try second URL if available
-                      if (imageUrls.length > 1) {
-                        return CachedNetworkImage(
-                          imageUrl: imageUrls[1],
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => const Center(
-                            child: CircularProgressIndicator(),
-                          ),
-                          errorWidget: (context, url, error) {
-                            // Try third URL if available
-                            if (imageUrls.length > 2) {
-                              return CachedNetworkImage(
-                                imageUrl: imageUrls[2],
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => const Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                                errorWidget: (context, url, error) => Container(
-                                  color: Colors.grey[200],
-                                  child: Center(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.image_not_supported,
-                                            color: Colors.grey[400], size: 40),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Image not available',
-                                          style: TextStyle(
-                                              color: Colors.grey[600]),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }
-                            return const Center(
-                              child: Icon(Icons.error, color: Colors.red),
-                            );
-                          },
-                        );
-                      }
-
-                      return Container(
-                        color: Colors.grey[200],
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.broken_image,
-                                  color: Colors.grey, size: 40),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Cannot load image',
-                                style: TextStyle(color: Colors.grey[600]),
+                          // Try second URL if available
+                          if (imageUrls.length > 1) {
+                            return CachedNetworkImage(
+                              imageUrl: imageUrls[1],
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => const Center(
+                                child: CircularProgressIndicator(),
                               ),
-                              if (rawImagePath.isNotEmpty)
-                                Text(
-                                  'Path: $rawImagePath',
-                                  style: TextStyle(
-                                      color: Colors.grey[500], fontSize: 10),
-                                ),
+                              errorWidget: (context, url, error) {
+                                // Try third URL if available
+                                if (imageUrls.length > 2) {
+                                  return CachedNetworkImage(
+                                    imageUrl: imageUrls[2],
+                                    fit: BoxFit.cover,
+                                    placeholder: (context, url) => const Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                    errorWidget: (context, url, error) =>
+                                        Container(
+                                      color: Colors.grey[200],
+                                      child: Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.image_not_supported,
+                                                color: Colors.grey[400],
+                                                size: 40),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'Image not available',
+                                              style: TextStyle(
+                                                  color: Colors.grey[600]),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }
+                                return const Center(
+                                  child: Icon(Icons.error, color: Colors.red),
+                                );
+                              },
+                            );
+                          }
+
+                          return Container(
+                            color: Colors.grey[200],
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.broken_image,
+                                      color: Colors.grey, size: 40),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Cannot load image',
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  ),
+                                  if (rawImagePath.isNotEmpty)
+                                    Text(
+                                      'Path: $rawImagePath',
+                                      style: TextStyle(
+                                          color: Colors.grey[500],
+                                          fontSize: 10),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [
+                              Colors.black.withOpacity(0.6),
+                              Colors.transparent,
                             ],
                           ),
                         ),
-                      );
-                    },
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.6),
-                          Colors.transparent,
-                        ],
                       ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                description,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontSize: 14,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 5),
-                          Text(
-                            description,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: 14,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
+              );
+            },
+          ),
+
+          // Left navigation button - Enhanced for mobile
+          Positioned(
+            left: 8,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: GestureDetector(
+                onTap: () {
+                  final currentPage = _currentBannerIndex;
+                  final previousPage =
+                      currentPage > 0 ? currentPage - 1 : _banners.length - 1;
+                  _pageController.animateToPage(
+                    previousPage,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  );
+                },
+                child: Container(
+                  width: 48, // Larger touch target for mobile
+                  height: 48,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.grey.withOpacity(0.3),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        spreadRadius: 1,
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.arrow_back_ios_new,
+                    color: Colors.black87,
+                    size: 20,
+                  ),
+                ),
               ),
             ),
-          );
-        },
+          ),
+
+          // Right navigation button - Enhanced for mobile
+          Positioned(
+            right: 8,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: GestureDetector(
+                onTap: () {
+                  final currentPage = _currentBannerIndex;
+                  final nextPage = (currentPage + 1) % _banners.length;
+                  _pageController.animateToPage(
+                    nextPage,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  );
+                },
+                child: Container(
+                  width: 48, // Larger touch target for mobile
+                  height: 48,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.grey.withOpacity(0.3),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        spreadRadius: 1,
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.arrow_forward_ios,
+                    color: Colors.black87,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -10,8 +10,8 @@ use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\ChatController;
 use App\Http\Controllers\Admin\NotificationController;
-use App\Http\Controllers\CustomerOrderController;
-use App\Http\Controllers\OrderDetailController;
+// use App\Http\Controllers\CustomerOrderController; // Controller not implemented yet
+// use App\Http\Controllers\OrderDetailController; // Controller not implemented yet
 use Illuminate\Support\Facades\Route;
 
 // Redirect root URL to admin page
@@ -56,9 +56,23 @@ Route::prefix('admin')->name('admin.')->middleware('auth:admin')->group(function
     Route::get('/orders/{order}/api', [OrderController::class, 'getOrderApi'])->name('orders.api');
     Route::get('/orders/{order}/detail', [OrderController::class, 'getOrderDetail'])->name('orders.detail');
 
+    // Enhanced Order Management Routes
+    Route::get('/order-management', [App\Http\Controllers\Admin\OrderManagementController::class, 'index'])->name('admin.order-management.index');
+    Route::get('/order-management/{id}', [App\Http\Controllers\Admin\OrderManagementController::class, 'show'])->name('admin.order-management.show');
+    Route::post('/order-management/{id}/status', [App\Http\Controllers\Admin\OrderManagementController::class, 'updateStatus'])->name('admin.order-management.updateStatus');
+    Route::post('/order-management/{id}/payment-status', [App\Http\Controllers\Admin\OrderManagementController::class, 'updatePaymentStatus'])->name('admin.order-management.updatePaymentStatus');
+    Route::get('/order-management/stats/dashboard', [App\Http\Controllers\Admin\OrderManagementController::class, 'getStats'])->name('admin.order-management.stats');
+    Route::get('/order-management/notifications/list', [App\Http\Controllers\Admin\OrderManagementController::class, 'getNotifications'])->name('admin.order-management.notifications');
+    Route::post('/order-management/notifications/read', [App\Http\Controllers\Admin\OrderManagementController::class, 'markNotificationsRead'])->name('admin.order-management.notifications.read');
+    Route::post('/order-management/bulk-update', [App\Http\Controllers\Admin\OrderManagementController::class, 'bulkUpdateStatus'])->name('admin.order-management.bulk-update');
+
+    // Real-time dashboard route
+    Route::get('/orders/realtime-dashboard', [App\Http\Controllers\Admin\OrderManagementController::class, 'realtimeDashboard'])->name('admin.orders.realtime-dashboard');
+
     // Report Routes
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('/reports/export', [ReportController::class, 'export'])->name('reports.export');
+    Route::get('/reports/export-excel', [ReportController::class, 'exportExcel'])->name('reports.export-excel');
     
     // Customer Routes
     Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
@@ -101,18 +115,18 @@ Route::middleware(['auth'])->group(function () {
         return view('customer.wishlist');
     })->name('customer.wishlist');
     
-    // Customer Orders
-    Route::get('/orders', [CustomerOrderController::class, 'index'])->name('customer.orders.index');
-    Route::get('/orders/{orderId}', [CustomerOrderController::class, 'show'])->name('customer.orders.show');
-    Route::get('/orders/{orderId}/track', [CustomerOrderController::class, 'track'])->name('customer.orders.track');
-    Route::post('/orders/{orderId}/cancel', [CustomerOrderController::class, 'cancel'])->name('customer.orders.cancel');
-    Route::post('/orders/{orderId}/complete', [CustomerOrderController::class, 'complete'])->name('customer.orders.complete');
-    
-    // Order Detail Routes (New)
-    Route::get('/order/{orderId}', [OrderDetailController::class, 'show'])->name('order.detail');
-    Route::get('/order/{orderId}/track', [OrderDetailController::class, 'track'])->name('order.track');
-    Route::post('/order/{orderId}/cancel', [OrderDetailController::class, 'cancel'])->name('order.cancel');
-    Route::post('/order/{orderId}/complete', [OrderDetailController::class, 'complete'])->name('order.complete');
+    // Customer Orders (Controllers not implemented yet)
+    // Route::get('/orders', [CustomerOrderController::class, 'index'])->name('customer.orders.index');
+    // Route::get('/orders/{orderId}', [CustomerOrderController::class, 'show'])->name('customer.orders.show');
+    // Route::get('/orders/{orderId}/track', [CustomerOrderController::class, 'track'])->name('customer.orders.track');
+    // Route::post('/orders/{orderId}/cancel', [CustomerOrderController::class, 'cancel'])->name('customer.orders.cancel');
+    // Route::post('/orders/{orderId}/complete', [CustomerOrderController::class, 'complete'])->name('customer.orders.complete');
+
+    // Order Detail Routes (Controllers not implemented yet)
+    // Route::get('/order/{orderId}', [OrderDetailController::class, 'show'])->name('order.detail');
+    // Route::get('/order/{orderId}/track', [OrderDetailController::class, 'track'])->name('order.track');
+    // Route::post('/order/{orderId}/cancel', [OrderDetailController::class, 'cancel'])->name('order.cancel');
+    // Route::post('/order/{orderId}/complete', [OrderDetailController::class, 'complete'])->name('order.complete');
 });
 
 Route::prefix('admin/categories')->group(function () {

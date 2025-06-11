@@ -10,6 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\ReportsExport;
 
 class ReportController extends Controller
 {
@@ -22,13 +24,20 @@ class ReportController extends Controller
     public function index(Request $request)
     {
         try {
-            // Set default date range if not provided
-            $startDate = $request->input('start_date', Carbon::now()->subDays(30)->format('Y-m-d'));
-            $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
-            
+            // Get date range from request - if empty, use all time data
+            $startDate = $request->input('start_date');
+            $endDate = $request->input('end_date');
+
             // Convert to Carbon instances for queries
-            $startDateTime = Carbon::parse($startDate)->startOfDay();
-            $endDateTime = Carbon::parse($endDate)->endOfDay();
+            if ($startDate && $endDate) {
+                $startDateTime = Carbon::parse($startDate)->startOfDay();
+                $endDateTime = Carbon::parse($endDate)->endOfDay();
+            } else {
+                // If no dates provided, use all time data (last 365 days for performance)
+                $startDateTime = Carbon::now()->subDays(365)->startOfDay();
+                $endDateTime = Carbon::now()->endOfDay();
+                // Keep startDate and endDate as null to show "All Time" in UI
+            }
             
             // Get order statistics
             $orderStats = $this->getOrderStats($startDateTime, $endDateTime);
@@ -102,13 +111,21 @@ class ReportController extends Controller
     public function export(Request $request)
     {
         try {
-            // Set default date range if not provided
-            $startDate = $request->input('start_date', Carbon::now()->subDays(30)->format('Y-m-d'));
-            $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
-            
+            // Get date range from request - if empty, use default range
+            $startDate = $request->input('start_date');
+            $endDate = $request->input('end_date');
+
             // Convert to Carbon instances for queries
-            $startDateTime = Carbon::parse($startDate)->startOfDay();
-            $endDateTime = Carbon::parse($endDate)->endOfDay();
+            if ($startDate && $endDate) {
+                $startDateTime = Carbon::parse($startDate)->startOfDay();
+                $endDateTime = Carbon::parse($endDate)->endOfDay();
+            } else {
+                // If no dates provided, use last 30 days for export
+                $startDateTime = Carbon::now()->subDays(30)->startOfDay();
+                $endDateTime = Carbon::now()->endOfDay();
+                $startDate = $startDateTime->format('Y-m-d');
+                $endDate = $endDateTime->format('Y-m-d');
+            }
             
             // Get orders for the date range
             $orders = Order::with(['user'])
@@ -171,9 +188,69 @@ class ReportController extends Controller
             return response()->stream($callback, 200, $headers);
         } catch (\Exception $e) {
             Log::error('Error in ReportController@export: ' . $e->getMessage());
-            return back()->with('error', 'Terjadi kesalahan saat mengekspor data: ' . $e->getMessage());
+
+            // Return empty CSV with error message
+            $callback = function() use ($e) {
+                $file = fopen('php://output', 'w');
+                fputcsv($file, ['Error', 'Message']);
+                fputcsv($file, ['Export Failed', $e->getMessage()]);
+                fclose($file);
+            };
+
+            return response()->stream($callback, 200, [
+                'Content-Type' => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="error_report.csv"'
+            ]);
         }
     }
+
+    /**
+     * Export reports data as Excel
+     *
+     * @param Request $request
+     * @return \Symfony\Component\HttpFoundation\BinaryFileResponse
+     */
+    public function exportExcel(Request $request)
+    {
+        try {
+            // Get date range from request - if empty, use default range
+            $startDate = $request->input('start_date');
+            $endDate = $request->input('end_date');
+            $reportType = $request->input('type', 'orders'); // orders, summary, products
+
+            // Set default dates if not provided
+            if (!$startDate || !$endDate) {
+                $startDate = Carbon::now()->subDays(30)->format('Y-m-d');
+                $endDate = Carbon::now()->format('Y-m-d');
+            }
+
+            // Generate filename
+            $filename = 'laporan_' . $reportType . '_' . $startDate . '_to_' . $endDate;
+
+            // Create and download CSV file (Excel-compatible)
+            $export = new ReportsExport($startDate, $endDate, $reportType);
+            return $export->download($filename);
+
+        } catch (\Exception $e) {
+            Log::error('Error in ReportController@exportExcel: ' . $e->getMessage());
+
+            // Return empty CSV with error message
+            $callback = function() use ($e) {
+                $file = fopen('php://output', 'w');
+                fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF)); // UTF-8 BOM
+                fputcsv($file, ['Error', 'Message']);
+                fputcsv($file, ['Excel Export Failed', $e->getMessage()]);
+                fclose($file);
+            };
+
+            return response()->stream($callback, 200, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="error_excel_export.csv"'
+            ]);
+        }
+    }
+
+
     
     /**
      * Get order statistics for the specified date range

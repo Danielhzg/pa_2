@@ -1,5 +1,5 @@
 {{-- System Notification Component --}}
-<div class="notification-item system-notification {{ $notification->read_at ? '' : 'unread' }}" data-notification-id="{{ $notification->id }}">
+<div class="notification-item system-notification {{ $notification->is_read ? '' : 'unread' }}" data-notification-id="{{ $notification->id }}">
     <div class="notification-icon-container">
         <i class="fas fa-cog"></i>
     </div>

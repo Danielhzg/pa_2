@@ -211,27 +211,15 @@ class NotificationService
                 $customerName = $order->shipping_address['name'];
             }
             
-            foreach ($admins as $admin) {
-                // Create notification for each admin
-                Notification::create([
-                    'admin_id' => $admin->id,
-                    'type' => 'shopee',
-                    'title' => 'Pesanan Baru dari Shopee',
-                    'message' => 'Pesanan baru dari Shopee telah dibuat',
-                    'status' => 'unread',
-                    'data' => [
-                        'order_id' => $order->id,
-                        'customer_name' => $customerName,
-                        'total' => $order->total_amount,
-                        'message' => "Pesanan baru dari Shopee #{$order->id} telah dibuat oleh {$customerName}",
-                        'created_at' => $order->created_at->format('Y-m-d H:i:s'),
-                        'items_count' => $order->items->count(),
-                        'payment_status' => $order->payment_status,
-                        'order_status' => $order->status,
-                        'source' => 'shopee',
-                    ],
-                ]);
-            }
+            // Create a single notification for all admins (since we removed admin_id)
+            Notification::create([
+                'user_id' => null, // For admin notifications
+                'order_id' => $order->order_id ?? 'ORDER-' . $order->id,
+                'type' => 'new_order',
+                'title' => 'Pesanan Baru dari Shopee',
+                'message' => "Pesanan baru dari Shopee #{$order->order_id} telah dibuat oleh {$customerName}",
+                'is_read' => false,
+            ]);
             
             Log::info('New Shopee order notification sent for order #' . $order->id);
             return true;

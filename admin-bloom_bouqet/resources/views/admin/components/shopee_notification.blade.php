@@ -1,5 +1,5 @@
 {{-- Shopee Notification Component --}}
-<div class="notification-item shopee-notification {{ $notification->read_at ? '' : 'unread' }}" data-notification-id="{{ $notification->id }}">
+<div class="notification-item shopee-notification {{ $notification->is_read ? '' : 'unread' }}" data-notification-id="{{ $notification->id }}">
     <div class="notification-icon-container">
         <i class="fas fa-shopping-cart"></i>
     </div>

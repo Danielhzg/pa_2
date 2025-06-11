@@ -61,18 +61,18 @@ class AppServiceProvider extends ServiceProvider
         // Add unread notification count to all views
         view()->composer('layouts.admin', function ($view) {
             if (auth()->guard('admin')->check()) {
-                $unreadNotificationCount = \App\Models\Notification::where('admin_id', auth()->guard('admin')->id())
-                    ->where('status', 'unread')
+                // For admin, count all unread notifications (no admin_id filter)
+                $unreadNotificationCount = \App\Models\Notification::where('is_read', false)
                     ->count();
                 $view->with('unreadNotificationCount', $unreadNotificationCount);
             }
         });
-        
+
         // Add unread notification count to notification component
         view()->composer('admin.components.notification_dropdown', function ($view) {
             if (auth()->guard('admin')->check()) {
-                $unreadNotificationCount = \App\Models\Notification::where('admin_id', auth()->guard('admin')->id())
-                    ->where('status', 'unread')
+                // For admin, count all unread notifications (no admin_id filter)
+                $unreadNotificationCount = \App\Models\Notification::where('is_read', false)
                     ->count();
                 $view->with('unreadNotificationCount', $unreadNotificationCount);
             } else {

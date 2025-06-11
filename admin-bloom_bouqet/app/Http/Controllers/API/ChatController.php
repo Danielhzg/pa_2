@@ -75,9 +75,9 @@ class ChatController extends Controller
             ], 500);
         }
     }
-    
+
     /**
-     * Send a message.
+     * Send a new message
      */
     public function sendMessage(Request $request)
     {
@@ -99,8 +99,10 @@ class ChatController extends Controller
                     'status' => 'open',
                 ]);
             }
+ 
                 
-            // Create the message
+           
+    
             $message = new ChatMessage([
                 'chat_id' => $chat->id,
                 'message' => $request->message,
@@ -122,7 +124,7 @@ class ChatController extends Controller
                     ]
                 ];
             }
-            
+
             $message->save();
             
             // Debug log to verify message was saved correctly
@@ -291,24 +293,15 @@ class ChatController extends Controller
             // Get all admins
             $admins = Admin::all();
             
-            foreach ($admins as $admin) {
-                // Create notification for each admin
-                \App\Models\AdminNotification::create([
-                    'admin_id' => $admin->id,
-                    'title' => 'New message about Order #' . $orderId,
-                    'content' => 'Customer sent a message regarding Order #' . $orderId,
-                    'type' => 'chat_message',
-                    'data' => [
-                        'order_id' => $orderId,
-                        'chat_id' => $message->chat_id,
-                        'message_id' => $message->id,
-                    ],
-                    'is_read' => false,
-                ]);
-                
-                // Update admin's notification count
-                $admin->increment('unread_notifications');
-            }
+            // Create a single notification for all admins (since we removed admin_id)
+            \App\Models\Notification::create([
+                'user_id' => null, // For admin notifications
+                'order_id' => $orderId,
+                'title' => 'New message about Order #' . $orderId,
+                'message' => 'Customer sent a message regarding Order #' . $orderId,
+                'type' => 'chat_message',
+                'is_read' => false,
+            ]);
         } catch (\Exception $e) {
             Log::error('Error notifying admins about order message: ' . $e->getMessage());
         }
@@ -348,28 +341,15 @@ class ChatController extends Controller
                 'message_id' => $message->id
             ]);
             
-            // Get all admins and mark the chat as unread for them
-            $admins = \App\Models\Admin::all();
-            foreach ($admins as $admin) {
-                // Create or update admin notification
-                \App\Models\AdminNotification::updateOrCreate(
-                    ['admin_id' => $admin->id, 'type' => 'chat', 'related_id' => $message->chat_id],
-                    [
-                        'title' => 'New Message from ' . $userName,
-                        'content' => \Str::limit($message->message, 100),
-                        'data' => json_encode([
-                            'chat_id' => $message->chat_id,
-                            'message_id' => $message->id,
-                            'user_id' => $message->user_id,
-                        ]),
-                        'is_read' => false,
-                        'updated_at' => now(),
-                    ]
-                );
-                
-                // Increment unread notifications counter
-                $admin->increment('unread_notifications');
-            }
+            // Create a single notification for all admins (since we removed admin_id)
+            \App\Models\Notification::create([
+                'user_id' => null, // For admin notifications
+                'order_id' => 'CHAT-' . $message->chat_id,
+                'title' => 'New Message from ' . $userName,
+                'message' => \Str::limit($message->message, 100),
+                'type' => 'chat_message',
+                'is_read' => false,
+            ]);
             
             // Also create a record in the chat_admin_notifications table if it exists
             if (class_exists('\\App\\Models\\ChatAdminNotification')) {

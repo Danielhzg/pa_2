@@ -6,14 +6,15 @@ import 'dart:io';
 import 'dart:async'; // Import for TimeoutException
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart'; // Add this import for locale initialization
 import 'dart:math';
 import '../models/user.dart'; // Import for User model
 import '../models/order_status.dart'; // Import for OrderStatus
 import 'package:image_picker/image_picker.dart'; // Import for image picker
 import 'package:path/path.dart' as path; // Import for path manipulation
 import 'chat_page.dart'; // Import for chat page
-import 'order_list_screen.dart'; // Import for order list screen
 import '../services/order_service.dart'; // Import for OrderService
+import '../services/notification_service.dart'; // Import for NotificationService
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -48,6 +49,9 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   void initState() {
     super.initState();
+    // Initialize date formatting
+    initializeDateFormatting('id_ID');
+
     // Setup animations
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 800),
@@ -628,7 +632,7 @@ class _ProfilePageState extends State<ProfilePage>
                                     iconColor: Colors.purple,
                                     label: 'Birth Date',
                                     value: userData.birth_date != null
-                                        ? DateFormat('dd MMMM yyyy')
+                                        ? DateFormat('dd MMMM yyyy', 'id_ID')
                                             .format(userData.birth_date!)
                                         : 'Not set',
                                   ),
@@ -644,6 +648,9 @@ class _ProfilePageState extends State<ProfilePage>
                                   // Order Cards
                                   _buildOrdersCard(),
 
+                                  // Notifications card
+                                  _buildNotificationsCard(),
+
                                   const SizedBox(height: 24),
 
                                   // Account Actions section
@@ -654,30 +661,12 @@ class _ProfilePageState extends State<ProfilePage>
 
                                   // Settings options
                                   _buildSettingsItem(
-                                    icon: Icons.notifications_none,
-                                    iconColor: Colors.orange,
-                                    title: 'Notifications',
-                                    onTap: () {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text(
-                                                'Notification settings coming soon!')),
-                                      );
-                                    },
-                                  ),
-
-                                  _buildSettingsItem(
                                     icon: Icons.lock_outline,
                                     iconColor: Colors.indigo,
                                     title: 'Privacy and Security',
                                     onTap: () {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text(
-                                                'Privacy settings coming soon!')),
-                                      );
+                                      Navigator.pushNamed(
+                                          context, '/privacy-security');
                                     },
                                   ),
 
@@ -686,12 +675,8 @@ class _ProfilePageState extends State<ProfilePage>
                                     iconColor: Colors.green,
                                     title: 'Help & Support',
                                     onTap: () {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content:
-                                                Text('Support coming soon!')),
-                                      );
+                                      Navigator.pushNamed(
+                                          context, '/help-support');
                                     },
                                   ),
 
@@ -998,10 +983,11 @@ class _ProfilePageState extends State<ProfilePage>
                                     color: Colors.grey[400],
                                   ),
                                   onTap: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (ctx) =>
-                                            const OrderListScreen(),
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                            'Order list feature is coming soon!'),
+                                        backgroundColor: Color(0xFFFF87B2),
                                       ),
                                     );
                                   },
@@ -1501,83 +1487,217 @@ class _ProfilePageState extends State<ProfilePage>
     });
   }
 
+  // Track if orders have been fetched to prevent repeated calls
+  static bool _ordersInitialized = false;
+
   // Method to build orders card with quick access to different order statuses
   Widget _buildOrdersCard() {
     return Consumer<OrderService>(
       builder: (context, orderService, child) {
-        // Try to fetch orders if not already loaded
-        if (orderService.orders.isEmpty && !orderService.isLoading && mounted) {
+        // Only fetch orders once when first loaded and not already fetching
+        if (orderService.orders.isEmpty &&
+            !orderService.isLoading &&
+            !_ordersInitialized &&
+            mounted) {
           // Use Future.microtask to avoid build phase issues
-          Future.microtask(() => orderService.fetchOrders());
+          Future.microtask(() {
+            orderService.fetchOrders();
+            _ordersInitialized = true; // Prevent repeated calls
+          });
         }
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.08),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: InkWell(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (ctx) => const OrderListScreen()),
+        // Use child parameter for static content to prevent unnecessary rebuilds
+        return child!;
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.08),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFECB3),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.receipt_long,
-                        color: Colors.amber, size: 24),
+          ],
+        ),
+        child: InkWell(
+          onTap: () {
+            Navigator.pushNamed(context, '/my-orders');
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFECB3),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(width: 16),
-                  const Expanded(
-                    child: Text(
-                      'All My Orders',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  child: const Icon(Icons.receipt_long,
+                      color: Colors.amber, size: 24),
+                ),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Text(
+                    'All My Orders',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  if (orderService.isLoading)
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(Color(0xFFFF87B2)),
-                      ),
-                    )
-                  else
-                    Text(
-                      '${orderService.orders.length} orders',
+                ),
+                // Use Selector to only rebuild this part when order count changes
+                Selector<OrderService, String>(
+                  selector: (context, orderService) => orderService.isLoading
+                      ? 'loading'
+                      : '${orderService.orders.length} orders',
+                  builder: (context, orderInfo, child) {
+                    if (orderInfo == 'loading') {
+                      return const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Color(0xFFFF87B2)),
+                        ),
+                      );
+                    } else {
+                      return Text(
+                        orderInfo,
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.arrow_forward_ios,
+                    size: 16, color: Colors.grey),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Add a new method to build notifications card
+  Widget _buildNotificationsCard() {
+    return Consumer<NotificationService>(
+      builder: (context, notificationService, child) {
+        // Use child parameter for static content
+        return child!;
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.08),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: InkWell(
+          onTap: () {
+            Navigator.pushNamed(context, '/notifications');
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                // Use Selector for notification icon with badge
+                Selector<NotificationService, bool>(
+                  selector: (context, notificationService) =>
+                      notificationService.hasUnread,
+                  builder: (context, hasUnread, child) {
+                    return Stack(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE3F2FD),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.notifications_outlined,
+                              color: Colors.blue, size: 24),
+                        ),
+                        if (hasUnread)
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            child: Selector<NotificationService, int>(
+                              selector: (context, notificationService) =>
+                                  notificationService.unreadCount,
+                              builder: (context, unreadCount, child) {
+                                return Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFFF87B2),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 16,
+                                    minHeight: 16,
+                                  ),
+                                  child: Text(
+                                    unreadCount.toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Text(
+                    'Notifications',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                // Use Selector for notification count
+                Selector<NotificationService, int>(
+                  selector: (context, notificationService) =>
+                      notificationService.notifications.length,
+                  builder: (context, notificationCount, child) {
+                    return Text(
+                      '$notificationCount items',
                       style: TextStyle(
                         color: Colors.grey[600],
                         fontSize: 14,
                       ),
-                    ),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.arrow_forward_ios,
-                      size: 16, color: Colors.grey),
-                ],
-              ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.arrow_forward_ios,
+                    size: 16, color: Colors.grey),
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

@@ -151,16 +151,9 @@
                                         <td>{{ $order->order_id }}</td>
                                         <td>
                                             @if($order->user)
-                                                <div class="d-flex align-items-center">
-                                                    <div class="avatar avatar-sm me-2">
-                                                        <div class="avatar-initial rounded-circle bg-pink-light">
-                                                            {{ substr($order->user->full_name ?? 'U', 0, 1) }}
-                                                        </div>
-                                                    </div>
                                                     <div>
                                                         <span class="fw-medium">{{ $order->user->full_name }}</span>
                                                         <small class="text-muted d-block">{{ $order->user->email }}</small>
-                                                    </div>
                                                 </div>
                                             @else
                                                 <span class="text-muted">Guest</span>

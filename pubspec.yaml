@@ -47,7 +47,7 @@ dependencies:
   url_launcher: ^6.3.1
   lottie: ^3.2.0
   shimmer: ^3.0.0
-  flutter_local_notifications: ^19.1.0
+  flutter_local_notifications: ^19.2.1
   image_picker: ^1.0.7
   path: ^1.9.0
   timeline_tile: ^2.0.0

@@ -10,8 +10,11 @@ class DatabaseHelper {
   DatabaseHelper._internal();
   static DatabaseHelper get instance => _instance;
 
+  // Primary ngrok URL:
+  static const String baseUrl = 'https://dec8-114-122-41-11.ngrok-free.app/api';
+
   // For Android emulator, use:
-  static const String baseUrl = 'http://10.0.2.2:5000/api';
+  // static const String baseUrl = 'http://10.0.2.2:5000/api';
 
   // For iOS simulator, use:
   // static const String baseUrl = 'http://localhost:5000/api';

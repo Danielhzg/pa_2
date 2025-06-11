@@ -7,11 +7,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Services\NotificationService;
+use App\Services\OrderNotificationService;
 use App\Services\WebSocketService;
 use Carbon\Carbon;  
 use Illuminate\Support\Facades\Schema;
@@ -19,8 +21,9 @@ use Illuminate\Support\Facades\Schema;
 class OrderController extends Controller
 {
     protected $notificationService;
+    protected $orderNotificationService;
 
-    public function __construct(NotificationService $notificationService = null)
+    public function __construct(NotificationService $notificationService = null, OrderNotificationService $orderNotificationService = null)
     {
         if ($notificationService) {
             $this->notificationService = $notificationService;
@@ -29,6 +32,9 @@ class OrderController extends Controller
             $webSocketService = new WebSocketService();
             $this->notificationService = new NotificationService($webSocketService);
         }
+
+        // Initialize OrderNotificationService
+        $this->orderNotificationService = $orderNotificationService ?? new OrderNotificationService();
     }
 
     /**
@@ -39,10 +45,43 @@ class OrderController extends Controller
         try {
             Log::info('Starting order creation process');
             Log::info('Request data: ' . json_encode($request->all()));
-            
+
             // Check for authorization header
             $authHeader = $request->header('Authorization');
             Log::info('Authorization header present: ' . ($authHeader ? 'Yes' : 'No'));
+
+            // Add duplicate prevention check (only for rapid requests)
+            $requestId = $request->header('X-Request-ID') ?? $request->input('request_id');
+            if ($requestId) {
+                $cacheKey = "order_creation_request_{$requestId}";
+                if (Cache::has($cacheKey)) {
+                    Log::warning("Duplicate order creation request detected: {$requestId}");
+
+                    // Check if there's already an order with this request ID
+                    $existingOrder = Order::where('order_id', 'LIKE', '%' . substr($requestId, -8) . '%')->first();
+                    if ($existingOrder) {
+                        Log::info("Returning existing order for duplicate request: {$existingOrder->order_id}");
+                        return response()->json([
+                            'success' => true,
+                            'message' => 'Order already exists',
+                            'data' => [
+                                'id' => $existingOrder->order_id,
+                                'orderStatus' => $existingOrder->status,
+                                'paymentStatus' => $existingOrder->payment_status,
+                                'is_duplicate' => true
+                            ]
+                        ], 200);
+                    }
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Duplicate request detected. Order creation already in progress.',
+                        'error_code' => 'DUPLICATE_REQUEST'
+                    ], 409);
+                }
+                // Set cache for 30 seconds only (shorter duration)
+                Cache::put($cacheKey, true, 30);
+            }
             
             // Log token details if present
             $authenticatedUser = null;
@@ -68,18 +107,26 @@ class OrderController extends Controller
             $validator = Validator::make($request->all(), [
                 'id' => 'nullable|string',
                 'order_id' => 'nullable|string',
-                'items' => 'required|array',
+                'items' => 'required|array|min:1',
+                'items.*.id' => 'required',
+                'items.*.name' => 'required|string',
+                'items.*.price' => 'required|numeric|min:0',
+                'items.*.quantity' => 'required|integer|min:1',
                 'deliveryAddress' => 'nullable|array',
                 'shipping_address' => 'nullable|string',
-                'subtotal' => 'nullable|numeric',
-                'shippingCost' => 'nullable|numeric',
-                'shipping_cost' => 'nullable|numeric',
-                'total' => 'nullable|numeric',
-                'total_amount' => 'nullable|numeric',
+                'subtotal' => 'nullable|numeric|min:0',
+                'shippingCost' => 'nullable|numeric|min:0',
+                'shipping_cost' => 'nullable|numeric|min:0',
+                'total' => 'nullable|numeric|min:0',
+                'total_amount' => 'nullable|numeric|min:0',
                 'paymentMethod' => 'nullable|string',
                 'payment_method' => 'nullable|string',
-                'qrCodeUrl' => 'nullable|string',
+                'customer_name' => 'nullable|string',
+                'customer_email' => 'nullable|email',
                 'user_id' => 'nullable', // Allow explicit user_id in request
+                'created_at' => 'nullable|string',
+                'order_timestamp' => 'nullable|string',
+                'request_id' => 'nullable|string',
             ]);
 
             if ($validator->fails()) {
@@ -91,11 +138,19 @@ class OrderController extends Controller
                 ], 422);
             }
 
-            // Generate a unique order ID with timestamp and random number
-            $timestamp = time();
-            $random = mt_rand(1000, 9999);
-            $orderId = $request->id ?? $request->order_id ?? 'ORDER-' . $timestamp . '-' . $random;
-            Log::info('Generated order ID: ' . $orderId);
+            // Generate sequential ORDER-X ID
+            $lastOrder = Order::orderBy('id', 'desc')->first();
+            $nextNumber = $lastOrder ? ($lastOrder->id + 1) : 1;
+            $orderId = $request->id ?? $request->order_id ?? 'ORDER-' . $nextNumber;
+            Log::info('Generated sequential order ID: ' . $orderId);
+
+            // Get authenticated user if available
+            $user = $request->user();
+            $isAuthenticated = $user !== null;
+            Log::info('Order creation - User authenticated: ' . ($isAuthenticated ? 'Yes' : 'No'));
+            if ($isAuthenticated) {
+                Log::info('Authenticated user: ' . $user->id . ' (' . $user->email . ')');
+            }
 
             // Cek apakah order dengan ID tersebut sudah ada
             $existingOrder = Order::where('order_id', $orderId)->first();
@@ -135,8 +190,8 @@ class OrderController extends Controller
                         'data' => $orderData
                     ], 200);
                 } else {
-                    // Jika order sudah ada tapi status berbeda, buat order ID baru
-                    $orderId = 'ORDER-' . $timestamp . '-' . $random . '-' . Str::random(4);
+                    // Jika order sudah ada tapi status berbeda, buat order ID baru dengan suffix
+                    $orderId = 'ORDER-' . $nextNumber . '-' . Str::random(4);
                     Log::info("Order dengan ID tersebut sudah ada dengan status berbeda, membuat order ID baru: {$orderId}");
                 }
             }
@@ -219,9 +274,10 @@ class OrderController extends Controller
                 if ($existingUser) {
                     $userId = $existingUser->id;
                     $userName = $existingUser->name ?? $existingUser->full_name ?? $existingUser->username;
+                    $userEmail = $existingUser->email;
                     Log::info('Found existing user by email in deliveryAddress: ' . ($userName ?? 'Unknown') . ' (ID: ' . $userId . ')');
                 }
-            } 
+            }
             // 4. Try with direct email field if provided
             else if (isset($request->email)) {
                 $userEmail = $request->email;
@@ -229,10 +285,46 @@ class OrderController extends Controller
                 if ($existingUser) {
                     $userId = $existingUser->id;
                     $userName = $existingUser->name ?? $existingUser->full_name ?? $existingUser->username;
+                    $userEmail = $existingUser->email;
                     Log::info('Found existing user by direct email field: ' . ($userName ?? 'Unknown') . ' (ID: ' . $userId . ')');
                 }
             }
+            // 5. Try with customer_email field if provided
+            else if (isset($request->customer_email)) {
+                $userEmail = $request->customer_email;
+                $existingUser = \App\Models\User::where('email', $userEmail)->first();
+                if ($existingUser) {
+                    $userId = $existingUser->id;
+                    $userName = $existingUser->name ?? $existingUser->full_name ?? $existingUser->username;
+                    $userEmail = $existingUser->email;
+                    Log::info('Found existing user by customer_email field: ' . ($userName ?? 'Unknown') . ' (ID: ' . $userId . ')');
+                }
+            }
             
+            // Fallback for customer name if not set from user lookup
+            if (empty($userName) || $userName === null) {
+                if ($request->has('customer_name') && !empty($request->customer_name)) {
+                    $userName = $request->customer_name;
+                } elseif (isset($request->deliveryAddress['name']) && !empty($request->deliveryAddress['name'])) {
+                    $userName = $request->deliveryAddress['name'];
+                } else {
+                    $userName = 'Guest Customer';
+                }
+                Log::info('Using fallback customer name: ' . $userName);
+            }
+
+            // Fallback for customer email if not set from user lookup
+            if (empty($userEmail) || $userEmail === null) {
+                if ($request->has('customer_email') && !empty($request->customer_email)) {
+                    $userEmail = $request->customer_email;
+                } elseif (isset($request->deliveryAddress['email']) && !empty($request->deliveryAddress['email'])) {
+                    $userEmail = $request->deliveryAddress['email'];
+                } else {
+                    $userEmail = 'guest@example.com';
+                }
+                Log::info('Using fallback customer email: ' . $userEmail);
+            }
+
             if ($userId) {
                 Log::info('Order will be created with user_id: ' . $userId);
             } else {
@@ -266,10 +358,31 @@ class OrderController extends Controller
             // Create the order directly with transaction handling
             try {
                 DB::beginTransaction();
-                
+
                 // Store order in database with fixed statuses using Eloquent model
                 $order = new Order();
                 $order->order_id = $orderId;
+
+                // Set real-time timestamps if provided
+                if ($request->has('created_at') && !empty($request->created_at)) {
+                    try {
+                        $createdAt = Carbon::parse($request->created_at);
+                        $order->created_at = $createdAt;
+                        Log::info('Using real-time timestamp from request: ' . $createdAt->toDateTimeString());
+                    } catch (\Exception $e) {
+                        Log::warning('Invalid created_at timestamp in request: ' . $e->getMessage());
+                        // Will use default timestamp
+                    }
+                }
+
+                if ($request->has('order_timestamp') && !empty($request->order_timestamp)) {
+                    try {
+                        $orderTimestamp = Carbon::parse($request->order_timestamp);
+                        Log::info('Order timestamp from request: ' . $orderTimestamp->toDateTimeString());
+                    } catch (\Exception $e) {
+                        Log::warning('Invalid order_timestamp in request: ' . $e->getMessage());
+                    }
+                }
                 
                 // Make sure user_id is an integer or null
                 if ($userId !== null) {
@@ -288,10 +401,14 @@ class OrderController extends Controller
                 }
                 
                 $order->user_id = $userId; // Will be null for guest orders
-                
+                $order->customer_name = $userName;
+                $order->customer_email = $userEmail;
+                $order->customer_phone = $phoneNumber;
+
                 // Log the user_id being set
                 Log::info('Setting user_id in order model: ' . ($userId ?? 'null (guest order)'));
-                
+                Log::info('Setting customer info: ' . $userName . ' (' . $userEmail . ')');
+
                 $order->shipping_address = $shippingAddress;
                 $order->phone_number = $phoneNumber;
                 $order->subtotal = $subtotal;
@@ -366,43 +483,83 @@ class OrderController extends Controller
                 DB::rollBack();
                 Log::error('Order Creation DB Error: ' . $e->getMessage());
                 Log::error('SQL Error: ' . $e->getTraceAsString());
-                
+
+                // Clear cache to allow retry
+                if ($requestId) {
+                    Cache::forget("order_creation_request_{$requestId}");
+                }
+
                 // Check for specific error types to provide better error messages
                 $errorMessage = 'Database error when creating order';
-                
+
                 // Try to determine the type of error based on error message
-                if (strpos($e->getMessage(), 'user_id') !== false || 
+                if (strpos($e->getMessage(), 'user_id') !== false ||
                     strpos($e->getMessage(), 'foreign key constraint') !== false) {
-                    
-                    Log::info('Detected user_id or foreign key constraint issue. Attempting guest order.');
-                    // Try creating the order with user_id set to NULL
-                    return $this->createOrderAsGuest($request, $orderId, $shippingAddress, $phoneNumber, 
-                                                     $subtotal, $shippingCost, $totalAmount, $paymentMethod, 
-                                                     $paymentDeadline);
+
+                    Log::info('Detected user_id issue. Attempting to create as guest order.');
+
+                    // Try to create as guest order
+                    try {
+                        DB::beginTransaction();
+
+                        $guestOrder = new Order();
+                        $guestOrder->order_id = $orderId;
+                        $guestOrder->user_id = null; // Force guest
+                        $guestOrder->customer_name = $userName ?? 'Guest Customer';
+                        $guestOrder->customer_email = $userEmail ?? 'guest@example.com';
+                        $guestOrder->customer_phone = $phoneNumber;
+                        $guestOrder->shipping_address = $shippingAddress;
+                        $guestOrder->phone_number = $phoneNumber;
+                        $guestOrder->subtotal = $subtotal;
+                        $guestOrder->shipping_cost = $shippingCost;
+                        $guestOrder->total_amount = $totalAmount;
+                        $guestOrder->payment_method = $paymentMethod;
+                        $guestOrder->status = 'waiting_for_payment';
+                        $guestOrder->payment_status = 'pending';
+                        $guestOrder->is_read = false;
+                        $guestOrder->payment_deadline = $paymentDeadline;
+                        $guestOrder->order_items = $orderItemsArray ?? [];
+
+                        $guestOrder->save();
+                        DB::commit();
+
+                        Log::info('Guest order created successfully after user_id error');
+
+                        // Continue with success response
+                        $order = $guestOrder;
+
+                    } catch (\Exception $guestEx) {
+                        DB::rollBack();
+                        Log::error('Failed to create guest order: ' . $guestEx->getMessage());
+                        $errorMessage = 'Failed to create order as guest: ' . $guestEx->getMessage();
+                    }
                 } else if (strpos($e->getMessage(), 'order_items') !== false) {
                     $errorMessage = 'Error with order items table';
                 } else if (strpos($e->getMessage(), 'Integrity constraint violation') !== false) {
                     $errorMessage = 'Data integrity error - Please check your input data';
-                } else if (strpos($e->getMessage(), 'Connection refused') !== false || 
+                } else if (strpos($e->getMessage(), 'Connection refused') !== false ||
                            strpos($e->getMessage(), 'timeout') !== false) {
                     $errorMessage = 'Database connection error - Please try again later';
                 }
-                
-                return response()->json([
-                    'success' => false, 
-                    'message' => $errorMessage,
-                    'error_details' => $e->getMessage()
-                ], 500);
+
+                // If we still have an error, return it
+                if (!isset($order) || !$order->exists) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $errorMessage,
+                        'error_details' => $e->getMessage()
+                    ], 500);
+                }
             }
 
             // Send notification for new order
             try {
-                if ($this->notificationService) {
+                if ($this->orderNotificationService) {
                     Log::info('Attempting to send order notification for order ID: ' . $order->id);
-                    $this->notificationService->sendNewOrderNotification($order);
+                    $this->orderNotificationService->notifyNewOrder($order);
                     Log::info('Order notification sent successfully');
                 } else {
-                    Log::warning('NotificationService not available, skipping notification');
+                    Log::warning('OrderNotificationService not available, skipping notification');
                 }
             } catch (\Exception $e) {
                 Log::error('Failed to send order notification: ' . $e->getMessage(), [
@@ -460,20 +617,47 @@ class OrderController extends Controller
     }
 
     /**
-     * Fallback method to create order as guest when user_id causes problems
+     * Create order with proper user authentication handling
      */
-    private function createOrderAsGuest(Request $request, $orderId, $shippingAddress, $phoneNumber, 
-                                      $subtotal, $shippingCost, $totalAmount, $paymentMethod, 
-                                      $paymentDeadline)
+    private function createOrderWithAuth(Request $request, $orderId, $shippingAddress, $phoneNumber,
+                                        $subtotal, $shippingCost, $totalAmount, $paymentMethod,
+                                        $paymentDeadline)
     {
-        Log::info('Attempting to create order as guest after user_id error');
-        
+        Log::info('Creating order with authentication handling');
+
         try {
             DB::beginTransaction();
-            
+
             $order = new Order();
-            $order->order_id = $orderId . '-guest';
-            $order->user_id = null; // Explicitly set as null for guest
+            $order->order_id = $orderId;
+
+            // Get authenticated user if available
+            $user = $request->user();
+            $isAuthenticated = $user !== null;
+
+            // Extract customer info from shipping address and request
+            $shippingData = is_string($shippingAddress) ? json_decode($shippingAddress, true) : $shippingAddress;
+            $guestName = $shippingData['name'] ?? $request->customer_name ?? 'Guest Customer';
+            $guestEmail = $shippingData['email'] ?? $request->customer_email ?? 'guest@bloombouquet.com';
+
+            // Set customer information based on authentication status
+            if ($isAuthenticated && $user) {
+                // Authenticated user order
+                $order->user_id = $user->id;
+                $order->customer_name = $user->name ?? $user->full_name ?? $guestName;
+                $order->customer_email = $user->email ?? $guestEmail;
+                $order->customer_phone = $phoneNumber;
+                Log::info('Creating authenticated user order for: ' . $order->customer_name . ' (' . $order->customer_email . ')');
+            } else {
+                // Guest order or order with user_id from request
+                $requestUserId = $request->user_id ?? null;
+                $order->user_id = $requestUserId;
+                $order->customer_name = $guestName;
+                $order->customer_email = $guestEmail;
+                $order->customer_phone = $phoneNumber;
+                Log::info('Creating guest order for: ' . $order->customer_name . ' (' . $order->customer_email . ')');
+            }
+
             $order->shipping_address = $shippingAddress;
             $order->phone_number = $phoneNumber;
             $order->subtotal = $subtotal;
@@ -1032,13 +1216,13 @@ class OrderController extends Controller
     }
 
     /**
-     * Get user orders
+     * Get user orders (supports both authenticated users and guest orders by email)
      */
     public function getUserOrders(Request $request)
     {
         try {
             $user = $request->user();
-            
+
             if (!$user) {
                 Log::warning('User not authenticated when trying to access orders');
                 return response()->json([
@@ -1049,11 +1233,16 @@ class OrderController extends Controller
 
             Log::info('Getting orders for user: ' . $user->id . ' (' . $user->name . ', ' . $user->email . ')');
 
-            // Get user orders using Eloquent with explicit columns to avoid any issues
-            $orders = Order::select('id', 'order_id', 'user_id', 'shipping_address', 'phone_number', 
-                                  'subtotal', 'shipping_cost', 'total_amount', 'payment_method', 
-                                  'status', 'payment_status', 'created_at', 'payment_deadline', 'order_items')
-                ->where('user_id', $user->id)
+            // Get orders for this user - both authenticated orders and guest orders with same email
+            $orders = Order::select('id', 'order_id', 'user_id', 'customer_name', 'customer_email',
+                                  'shipping_address', 'phone_number', 'subtotal', 'shipping_cost',
+                                  'total_amount', 'payment_method', 'status', 'payment_status',
+                                  'created_at', 'payment_deadline', 'order_items')
+                ->where(function($query) use ($user) {
+                    // Get orders with user_id OR guest orders with same email
+                    $query->where('user_id', $user->id)
+                          ->orWhere('customer_email', $user->email);
+                })
                 ->orderBy('created_at', 'desc')
                 ->get();
                 
@@ -1076,6 +1265,14 @@ class OrderController extends Controller
                             $product = Product::find($item->product_id);
                         }
                         
+                        $imageUrl = null;
+                        if ($product) {
+                            $primaryImage = $product->getPrimaryImage();
+                            if ($primaryImage) {
+                                $imageUrl = asset('storage/' . $primaryImage);
+                            }
+                        }
+
                         $formattedItems[] = [
                             'id' => $item->id ?? null,
                             'name' => $item->name ?? 'Unknown Product',
@@ -1083,7 +1280,8 @@ class OrderController extends Controller
                             'quantity' => $item->quantity ?? 1,
                             'subtotal' => ($item->price ?? 0) * ($item->quantity ?? 1),
                             'product_id' => $item->product_id ?? null,
-                            'product_image' => $product ? $product->main_image : null,
+                            'product_image' => $product ? $product->getPrimaryImage() : null,
+                            'imageUrl' => $imageUrl,
                         ];
                     }
                 } catch (\Exception $e) {
@@ -1102,6 +1300,14 @@ class OrderController extends Controller
                                 $product = Product::find($item['product_id']);
                             }
                             
+                            $imageUrl = null;
+                            if ($product) {
+                                $primaryImage = $product->getPrimaryImage();
+                                if ($primaryImage) {
+                                    $imageUrl = asset('storage/' . $primaryImage);
+                                }
+                            }
+
                             $formattedItems[] = [
                                 'id' => $item['id'] ?? null,
                                 'name' => $item['name'] ?? 'Unknown Product',
@@ -1109,7 +1315,8 @@ class OrderController extends Controller
                                 'quantity' => $item['quantity'] ?? 1,
                                 'subtotal' => ($item['price'] ?? 0) * ($item['quantity'] ?? 1),
                                 'product_id' => $item['product_id'] ?? null,
-                                'product_image' => $product ? $product->main_image : null,
+                                'product_image' => $product ? $product->getPrimaryImage() : null,
+                                'imageUrl' => $imageUrl,
                             ];
                         }
                     }
@@ -1126,23 +1333,30 @@ class OrderController extends Controller
                 }
                 
                 return [
-                    'id' => $order->id,
+                    'id' => $order->order_id, // Use order_id as main ID for Flutter
                     'order_id' => $order->order_id,
+                    'deliveryAddress' => $shippingAddress, // Flutter expects deliveryAddress
                     'shipping_address' => $shippingAddress,
                     'phone_number' => $order->phone_number,
+                    'total' => $order->total_amount, // Flutter expects 'total'
                     'total_amount' => $order->total_amount,
                     'subtotal' => $order->subtotal,
+                    'shippingCost' => $order->shipping_cost, // Flutter expects shippingCost
                     'shipping_cost' => $order->shipping_cost,
+                    'paymentMethod' => $order->payment_method, // Flutter expects paymentMethod
                     'payment_method' => $order->payment_method,
                     'status' => $order->status,
-                    'status_label' => $order->getStatusLabelAttribute(),
+                    'orderStatus' => $order->status, // Flutter expects orderStatus
+                    'paymentStatus' => $order->payment_status, // Flutter expects paymentStatus
                     'payment_status' => $order->payment_status,
-                    'payment_status_label' => $order->getPaymentStatusLabelAttribute(),
+                    'createdAt' => $order->created_at, // Flutter expects createdAt
                     'created_at' => $order->created_at,
                     'payment_deadline' => $order->payment_deadline,
                     'items' => $formattedItems,
                     'total_items' => count($formattedItems),
                     'can_cancel' => $order->status === 'waiting_for_payment' && $order->payment_status === 'pending',
+                    'customer_name' => $order->customer_name,
+                    'customer_email' => $order->customer_email,
                 ];
             });
 
@@ -1292,6 +1506,14 @@ class OrderController extends Controller
                 foreach ($order->items as $item) {
                     $product = $item->product;
                     
+                    $imageUrl = null;
+                    if ($product) {
+                        $primaryImage = $product->getPrimaryImage();
+                        if ($primaryImage) {
+                            $imageUrl = asset('storage/' . $primaryImage);
+                        }
+                    }
+
                     $formattedItems[] = [
                         'id' => $item->id,
                         'name' => $item->name,
@@ -1299,7 +1521,8 @@ class OrderController extends Controller
                         'quantity' => $item->quantity,
                         'subtotal' => $item->price * $item->quantity,
                         'product_id' => $item->product_id,
-                        'product_image' => $product ? $product->main_image : null,
+                        'product_image' => $product ? $product->getPrimaryImage() : null,
+                        'imageUrl' => $imageUrl,
                     ];
                 }
                 
@@ -1515,4 +1738,366 @@ class OrderController extends Controller
             ], 500);
         }
     }
-} 
+
+    /**
+     * Cancel an order and return items to inventory
+     */
+    public function cancelOrder(Request $request, $orderId)
+    {
+        try {
+            Log::info('Cancelling order: ' . $orderId);
+            
+            // Find the order
+            $order = Order::where('order_id', $orderId)->first();
+            
+            if (!$order) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order not found',
+                ], 404);
+            }
+            
+            // Check if order is in a cancellable state
+            $cancellableStatuses = ['waiting_for_payment', 'pending'];
+            if (!in_array($order->status, $cancellableStatuses)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order cannot be cancelled in its current status',
+                    'status' => $order->status
+                ], 400);
+            }
+            
+            // Get the cancellation reason
+            $reason = $request->reason ?? 'Payment timeout after 24 hours';
+            
+            // Update order status to cancelled
+            $order->status = 'cancelled';
+            $order->cancellation_reason = $reason;
+            $order->cancelled_at = now();
+            $order->save();
+            
+            // Return items to inventory
+            $orderItems = $order->items;
+            if ($orderItems) {
+                foreach ($orderItems as $item) {
+                    try {
+                        // Find the product and increase its stock
+                        $product = Product::find($item['product_id']);
+                        if ($product) {
+                            $product->stock += $item['quantity'];
+                            $product->save();
+                            Log::info('Returned ' . $item['quantity'] . ' units to product ID ' . $product->id);
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('Error returning inventory for item: ' . json_encode($item) . ' - ' . $e->getMessage());
+                    }
+                }
+            }
+            
+            // Send notification
+            try {
+                $this->notificationService->sendOrderNotification(
+                    $order->user_id, 
+                    'Order Cancelled', 
+                    'Your order #' . substr($orderId, 0, 8) . ' has been cancelled. ' . $reason,
+                    'cancelled',
+                    $orderId
+                );
+                
+                // Also notify admin
+                $this->notificationService->sendAdminNotification(
+                    'Order Cancelled',
+                    'Order #' . substr($orderId, 0, 8) . ' has been cancelled. ' . $reason,
+                    'order_cancelled',
+                    ['order_id' => $orderId]
+                );
+            } catch (\Exception $e) {
+                Log::error('Error sending cancellation notification: ' . $e->getMessage());
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Order cancelled successfully',
+                'order_id' => $orderId
+            ], 200);
+            
+        } catch (\Exception $e) {
+            Log::error('Error cancelling order: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to cancel order',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Track order by order ID (for both authenticated users and guests)
+     */
+    public function trackOrder($orderId)
+    {
+        try {
+            Log::info('Tracking order: ' . $orderId);
+
+            $order = Order::where('order_id', $orderId)->first();
+
+            if (!$order) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order not found'
+                ], 404);
+            }
+
+            // Format items
+            $formattedItems = [];
+            try {
+                $orderItems = $order->getItemsCollection();
+
+                foreach ($orderItems as $item) {
+                    $product = null;
+                    if (isset($item->product_id)) {
+                        $product = Product::find($item->product_id);
+                    }
+
+                    $formattedItems[] = [
+                        'id' => $item->id ?? null,
+                        'name' => $item->name ?? 'Unknown Product',
+                        'price' => $item->price ?? 0,
+                        'quantity' => $item->quantity ?? 1,
+                        'subtotal' => ($item->price ?? 0) * ($item->quantity ?? 1),
+                        'product_id' => $item->product_id ?? null,
+                        'image_url' => $product ? asset('storage/' . $product->main_image) : null,
+                    ];
+                }
+            } catch (\Exception $e) {
+                Log::error('Error formatting order items for tracking: ' . $e->getMessage());
+                // Fallback to order_items JSON
+                if ($order->order_items && is_array($order->order_items)) {
+                    foreach ($order->order_items as $item) {
+                        $product = null;
+                        if (isset($item['product_id'])) {
+                            $product = Product::find($item['product_id']);
+                        }
+
+                        $formattedItems[] = [
+                            'id' => $item['id'] ?? null,
+                            'name' => $item['name'] ?? 'Unknown Product',
+                            'price' => $item['price'] ?? 0,
+                            'quantity' => $item['quantity'] ?? 1,
+                            'subtotal' => ($item['price'] ?? 0) * ($item['quantity'] ?? 1),
+                            'product_id' => $item['product_id'] ?? null,
+                            'image_url' => $product ? asset('storage/' . $product->main_image) : null,
+                        ];
+                    }
+                }
+            }
+
+            // Return order data with customer info
+            $orderData = [
+                'id' => $order->order_id,
+                'order_id' => $order->order_id,
+                'customer_name' => $order->customer_name,
+                'customer_email' => $order->customer_email,
+                'customer_phone' => $order->customer_phone,
+                'status' => $order->status,
+                'payment_status' => $order->payment_status,
+                'total_amount' => $order->total_amount,
+                'subtotal' => $order->subtotal,
+                'shipping_cost' => $order->shipping_cost,
+                'payment_method' => $order->payment_method,
+                'shipping_address' => is_string($order->shipping_address) ?
+                    json_decode($order->shipping_address, true) : $order->shipping_address,
+                'phone_number' => $order->phone_number,
+                'created_at' => $order->created_at,
+                'updated_at' => $order->updated_at,
+                'payment_deadline' => $order->payment_deadline,
+                'items' => $formattedItems
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $orderData,
+                'message' => 'Order found successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error tracking order: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to track order'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update order status with enhanced validation and notifications
+     */
+    public function updateOrderStatus(Request $request, $orderId)
+    {
+        try {
+            $order = Order::where('order_id', $orderId)->first();
+
+            if (!$order) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order not found'
+                ], 404);
+            }
+
+            $newStatus = $request->input('status');
+            $paymentStatus = $request->input('payment_status');
+            $updatedBy = $request->input('updated_by', 'api_system');
+
+            $results = [];
+
+            // Update payment status first if provided
+            if ($paymentStatus) {
+                try {
+                    $paymentResult = $order->updatePaymentStatus($paymentStatus, $updatedBy);
+                    $results['payment_update'] = $paymentResult;
+
+                    Log::info("Payment status updated for order $orderId", [
+                        'old_payment_status' => $paymentResult['old_payment_status'],
+                        'new_payment_status' => $paymentResult['new_payment_status'],
+                        'order_status_changed' => $paymentResult['status_changed']
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error("Failed to update payment status for order $orderId: " . $e->getMessage());
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to update payment status: ' . $e->getMessage()
+                    ], 400);
+                }
+            }
+
+            // Update order status if provided and different from current
+            if ($newStatus && $newStatus !== $order->status) {
+                try {
+                    $statusResult = $order->updateStatus($newStatus, $updatedBy);
+                    $results['status_update'] = $statusResult;
+
+                    Log::info("Order status updated for order $orderId", [
+                        'old_status' => $statusResult['old_status'],
+                        'new_status' => $statusResult['new_status'],
+                        'updated_by' => $statusResult['updated_by']
+                    ]);
+                } catch (\InvalidArgumentException $e) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $e->getMessage()
+                    ], 400);
+                } catch (\Exception $e) {
+                    Log::error("Failed to update order status for order $orderId: " . $e->getMessage());
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to update order status: ' . $e->getMessage()
+                    ], 500);
+                }
+            }
+
+            // Refresh order data
+            $order->refresh();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Order updated successfully',
+                'data' => [
+                    'order_id' => $order->order_id,
+                    'status' => $order->status,
+                    'payment_status' => $order->payment_status,
+                    'status_updated_at' => $order->status_updated_at ? $order->status_updated_at->format('Y-m-d H:i:s') : null,
+                    'status_updated_by' => $order->status_updated_by,
+                    'paid_at' => $order->paid_at ? $order->paid_at->format('Y-m-d H:i:s') : null,
+                    'updated_at' => $order->updated_at->format('Y-m-d H:i:s')
+                ],
+                'update_results' => $results
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error updating order status: ' . $e->getMessage(), [
+                'order_id' => $orderId,
+                'request_data' => $request->all()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update order status'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get notifications for user
+     */
+    public function getNotifications(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $userId = $user ? $user->id : null;
+
+            // Get notifications for user or guest orders
+            $query = \App\Models\Notification::query();
+
+            if ($userId) {
+                $query->where('user_id', $userId);
+            } else {
+                // For guest users, get notifications by order_id if provided
+                $orderId = $request->input('order_id');
+                if ($orderId) {
+                    $query->where('order_id', $orderId);
+                } else {
+                    return response()->json([
+                        'success' => true,
+                        'data' => []
+                    ]);
+                }
+            }
+
+            $notifications = $query->orderBy('created_at', 'desc')
+                                  ->limit(50)
+                                  ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $notifications
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error getting notifications: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get notifications'
+            ], 500);
+        }
+    }
+
+    /**
+     * Mark notification as read
+     */
+    public function markNotificationAsRead(Request $request, $notificationId)
+    {
+        try {
+            $notification = \App\Models\Notification::find($notificationId);
+
+            if (!$notification) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Notification not found'
+                ], 404);
+            }
+
+            $notification->markAsRead();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Notification marked as read'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error marking notification as read: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to mark notification as read'
+            ], 500);
+        }
+    }
+}

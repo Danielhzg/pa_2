@@ -103,7 +103,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
         // QR Code Payment
         _buildPaymentMethodItem(
           code: 'qris',
-          name: 'QR Code Payment',
+          name: 'QR Code Payment (QRIS)',
           icon: Icons.qr_code,
           description: 'Pay using any mobile banking app or e-wallet',
         ),
@@ -122,7 +122,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
 
         // BCA Virtual Account
         _buildPaymentMethodItem(
-          code: 'bca',
+          code: 'bca_va',
           name: 'BCA Virtual Account',
           icon: Icons.account_balance,
           description: 'Pay via BCA Virtual Account',
@@ -130,7 +130,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
 
         // BNI Virtual Account
         _buildPaymentMethodItem(
-          code: 'bni',
+          code: 'bni_va',
           name: 'BNI Virtual Account',
           icon: Icons.account_balance,
           description: 'Pay via BNI Virtual Account',
@@ -138,7 +138,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
 
         // BRI Virtual Account
         _buildPaymentMethodItem(
-          code: 'bri',
+          code: 'bri_va',
           name: 'BRI Virtual Account',
           icon: Icons.account_balance,
           description: 'Pay via BRI Virtual Account',
@@ -146,7 +146,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
 
         // Mandiri Bill Payment
         _buildPaymentMethodItem(
-          code: 'mandiri',
+          code: 'echannel',
           name: 'Mandiri Bill Payment',
           icon: Icons.account_balance,
           description: 'Pay via Mandiri Bill Payment',
@@ -154,7 +154,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
 
         // Permata Virtual Account
         _buildPaymentMethodItem(
-          code: 'permata',
+          code: 'permata_va',
           name: 'Permata Virtual Account',
           icon: Icons.account_balance,
           description: 'Pay via Permata Virtual Account',
@@ -180,34 +180,34 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
           description: 'Pay with Visa, Mastercard, JCB, or Amex',
         ),
 
-        // E-Wallet
+        // GoPay
         _buildPaymentMethodItem(
-          code: 'e_wallet',
-          name: 'E-Wallet',
+          code: 'gopay',
+          name: 'GoPay',
           icon: Icons.account_balance_wallet,
-          description: 'Pay with GoPay, ShopeePay, DANA, or OVO',
+          description: 'Pay with GoPay',
         ),
 
-        // Cash on Delivery (COD)
+        // ShopeePay
         _buildPaymentMethodItem(
-          code: 'cod',
-          name: 'Cash on Delivery',
-          icon: Icons.payments_outlined,
-          description: 'Pay when you receive your order',
+          code: 'shopeepay',
+          name: 'ShopeePay',
+          icon: Icons.account_balance_wallet,
+          description: 'Pay with ShopeePay',
         ),
 
         // Dynamic methods from API (if any)
         ..._paymentMethods.map((method) {
           if ([
             'qris',
-            'bca',
-            'bni',
-            'bri',
-            'mandiri',
-            'permata',
+            'bca_va',
+            'bni_va',
+            'bri_va',
+            'echannel',
+            'permata_va',
             'credit_card',
-            'e_wallet',
-            'cod'
+            'gopay',
+            'shopeepay',
           ].contains(method['code'])) {
             return const SizedBox
                 .shrink(); // Skip if we already have it hardcoded

@@ -14,6 +14,20 @@ class Order extends Model
 {
     use HasFactory;
 
+    // Order Status Constants
+    const STATUS_WAITING_PAYMENT = 'waiting_for_payment';
+    const STATUS_WAITING_FOR_PAYMENT = 'waiting_for_payment'; // Alias for compatibility
+    const STATUS_PROCESSING = 'processing';
+    const STATUS_SHIPPING = 'shipping';
+    const STATUS_DELIVERED = 'delivered';
+    const STATUS_CANCELLED = 'cancelled';
+
+    // Payment Status Constants
+    const PAYMENT_PENDING = 'pending';
+    const PAYMENT_PAID = 'paid';
+    const PAYMENT_FAILED = 'failed';
+    const PAYMENT_EXPIRED = 'expired';
+
     /**
      * The attributes that are mass assignable.
      *
@@ -22,6 +36,9 @@ class Order extends Model
     protected $fillable = [
         'order_id',
         'user_id',
+        'customer_name',
+        'customer_email',
+        'customer_phone',
         'admin_id',
         'shipping_address',
         'phone_number',
@@ -43,18 +60,7 @@ class Order extends Model
         'status_updated_at',
     ];
 
-    // Order status constants
-    const STATUS_WAITING_FOR_PAYMENT = 'waiting_for_payment';
-    const STATUS_PROCESSING = 'processing';
-    const STATUS_SHIPPING = 'shipping';
-    const STATUS_DELIVERED = 'delivered';
-    const STATUS_CANCELLED = 'cancelled';
-    
-    // Payment status constants
-    const PAYMENT_PENDING = 'pending';
-    const PAYMENT_PAID = 'paid';
-    const PAYMENT_FAILED = 'failed';
-    const PAYMENT_EXPIRED = 'expired';
+    // Additional payment status constant
     const PAYMENT_REFUNDED = 'refunded';
 
     /**
@@ -336,111 +342,190 @@ class Order extends Model
         return 0;
     }
     
+
+    
     /**
-     * Update the order status and set the appropriate timestamp
-     * 
-     * @param string $status The new status
-     * @return string The old status
+     * Update payment status with appropriate timestamp and auto status change
      */
-    public function updateStatus(string $status)
+    public function updatePaymentStatus(string $status, $updatedBy = 'payment_system')
     {
-        // Store the old status for notification and history
+        $oldPaymentStatus = $this->payment_status;
+        $oldOrderStatus = $this->status;
+        $this->payment_status = $status;
+
+        // If payment is marked as paid, record the timestamp
+        if ($status === self::PAYMENT_PAID && !$this->paid_at) {
+            $this->paid_at = now();
+
+            // Automatically update order status if it's still waiting for payment
+            if ($this->status === self::STATUS_WAITING_FOR_PAYMENT) {
+                $this->status = self::STATUS_PROCESSING;
+                $this->status_updated_at = now();
+                $this->status_updated_by = $updatedBy;
+
+                Log::info("Auto-updated order status from {$oldOrderStatus} to {$this->status} for order {$this->order_id} after payment completion");
+            }
+        }
+
+        // If payment failed or expired, ensure order status reflects this
+        if (in_array($status, [self::PAYMENT_FAILED, self::PAYMENT_EXPIRED])) {
+            if ($this->status === self::STATUS_PROCESSING) {
+                $this->status = self::STATUS_WAITING_FOR_PAYMENT;
+                $this->status_updated_at = now();
+                $this->status_updated_by = $updatedBy;
+
+                Log::info("Auto-reverted order status from {$oldOrderStatus} to {$this->status} for order {$this->order_id} due to payment failure");
+            }
+        }
+
+        $this->save();
+
+        // Create notifications for status changes
+        if ($status === self::PAYMENT_PAID && $oldPaymentStatus !== self::PAYMENT_PAID) {
+            Notification::createPaymentNotification($this->order_id, $this->user_id);
+        }
+
+        if ($this->status !== $oldOrderStatus) {
+            Notification::createOrderStatusNotification($this->order_id, $this->status, $this->user_id);
+        }
+
+        return [
+            'old_payment_status' => $oldPaymentStatus,
+            'new_payment_status' => $this->payment_status,
+            'old_order_status' => $oldOrderStatus,
+            'new_order_status' => $this->status,
+            'status_changed' => $oldOrderStatus !== $this->status,
+            'payment_status_changed' => $oldPaymentStatus !== $this->payment_status
+        ];
+    }
+
+    /**
+     * Update order status with proper validation and logging
+     */
+    public function updateStatus(string $newStatus, $updatedBy = null, $adminId = null)
+    {
         $oldStatus = $this->status;
-        
+
         // If status is the same, do nothing
-        if ($oldStatus === $status) {
-            return $oldStatus;
+        if ($oldStatus === $newStatus) {
+            return [
+                'old_status' => $oldStatus,
+                'new_status' => $this->status,
+                'updated_by' => $this->status_updated_by,
+                'updated_at' => $this->status_updated_at,
+                'changed' => false
+            ];
         }
-        
-        // Store admin ID if in admin context
-        $adminId = null;
-        if (auth()->guard('admin')->check()) {
-            $adminId = auth()->guard('admin')->id();
-            $adminName = auth()->guard('admin')->user()->name ?? 'Unknown Admin';
-            $this->status_updated_by = "admin:{$adminId}";
-        } else {
-            // Set the user/system that updated the status
-            if (auth()->check()) {
-                $this->status_updated_by = "user:" . auth()->id();
-            } else {
-                $this->status_updated_by = "system:auto";
+
+        // Validate status transition
+        if (!$this->isValidStatusTransition($oldStatus, $newStatus)) {
+            throw new \InvalidArgumentException("Invalid status transition from {$oldStatus} to {$newStatus}");
         }
+
+        // Only allow status change if payment is completed (except for cancellation and waiting for payment)
+        if ($newStatus !== self::STATUS_CANCELLED &&
+            $this->payment_status !== self::PAYMENT_PAID &&
+            $newStatus !== self::STATUS_WAITING_FOR_PAYMENT) {
+            throw new \InvalidArgumentException("Cannot change order status to {$newStatus} when payment is not completed");
         }
-        
-        // Set the timestamp for the status change
+
+        $this->status = $newStatus;
         $this->status_updated_at = now();
-        
-        // Set the status
-        $this->status = $status;
-        
+
+        // Set who updated the status
+        if ($adminId) {
+            $this->status_updated_by = "admin:{$adminId}";
+        } elseif ($updatedBy) {
+            $this->status_updated_by = $updatedBy;
+        } elseif (auth()->guard('admin')->check()) {
+            $this->status_updated_by = "admin:" . auth()->guard('admin')->id();
+        } elseif (auth()->check()) {
+            $this->status_updated_by = "user:" . auth()->id();
+        } else {
+            $this->status_updated_by = "system:auto";
+        }
+
         // Set the appropriate timestamp based on status
-        switch ($status) {
+        switch ($newStatus) {
             case self::STATUS_PROCESSING:
-                // Processing status means the order is being prepared
                 $this->processing_started_at = now();
                 break;
-                
             case self::STATUS_SHIPPING:
-                // Shipping status means the order has been shipped
                 $this->shipped_at = now();
                 break;
-                
             case self::STATUS_DELIVERED:
-                // Delivered status means the order has been delivered
                 $this->delivered_at = now();
                 break;
-                
             case self::STATUS_CANCELLED:
-                // Cancelled status means the order has been cancelled
                 $this->cancelled_at = now();
                 break;
         }
-        
-        // Create a status history entry if the table exists
+
+        $this->save();
+
+        // Create notification for status change
+        try {
+            if (class_exists('App\Models\Notification')) {
+                \App\Models\Notification::createOrderStatusNotification($this->order_id, $newStatus, $this->user_id);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error creating status notification: ' . $e->getMessage());
+        }
+
+        // Create status history entry
         try {
             if (class_exists('App\Models\OrderStatusHistory')) {
                 \App\Models\OrderStatusHistory::create([
                     'order_id' => $this->id,
-                    'status' => $status,
+                    'status' => $newStatus,
                     'previous_status' => $oldStatus,
                     'updated_by' => $this->status_updated_by,
-                    'notes' => "Status changed from {$oldStatus} to {$status}"
+                    'notes' => "Status changed from {$oldStatus} to {$newStatus}"
                 ]);
             }
         } catch (\Exception $e) {
-            // Just log the error if status history table doesn't exist
-            \Illuminate\Support\Facades\Log::error('Error creating status history: ' . $e->getMessage());
+            Log::error('Error creating status history: ' . $e->getMessage());
         }
-        
-        // Save the changes
-        $this->save();
-        
-        return $oldStatus;
+
+        Log::info("Order status updated: Order {$this->order_id} from {$oldStatus} to {$newStatus} by {$this->status_updated_by}");
+
+        return [
+            'old_status' => $oldStatus,
+            'new_status' => $this->status,
+            'updated_by' => $this->status_updated_by,
+            'updated_at' => $this->status_updated_at,
+            'changed' => true
+        ];
     }
-    
+
     /**
-     * Update payment status with appropriate timestamp
+     * Check if status transition is valid
      */
-    public function updatePaymentStatus(string $status)
+    private function isValidStatusTransition(string $fromStatus, string $toStatus): bool
     {
-        $oldStatus = $this->payment_status;
-        $this->payment_status = $status;
-        
-        // If payment is marked as paid, record the timestamp
-        if ($status === self::PAYMENT_PAID && !$this->paid_at) {
-            $this->paid_at = now();
-            
-            // Also update the order status if it's still waiting for payment
-            if ($this->status === self::STATUS_WAITING_FOR_PAYMENT) {
-                $this->status = self::STATUS_PROCESSING;
-                $this->status_updated_at = now();
-                $this->status_updated_by = 'payment_system';
-            }
-        }
-        
-        $this->save();
-        
-        return $oldStatus; // Return old status for notification purposes
+        $validTransitions = [
+            self::STATUS_WAITING_FOR_PAYMENT => [
+                self::STATUS_PROCESSING,
+                self::STATUS_CANCELLED
+            ],
+            self::STATUS_PROCESSING => [
+                self::STATUS_SHIPPING,
+                self::STATUS_DELIVERED, // Allow direct processing to delivered
+                self::STATUS_CANCELLED
+            ],
+            self::STATUS_SHIPPING => [
+                self::STATUS_DELIVERED,
+                self::STATUS_CANCELLED
+            ],
+            self::STATUS_DELIVERED => [
+                // Delivered is final state, no transitions allowed
+            ],
+            self::STATUS_CANCELLED => [
+                // Cancelled is final state, no transitions allowed
+            ]
+        ];
+
+        return in_array($toStatus, $validTransitions[$fromStatus] ?? []);
     }
 
     /**
@@ -692,6 +777,14 @@ class Order extends Model
         // If items are not in the JSON column, get them from the relationship and enhance them
         if (empty($orderItems) && $this->items && $this->items->isNotEmpty()) {
             return $this->items->map(function($item) {
+                $imageUrl = null;
+                if ($item->product) {
+                    $primaryImage = $item->product->getPrimaryImage();
+                    if ($primaryImage) {
+                        $imageUrl = asset('storage/' . $primaryImage);
+                    }
+                }
+
                 return [
                     'id' => $item->id,
                     'product_id' => $item->product_id,
@@ -700,6 +793,7 @@ class Order extends Model
                     'quantity' => $item->quantity,
                     'subtotal' => $item->price * $item->quantity,
                     'image' => $item->product ? $item->product->getPrimaryImage() : null,
+                    'imageUrl' => $imageUrl,
                 ];
             })->toArray();
         } else {
@@ -713,6 +807,14 @@ class Order extends Model
                     $product = \App\Models\Product::find($productId);
                 }
                 
+                $imageUrl = null;
+                if ($product) {
+                    $primaryImage = $product->getPrimaryImage();
+                    if ($primaryImage) {
+                        $imageUrl = asset('storage/' . $primaryImage);
+                    }
+                }
+
                 return [
                     'id' => $item['id'] ?? null,
                     'product_id' => $productId,
@@ -721,6 +823,7 @@ class Order extends Model
                     'quantity' => $item['quantity'] ?? 1,
                     'subtotal' => ($item['price'] ?? 0) * ($item['quantity'] ?? 1),
                     'image' => $product ? $product->getPrimaryImage() : null,
+                    'imageUrl' => $imageUrl,
                 ];
             })->toArray();
         }
