@@ -93,7 +93,12 @@ class OrderService with ChangeNotifier {
         final data = json.decode(response.body);
         if (data['success'] == true && data['data'] != null) {
           _orders = List<Order>.from(
-            data['data'].map((order) => Order.fromJson(order)),
+            data['data'].map((order) {
+              final orderData = Order.fromJson(order);
+              debugPrint(
+                  'Loaded order: ${orderData.id} - Status: ${orderData.status.value} - Payment: ${orderData.paymentStatus}');
+              return orderData;
+            }),
           );
           _lastRefresh = DateTime.now();
           _isLoading = false;
@@ -397,6 +402,29 @@ class OrderService with ChangeNotifier {
     }
 
     return result;
+  }
+
+  // Refresh a specific order by ID
+  Future<bool> refreshOrderById(String orderId) async {
+    debugPrint('Refreshing specific order: $orderId');
+
+    try {
+      final order = await fetchOrderById(orderId);
+      if (order != null) {
+        // Update the order in the local list
+        final index = _orders.indexWhere((o) => o.id == orderId);
+        if (index >= 0) {
+          _orders[index] = order;
+          notifyListeners();
+          debugPrint('Order $orderId refreshed successfully');
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Error refreshing order $orderId: $e');
+      return false;
+    }
   }
 
   // Utility method to check if payment is successful

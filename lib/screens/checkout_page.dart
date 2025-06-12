@@ -1494,9 +1494,21 @@ class _CheckoutPageState extends State<CheckoutPage> {
             redirectUrl: redirectUrl,
             transactionId:
                 orderId, // This matches the parameter in PaymentWebViewScreen
-            onPaymentComplete: (status) {
+            onPaymentComplete: (status) async {
               // Handle payment status callback
               debugPrint('Payment status callback: $status');
+
+              if (status) {
+                // Payment successful - refresh orders to get updated status
+                try {
+                  final orderService =
+                      Provider.of<OrderService>(context, listen: false);
+                  await orderService.refreshOrders();
+                  debugPrint('Orders refreshed after successful payment');
+                } catch (e) {
+                  debugPrint('Error refreshing orders after payment: $e');
+                }
+              }
             },
           ),
         ),
@@ -1508,17 +1520,30 @@ class _CheckoutPageState extends State<CheckoutPage> {
         // Clear cart items
         cartProvider.removeSelectedItems();
 
-        // Show success message
+        // Navigate to order tracking screen
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Payment successful! Your order has been placed.'),
-              backgroundColor: Colors.green,
-            ),
+          Navigator.pushReplacementNamed(
+            context,
+            '/order-tracking',
+            arguments: {
+              'orderId': orderId,
+            },
           );
         }
       } else {
         debugPrint('Web Payment was not successful or was cancelled');
+
+        // Navigate to order tracking screen even if payment was cancelled
+        // so user can see order status and try payment again
+        if (mounted) {
+          Navigator.pushReplacementNamed(
+            context,
+            '/order-tracking',
+            arguments: {
+              'orderId': orderId,
+            },
+          );
+        }
       }
     } catch (e) {
       debugPrint('Error during web payment: $e');

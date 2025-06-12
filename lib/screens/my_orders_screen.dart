@@ -1,10 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/order_service.dart';
 import '../models/order.dart';
 import '../models/order_status.dart';
 import 'order_detail_screen.dart';
-import 'dart:math' as math;
 
 class MyOrdersScreen extends StatefulWidget {
   final String? highlightOrderId;
@@ -31,6 +31,25 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
     _tabController = TabController(length: 5, vsync: this);
     _highlightedOrderId = widget.highlightOrderId;
     _loadOrders();
+
+    // Set up periodic refresh for order status updates
+    _setupPeriodicRefresh();
+  }
+
+  void _setupPeriodicRefresh() {
+    // Refresh orders every 30 seconds to check for status updates
+    Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted) {
+        _refreshOrders();
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  Future<void> _refreshOrders() async {
+    final orderService = Provider.of<OrderService>(context, listen: false);
+    await orderService.refreshOrders();
   }
 
   @override
@@ -362,7 +381,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Order #${order.id.substring(0, math.min(8, order.id.length))}',
+                    'Order #${order.id}',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,

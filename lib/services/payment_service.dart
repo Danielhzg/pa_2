@@ -1808,4 +1808,69 @@ class PaymentService {
       };
     }
   }
+
+  // Simulate payment success for testing
+  Future<Map<String, dynamic>> simulatePaymentSuccess(String orderId) async {
+    try {
+      debugPrint('Simulating payment success for order: $orderId');
+
+      // Get auth token for API requests
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        return {
+          'success': false,
+          'message': 'Authentication required',
+        };
+      }
+
+      // API endpoint for simulating payment success
+      final url = Uri.parse(
+          '${ApiConstants.getBaseUrl()}/api/payment/simulate-success');
+
+      debugPrint('Calling payment simulation API: $url');
+
+      // Send request to API
+      final response = await http
+          .post(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'order_id': orderId,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        debugPrint('Payment simulation successful: ${response.body}');
+
+        return {
+          'success': true,
+          'message': 'Payment simulation completed successfully',
+          'data': responseData,
+        };
+      } else {
+        debugPrint(
+            'Failed to simulate payment: ${response.statusCode} - ${response.body}');
+        return {
+          'success': false,
+          'message': 'Failed to simulate payment',
+          'error': response.body,
+        };
+      }
+    } catch (e) {
+      debugPrint('Error simulating payment: $e');
+      return {
+        'success': false,
+        'message': 'Error simulating payment',
+        'error': e.toString(),
+      };
+    }
+  }
 }

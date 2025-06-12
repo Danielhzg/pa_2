@@ -228,12 +228,6 @@
                 <p class="text-muted small mb-0">Pantau performa bisnis Anda dengan laporan penjualan</p>
             </div>
             <div class="d-flex gap-2">
-                <!-- Export CSV Button -->
-                <a href="{{ route('admin.reports.export', ['start_date' => request('start_date'), 'end_date' => request('end_date')]) }}"
-                   class="btn export-btn btn-sm">
-                    <i class="fas fa-file-csv me-1"></i> Export CSV
-                </a>
-
                 <!-- Export Excel Dropdown -->
                 <div class="dropdown">
                     <button class="btn export-btn btn-sm dropdown-toggle" type="button" id="excelExportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -290,13 +284,6 @@
                             <i class="fas fa-filter me-1"></i>
                             {{ \Carbon\Carbon::parse(request('start_date'))->format('d M Y') }} -
                             {{ \Carbon\Carbon::parse(request('end_date'))->format('d M Y') }}
-                        </span>
-                    </div>
-                    @else
-                    <div class="mt-2">
-                        <span class="filter-badge small" style="background-color: #f8f9fa; color: #6c757d; border: 1px solid #dee2e6;">
-                            <i class="fas fa-globe me-1"></i>
-                            Semua Data
                         </span>
                     </div>
                     @endif

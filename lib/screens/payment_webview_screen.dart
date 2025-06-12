@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:provider/provider.dart';
+import '../services/payment_service.dart';
+import '../services/order_service.dart';
 
 class PaymentWebViewScreen extends StatefulWidget {
   final String redirectUrl;
@@ -49,18 +52,13 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
                 url.contains('callback-finish') ||
                 url.contains('transaction_status=capture') ||
                 url.contains('transaction_status=settlement')) {
-              widget.onPaymentComplete(true);
-
-              // Pop after short delay to give user feedback that payment is successful
-              Future.delayed(const Duration(seconds: 1), () {
-                if (mounted) {
-                  Navigator.pop(context, true);
-                }
-              });
+              debugPrint('Payment successful detected in WebView');
+              _handlePaymentSuccess();
             } else if (url.contains('payment_failed') ||
                 url.contains('transaction_status=deny') ||
                 url.contains('transaction_status=cancel') ||
                 url.contains('transaction_status=expire')) {
+              debugPrint('Payment failed detected in WebView');
               widget.onPaymentComplete(false);
 
               // Pop after short delay to give user feedback
@@ -77,6 +75,107 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         ),
       )
       ..loadRequest(Uri.parse(widget.redirectUrl));
+  }
+
+  // Handle payment success and update order status
+  Future<void> _handlePaymentSuccess() async {
+    try {
+      debugPrint(
+          'Handling payment success for transaction: ${widget.transactionId}');
+
+      // Show loading indicator
+      setState(() {
+        _isLoading = true;
+      });
+
+      // Get payment service
+      final paymentService = PaymentService();
+
+      // First try to simulate payment success via webhook to trigger backend logic
+      try {
+        final simulateResult =
+            await paymentService.simulatePaymentSuccess(widget.transactionId);
+        debugPrint('Payment simulation result: $simulateResult');
+
+        // If simulation was successful, the backend should have already updated the order
+        if (simulateResult['success'] == true) {
+          debugPrint(
+              'Payment simulation successful - order should be updated by backend');
+        }
+      } catch (e) {
+        debugPrint('Payment simulation failed: $e');
+      }
+
+      // Wait a moment for backend processing
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Update order status to processing after successful payment (as fallback)
+      final updateResult = await paymentService.updateOrderStatus(
+          widget.transactionId,
+          'processing', // New order status
+          'paid' // New payment status
+          );
+
+      debugPrint('Order status update result: $updateResult');
+
+      // Get order service and refresh orders
+      if (mounted) {
+        final orderService = Provider.of<OrderService>(context, listen: false);
+        await orderService.refreshOrders();
+      }
+
+      // Call the callback
+      widget.onPaymentComplete(true);
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Pembayaran berhasil! Status pesanan telah diperbarui.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Pop after short delay to give user feedback that payment is successful
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          Navigator.pop(context, true);
+        }
+      });
+    } catch (e) {
+      debugPrint('Error handling payment success: $e');
+
+      // Still call the callback even if update fails
+      widget.onPaymentComplete(true);
+
+      // Show warning message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Pembayaran berhasil, namun status pesanan akan diperbarui secara otomatis.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+
+      // Pop after delay
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          Navigator.pop(context, true);
+        }
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override

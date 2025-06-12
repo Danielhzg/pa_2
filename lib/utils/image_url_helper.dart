@@ -17,7 +17,7 @@ class ImageUrlHelper {
 
   // URL khusus untuk carousel
   static const String specificCarouselUrl =
-      'https://dec8-114-122-41-11.ngrok-free.app/storage/carousels/'; // Primary ngrok carousel URL
+      'https://dec8-114-122-41-11.ngrok-free.app/storage/carousels/'; 
 
   /// Placeholder URL untuk gambar yang tidak tersedia
   static const String placeholderUrl =
